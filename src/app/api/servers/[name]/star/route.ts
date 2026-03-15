@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { getAuthFromRequest } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
 
-export async function POST(req: NextRequest, { params }: { params: { name: string } }) {
-  const auth = getAuthFromRequest(req);
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { name: string } }
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const db = getDb();
-  const server = db.prepare('SELECT id FROM servers WHERE name = ?').get(params.name) as any;
+  const { data: server } = await supabase
+    .from('servers').select('id').eq('name', params.name).single();
   if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const existing = db.prepare('SELECT 1 FROM server_stars WHERE user_id = ? AND server_id = ?').get(auth.userId, server.id);
+  const { data: existing } = await supabase
+    .from('server_stars')
+    .select('user_id')
+    .eq('user_id', user.id).eq('server_id', server.id)
+    .maybeSingle();
+
   if (existing) {
-    db.prepare('DELETE FROM server_stars WHERE user_id = ? AND server_id = ?').run(auth.userId, server.id);
-    db.prepare('UPDATE servers SET stars = MAX(0, stars - 1) WHERE id = ?').run(server.id);
+    await supabase.from('server_stars').delete().eq('user_id', user.id).eq('server_id', server.id);
+    await supabase.rpc('decrement_stars', { server_id: server.id });
     return NextResponse.json({ starred: false });
   } else {
-    db.prepare('INSERT OR IGNORE INTO server_stars (user_id, server_id) VALUES (?, ?)').run(auth.userId, server.id);
-    db.prepare('UPDATE servers SET stars = stars + 1 WHERE id = ?').run(server.id);
+    await supabase.from('server_stars').insert({ user_id: user.id, server_id: server.id });
+    await supabase.rpc('increment_stars', { server_id: server.id });
     return NextResponse.json({ starred: true });
   }
 }

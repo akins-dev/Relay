@@ -2,31 +2,41 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/AuthProvider';
 
 export default function LoginPage() {
-  const { setAuth } = useAuth();
-  const router = useRouter();
-  const [mode, setMode] = useState<'login'|'register'>('login');
-  const [form, setForm] = useState({ username: '', email: '', password: '' });
-  const [error, setError] = useState('');
+  const router   = useRouter();
+  const { refresh } = useAuth();
+  const supabase = createClient();
+  const [mode,    setMode]    = useState<'login'|'register'>('login');
+  const [form,    setForm]    = useState({ username: '', email: '', password: '' });
+  const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true); setError('');
+    e.preventDefault();
+    setLoading(true); setError('');
     try {
-      const url = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const body = mode === 'login' ? { email: form.email, password: form.password } : form;
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Auth failed');
-      const me = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${data.token}` } }).then(r => r.json());
-      setAuth(data.token, me.user);
+      if (mode === 'register') {
+        const { error: err } = await supabase.auth.signUp({
+          email: form.email, password: form.password,
+          options: { data: { username: form.username } },
+        });
+        if (err) throw new Error(err.message);
+      } else {
+        const { error: err } = await supabase.auth.signInWithPassword({
+          email: form.email, password: form.password,
+        });
+        if (err) throw new Error(err.message);
+      }
+      await refresh();
       router.push('/dashboard');
+      router.refresh();
     } catch (e: any) { setError(e.message); }
-    setLoading(false);
+    finally { setLoading(false); }
   }
 
   return (
@@ -40,10 +50,9 @@ export default function LoginPage() {
         </div>
 
         <div className="card" style={{ padding: '32px' }}>
-          {/* Toggle */}
           <div style={{ display: 'flex', background: 'var(--bg-2)', borderRadius: 'var(--radius)', padding: '3px', marginBottom: '24px' }}>
             {(['login','register'] as const).map(m => (
-              <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '7px', background: mode === m ? 'var(--bg-3)' : 'transparent', border: 'none', borderRadius: 'calc(var(--radius) - 2px)', color: mode === m ? 'var(--text)' : 'var(--text-3)', fontFamily: 'var(--font)', fontSize: '13px', fontWeight: mode === m ? 600 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>
+              <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '7px', background: mode === m ? 'var(--bg-3)' : 'transparent', border: 'none', borderRadius: 'calc(var(--radius) - 2px)', color: mode === m ? 'var(--text)' : 'var(--text-3)', fontFamily: 'var(--font)', fontSize: '13px', fontWeight: mode === m ? 600 : 400, cursor: 'pointer' }}>
                 {m === 'login' ? 'Sign in' : 'Create account'}
               </button>
             ))}
@@ -53,7 +62,7 @@ export default function LoginPage() {
             {mode === 'register' && (
               <div>
                 <label style={{ fontSize: '12px', color: 'var(--text-2)', fontWeight: 600, display: 'block', marginBottom: '6px' }}>Username</label>
-                <input className="input" placeholder="your-username" value={form.username} onChange={e => set('username', e.target.value)} required minLength={3} />
+                <input className="input" placeholder="your-username" value={form.username} onChange={e => set('username', e.target.value)} required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]+" />
               </div>
             )}
             <div>

@@ -1,27 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, formatServer } from '@/lib/db';
-import { getAuthFromRequest } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
 
-export async function GET(req: NextRequest, { params }: { params: { name: string } }) {
-  const db = getDb();
-  const server = db.prepare(`
-    SELECT s.*, u.username as author_name, u.github_username as author_github
-    FROM servers s LEFT JOIN users u ON s.author_id = u.id
-    WHERE s.name = ?
-  `).get(params.name) as any;
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { name: string } }
+) {
+  const supabase = createClient();
 
-  if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const { data: server, error } = await supabase
+    .from('servers')
+    .select('*, profiles!author_id ( username, github_username, avatar_url )')
+    .eq('name', params.name)
+    .single();
 
-  const scans = db.prepare('SELECT * FROM scan_results WHERE server_id = ? ORDER BY created_at DESC LIMIT 5').all(server.id) as any[];
-  const auth = getAuthFromRequest(req);
+  if (error || !server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const { data: scans } = await supabase
+    .from('scan_results')
+    .select('*')
+    .eq('server_id', server.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const { data: { user } } = await supabase.auth.getUser();
   let starred = false;
-  if (auth) {
-    starred = !!db.prepare('SELECT 1 FROM server_stars WHERE user_id = ? AND server_id = ?').get(auth.userId, server.id);
+  if (user) {
+    const { data: star } = await supabase
+      .from('server_stars')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('server_id', server.id)
+      .maybeSingle();
+    starred = !!star;
   }
 
-  return NextResponse.json({
-    ...formatServer(server),
-    scans: scans.map(s => ({ ...s, issues: JSON.parse(s.issues || '[]') })),
-    starred,
-  });
+  return NextResponse.json({ ...server, scans: scans ?? [], starred });
 }

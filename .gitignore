@@ -1,31 +1,12 @@
-# Dependencies
 node_modules/
-.pnp
-.pnp.js
-
-# Next.js
 .next/
-out/
-
-# Data
-data/
-*.db
-*.db-shm
-*.db-wal
-
-# Env
 .env
 .env.local
 .env.production
-
-# OS
+.env*.local
+data/
+*.db
+.supabase/
 .DS_Store
-Thumbs.db
-
-# Logs
 *.log
-npm-debug.log*
-
-# Build
 dist/
-build/

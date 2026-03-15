@@ -1,40 +1,31 @@
-import { Suspense } from 'react';
-import { getDb, formatServer } from '@/lib/db';
-import { ServerCard } from '@/components/registry/ServerCard';
+import { createClient } from '@/lib/supabase/server';
 import { HomeClient } from './HomeClient';
-import type { Server, GlobalStats } from '@/types';
+import type { GlobalStats } from '@/types';
 
-function getHomeData(): { stats: GlobalStats; featured: Server[] } {
-  const db = getDb();
+async function getHomeData() {
+  const supabase = createClient();
+  const [statsRes, featuredRes] = await Promise.all([
+    supabase.rpc('global_stats'),
+    supabase
+      .from('servers')
+      .select('id, name, display_name, description, version, tags, tools, verified, stars, total_calls, calls_today, latency_ms, uptime_pct, trust_score, scan_status, scan_issues, created_at, profiles!author_id ( username, avatar_url )')
+      .eq('status', 'active').eq('verified', true)
+      .order('trust_score', { ascending: false }).limit(4),
+  ]);
 
-  const stats = db.prepare(`
-    SELECT COUNT(*) as total_servers,
-      SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) as active_servers,
-      SUM(CASE WHEN verified=1 THEN 1 ELSE 0 END) as verified_servers,
-      SUM(total_calls) as total_calls,
-      SUM(calls_today) as calls_today,
-      ROUND(AVG(trust_score),1) as avg_trust_score
-    FROM servers
-  `).get() as any;
-
-  const rows = db.prepare("SELECT tags FROM servers WHERE status='active'").all() as any[];
-  const tagCount: Record<string, number> = {};
-  for (const r of rows) {
-    try { for (const t of JSON.parse(r.tags)) tagCount[t] = (tagCount[t] || 0) + 1; } catch {}
-  }
-  const tags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([tag, count]) => ({ tag, count }));
-
-  const featured = db.prepare(`
-    SELECT s.*, u.username as author_name FROM servers s
-    LEFT JOIN users u ON s.author_id = u.id
-    WHERE s.status='active' AND s.verified=1
-    ORDER BY s.trust_score DESC LIMIT 4
-  `).all() as any[];
-
-  return { stats: { ...stats, tags }, featured: featured.map(formatServer) };
+  const raw   = (statsRes.data as any) ?? {};
+  const stats: GlobalStats = {
+    total_servers:    raw.total_servers    ?? 0,
+    active_servers:   raw.active_servers   ?? 0,
+    verified_servers: raw.verified_servers ?? 0,
+    total_calls:      raw.total_calls      ?? 0,
+    calls_today:      raw.calls_today      ?? 0,
+    avg_trust_score:  raw.avg_trust_score  ?? 0,
+  };
+  return { stats, featured: featuredRes.data ?? [] };
 }
 
-export default function HomePage() {
-  const { stats, featured } = getHomeData();
-  return <HomeClient stats={stats} featured={featured} />;
+export default async function HomePage() {
+  const { stats, featured } = await getHomeData();
+  return <HomeClient stats={stats} featured={featured as any} />;
 }

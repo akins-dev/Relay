@@ -1,35 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, formatServer } from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const q = searchParams.get('q');
+  const q     = searchParams.get('q');
   const limit = Math.min(20, parseInt(searchParams.get('limit') || '5'));
   if (!q) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-  const db = getDb();
-  const servers = db.prepare(`
-    SELECT s.*, u.username as author_name FROM servers s
-    LEFT JOIN users u ON s.author_id = u.id
-    WHERE s.status = 'active' ORDER BY s.trust_score DESC, s.stars DESC LIMIT 100
-  `).all() as any[];
+  const supabase = createClient();
 
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const scored = servers.map(s => {
-    let score = 0;
-    for (const term of terms) {
-      if (s.name?.toLowerCase().includes(term)) score += 10;
-      if (s.display_name?.toLowerCase().includes(term)) score += 8;
-      if (s.tags?.toLowerCase().includes(term)) score += 6;
-      if (s.tools?.toLowerCase().includes(term)) score += 5;
-      if (s.description?.toLowerCase().includes(term)) score += 3;
-    }
-    score += (s.trust_score || 0) / 20;
-    return { ...s, _relevance: score };
-  })
-    .filter(s => s._relevance > 0)
-    .sort((a, b) => b._relevance - a._relevance)
-    .slice(0, limit);
+  // Use Postgres full-text search via RPC
+  const { data, error } = await supabase
+    .rpc('search_servers', { query_text: q, result_limit: limit });
 
-  return NextResponse.json({ query: q, results: scored.map(s => ({ ...formatServer(s), relevance: s._relevance })) });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Enrich with author profile
+  const ids = (data ?? []).map((s: any) => s.id);
+  let results = data ?? [];
+  if (ids.length > 0) {
+    const { data: enriched } = await supabase
+      .from('servers')
+      .select(`
+        id, name, display_name, description, version, tags, tools,
+        verified, stars, latency_ms, uptime_pct, trust_score, scan_status,
+        profiles!author_id ( username )
+      `)
+      .in('id', ids)
+      .eq('status', 'active');
+    if (enriched) results = enriched;
+  }
+
+  return NextResponse.json({ query: q, results });
 }

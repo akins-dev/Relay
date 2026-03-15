@@ -215,7 +215,7 @@ mcp-registry/
 
 ## Self-Hosting
 
-This project is designed to be self-hosted. The only dependency is Node.js 22+ (SQLite is bundled via better-sqlite3).
+This project is designed to be self-hosted. The only dependency is Node.js 20+ (SQLite is bundled via better-sqlite3).
 
 For production:
 1. Set a strong `JWT_SECRET` (min 32 chars)

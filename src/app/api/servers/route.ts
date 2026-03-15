@@ -1,114 +1,157 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { nanoid } from 'nanoid';
-import { getDb, formatServer } from '@/lib/db';
-import { getAuthFromRequest } from '@/lib/auth';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { scanServer, computeTrustScore } from '@/lib/security';
+import { createHash } from 'crypto';
 
 const PublishSchema = z.object({
-  name: z.string().min(3).max(64).regex(/^[a-z0-9-]+$/),
-  display_name: z.string().min(3).max(100),
-  description: z.string().min(20).max(500),
+  name:             z.string().min(3).max(64).regex(/^[a-z0-9-]+$/),
+  display_name:     z.string().min(3).max(100),
+  description:      z.string().min(20).max(500),
   long_description: z.string().max(5000).optional(),
-  endpoint: z.string().url(),
-  version: z.string().default('1.0.0'),
-  github_url: z.string().url().optional().or(z.literal('')),
-  homepage_url: z.string().url().optional().or(z.literal('')),
-  license: z.string().default('MIT'),
-  tags: z.array(z.string()).min(1).max(10),
-  tools: z.array(z.string()).min(1).max(100),
+  endpoint:         z.string().url(),
+  version:          z.string().default('1.0.0'),
+  github_url:       z.string().url().optional().or(z.literal('')),
+  homepage_url:     z.string().url().optional().or(z.literal('')),
+  license:          z.string().default('MIT'),
+  tags:             z.array(z.string()).min(1).max(10),
+  tools:            z.array(z.string()).min(1).max(100),
 });
 
 export async function GET(req: NextRequest) {
+  const supabase = createClient();
   const { searchParams } = new URL(req.url);
-  const q = searchParams.get('q') || '';
-  const tag = searchParams.get('tag') || '';
-  const sort = searchParams.get('sort') || 'stars';
-  const verified = searchParams.get('verified') || '';
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = Math.min(50, parseInt(searchParams.get('limit') || '12'));
-  const offset = (page - 1) * limit;
 
-  const db = getDb();
-  let where = "WHERE s.status = 'active'";
-  const params: any[] = [];
+  const q        = searchParams.get('q') || '';
+  const tag      = searchParams.get('tag') || '';
+  const sort     = searchParams.get('sort') || 'stars';
+  const verified = searchParams.get('verified') === 'true';
+  const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit    = Math.min(50, parseInt(searchParams.get('limit') || '12'));
+  const from     = (page - 1) * limit;
+  const to       = from + limit - 1;
 
-  if (q) {
-    where += ` AND (s.name LIKE ? OR s.display_name LIKE ? OR s.description LIKE ? OR s.tags LIKE ?)`;
-    const like = `%${q}%`;
-    params.push(like, like, like, like);
-  }
-  if (tag) { where += ` AND s.tags LIKE ?`; params.push(`%"${tag}"%`); }
-  if (verified === 'true') { where += ` AND s.verified = 1`; }
+  let query = supabase
+    .from('servers')
+    .select(`
+      id, name, display_name, description, version, tags, tools,
+      status, verified, stars, total_calls, calls_today,
+      latency_ms, uptime_pct, trust_score, scan_status, scan_issues,
+      created_at, profiles!author_id ( username, avatar_url )
+    `, { count: 'exact' })
+    .eq('status', 'active');
 
-  const orderMap: Record<string, string> = {
-    stars: 's.stars DESC', calls: 's.total_calls DESC',
-    trust: 's.trust_score DESC', recent: 's.created_at DESC', latency: 's.latency_ms ASC',
+  if (q)        query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
+  if (tag)      query = query.contains('tags', [tag]);
+  if (verified) query = query.eq('verified', true);
+
+  const sortMap: Record<string, { column: string; ascending: boolean }> = {
+    stars:   { column: 'stars',       ascending: false },
+    calls:   { column: 'total_calls', ascending: false },
+    trust:   { column: 'trust_score', ascending: false },
+    recent:  { column: 'created_at',  ascending: false },
+    latency: { column: 'latency_ms',  ascending: true  },
   };
-  const order = orderMap[sort] || 's.stars DESC';
+  const s = sortMap[sort] ?? sortMap.stars;
+  query = query.order(s.column, { ascending: s.ascending });
 
-  const servers = db.prepare(`
-    SELECT s.*, u.username as author_name FROM servers s
-    LEFT JOIN users u ON s.author_id = u.id
-    ${where} ORDER BY ${order} LIMIT ? OFFSET ?
-  `).all(...params, limit, offset) as any[];
-
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM servers s ${where}`).get(...params) as any).c;
+  const { data, count, error } = await query.range(from, to);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({
-    servers: servers.map(formatServer),
-    total, page, pages: Math.ceil(total / limit),
+    servers: data ?? [],
+    total: count ?? 0,
+    page,
+    pages: Math.ceil((count ?? 0) / limit),
   });
 }
 
 export async function POST(req: NextRequest) {
-  const auth = getAuthFromRequest(req);
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = PublishSchema.parse(await req.json());
-    const db = getDb();
 
-    const existing = db.prepare('SELECT id FROM servers WHERE name = ?').get(body.name);
+    // Name taken?
+    const { data: existing } = await supabase
+      .from('servers').select('id').eq('name', body.name).maybeSingle();
     if (existing) return NextResponse.json({ error: 'Server name already taken' }, { status: 409 });
 
+    // L8: Typosquatting check via SQL RPC
+    const { data: similar } = await supabase
+      .rpc('find_similar_names', { candidate: body.name });
+    const highRisk = (similar ?? []).filter((s: any) => s.similarity > 0.8);
+    if (highRisk.length > 0) {
+      return NextResponse.json({
+        error: `Name too similar to existing verified server: ${highRisk.map((s: any) => s.name).join(', ')}`,
+        similar: highRisk,
+      }, { status: 409 });
+    }
+
+    // L1: Static security scan
     const scanResult = scanServer({
       name: body.name, description: body.description,
       long_description: body.long_description,
       endpoint: body.endpoint, tools: body.tools, tags: body.tags,
     });
 
-    const id = nanoid();
-    const schemaHash = Buffer.from(JSON.stringify(body.tools) + body.version).toString('base64');
-    const status = scanResult.passed ? 'active' : 'rejected';
+    const schemaHash = createHash('sha256')
+      .update(JSON.stringify(body.tools.slice().sort()) + body.version)
+      .digest('hex');
+    const status     = scanResult.passed ? 'active' : 'rejected';
     const trustScore = computeTrustScore({
-      verified: 0, scanScore: scanResult.score, uptimePct: 100,
-      stars: 0, daysSinceChange: 0,
+      verified: 0, scanScore: scanResult.score,
+      uptimePct: 100, stars: 0, daysSinceChange: 0,
     });
 
-    db.prepare(`
-      INSERT INTO servers (
-        id, name, display_name, description, long_description, author_id,
-        version, endpoint, github_url, homepage_url, license, tags, tools,
-        status, schema_hash, scan_status, scan_issues, trust_score, last_scanned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
-    `).run(
-      id, body.name, body.display_name, body.description,
-      body.long_description || null, auth.userId, body.version,
-      body.endpoint, body.github_url || null, body.homepage_url || null,
-      body.license, JSON.stringify(body.tags), JSON.stringify(body.tools),
-      status, schemaHash, scanResult.passed ? 'passed' : 'failed',
-      JSON.stringify(scanResult.issues), trustScore,
-    );
+    const { data: server, error: insertErr } = await supabase
+      .from('servers')
+      .insert({
+        name:             body.name,
+        display_name:     body.display_name,
+        description:      body.description,
+        long_description: body.long_description ?? null,
+        author_id:        user.id,
+        version:          body.version,
+        endpoint:         body.endpoint,
+        github_url:       body.github_url  || null,
+        homepage_url:     body.homepage_url || null,
+        license:          body.license,
+        tags:             body.tags,
+        tools:            body.tools,
+        status:           status as any,
+        schema_hash:      schemaHash,
+        scan_status:      (scanResult.passed ? 'passed' : 'failed') as any,
+        scan_issues:      scanResult.issues as any,
+        trust_score:      trustScore,
+        last_scanned_at:  new Date().toISOString(),
+      })
+      .select('id, name')
+      .single();
 
-    db.prepare(`
-      INSERT INTO scan_results (id, server_id, scan_type, passed, issues, score, details)
-      VALUES (?, ?, 'static', ?, ?, ?, ?)
-    `).run(nanoid(), id, scanResult.passed ? 1 : 0, JSON.stringify(scanResult.issues), scanResult.score, scanResult.details);
+    if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
 
-    return NextResponse.json({ id, name: body.name, status, scan: scanResult, trust_score: trustScore }, { status: 201 });
+    // Write scan result via service client (RLS: users can't write scan_results)
+    const svc = createServiceClient();
+    await svc.from('scan_results').insert({
+      server_id: server.id,
+      scan_type: 'static',
+      passed:    scanResult.passed,
+      score:     scanResult.score,
+      issues:    scanResult.issues as any,
+      details:   scanResult.details,
+    });
+
+    return NextResponse.json({
+      id: server.id, name: server.name,
+      status, scan: scanResult, trust_score: trustScore,
+      similar_names: similar ?? [],
+    }, { status: 201 });
+
   } catch (e: any) {
-    if (e.errors) return NextResponse.json({ error: e.errors }, { status: 400 });
+    if (e.errors) return NextResponse.json({ error: e.errors[0]?.message }, { status: 400 });
     return NextResponse.json({ error: 'Publish failed' }, { status: 500 });
   }
 }
