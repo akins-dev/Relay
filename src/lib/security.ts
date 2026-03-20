@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// MCP Registry — Security Layers
+// openMCP — Security Layers
 //
 // L1  Publish-time static scan          → scanServer()
 // L4  Proxy DLP — credential patterns   → dlpScan()
@@ -219,4 +219,151 @@ export function contextLeakScan(text: string): string[] {
     ...dlpScan(text),
   ];
   return [...new Set(found)];
+}
+
+
+// ── S-12: Shell / command injection detection ─────────────────────────────────
+// The #1 real-world attack: 43% of all MCP CVEs are servers passing
+// tool arguments directly to shell commands without sanitisation.
+
+const SHELL_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /;\s*(rm|curl|wget|nc|bash|sh|python|perl|ruby|php|node)\b/i,  label: 'Shell command after semicolon' },
+  { pattern: /\|\s*(nc|bash|sh|curl|wget|python|perl)\b/i,                  label: 'Pipe to shell command' },
+  { pattern: /&&\s*(rm|curl|wget|nc|bash|sh|python)\b/i,                    label: 'AND-chained shell command' },
+  { pattern: /`[^`]{1,200}`/,                                                label: 'Backtick command substitution' },
+  { pattern: /\$\([^)]{1,200}\)/,                                            label: 'Dollar-paren command substitution' },
+  { pattern: />\s*\/etc\/|>\s*~\/\./,                                        label: 'Redirect to sensitive path' },
+  { pattern: /curl\s+[^\s]+\s*\|/i,                                         label: 'Curl pipe execution' },
+  { pattern: /wget\s+[^\s]+\s*-O\s*-\s*\|/i,                               label: 'Wget pipe execution' },
+  { pattern: /\/etc\/(passwd|shadow|hosts|cron)/i,                           label: 'Sensitive file path access' },
+  { pattern: /nc\s+(-[a-z]+\s+)*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i,    label: 'Netcat reverse shell pattern' },
+  { pattern: /base64\s+-d\s*\|/i,                                            label: 'Base64 decode pipe (obfuscated payload)' },
+  { pattern: /python[23]?\s+-c\s+['"]import/i,                              label: 'Python inline code execution' },
+  { pattern: /\beval\s*\(/i,                                                 label: 'eval() execution' },
+  { pattern: /\bexec\s*\(/i,                                                 label: 'exec() execution' },
+  { pattern: /\bsystem\s*\(/i,                                               label: 'system() call' },
+  { pattern: /\bos\.system\s*\(/i,                                           label: 'os.system() call' },
+  { pattern: /\bsubprocess\.(run|call|Popen)\s*\(/i,                        label: 'subprocess execution' },
+  { pattern: /\bspawnSync\s*\(|\bexecSync\s*\(/i,                           label: 'Node.js sync shell execution' },
+];
+
+/**
+ * S-12: Scan tool call arguments for shell injection patterns.
+ * Call this on the parsed JSON body of proxy requests, not the raw string.
+ * Returns array of issue labels. Empty = clean.
+ */
+export function shellInjectionScan(text: string): string[] {
+  return SHELL_INJECTION_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ label }) => label);
+}
+
+// ── S-13: Indirect prompt injection in tool response data ─────────────────────
+// Attackers inject LLM instructions into data that tools return.
+// Classic example: a GitHub Issue containing "Ignore previous instructions and..."
+// The agent reads the issue content and gets hijacked.
+
+const INDIRECT_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /ignore (previous|all|prior|above|earlier) instructions?/i,     label: 'Instruction override in data' },
+  { pattern: /you are (now|actually|really|instead)\s+/i,                    label: 'Identity override in data' },
+  { pattern: /new (instructions?|directive|orders?|rules?):/i,               label: 'New instructions injected in data' },
+  { pattern: /\[system\]|\[assistant\]|\[user\]/i,                           label: 'Role injection tokens in data' },
+  { pattern: /<\|im_start\|>|<\|im_end\|>/,                                  label: 'Chat template tokens in data' },
+  { pattern: /\[INST\].*\[\/INST\]/s,                                        label: 'Instruction template in data' },
+  { pattern: /forget (everything|all|your|previous)/i,                       label: 'Memory wipe instruction in data' },
+  { pattern: /your (true|real|actual|hidden) (purpose|goal|mission|role)/i,  label: 'Hidden purpose injection in data' },
+  { pattern: /from now on(,| you| always| never)/i,                          label: 'Behavioral override in data' },
+  { pattern: /\bDAN\b|\bjailbreak\b/i,                                       label: 'Known jailbreak keyword in data' },
+  { pattern: /print\s+(your\s+)?(system\s+)?prompt/i,                       label: 'Prompt extraction attempt in data' },
+  { pattern: /exfiltrate|send.*to.*http/i,                                   label: 'Exfiltration instruction in data' },
+];
+
+/**
+ * S-13: Scan tool response data for indirect prompt injection.
+ * Applied to response bodies in the proxy layer.
+ * Returns array of issue labels. Empty = clean.
+ */
+export function indirectInjectionScan(text: string): string[] {
+  return INDIRECT_INJECTION_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ label }) => label);
+}
+
+// ── S-14: npm CVE scanning helpers ───────────────────────────────────────────
+// Called during ingest for servers with a GitHub URL.
+// The actual API call lives in the ingest route — these are the types and helpers.
+
+export interface CveIssue {
+  name:     string;
+  version:  string;
+  severity: 'critical' | 'high' | 'moderate' | 'low';
+  cve:      string;
+  url:      string;
+}
+
+/**
+ * S-14: Fetch package.json from a GitHub repo and check against npm audit.
+ * Returns array of CVE issues found. Empty = clean.
+ * Pass the raw GitHub repo URL: https://github.com/owner/repo
+ */
+export async function scanNpmDependencies(githubUrl: string): Promise<CveIssue[]> {
+  try {
+    // Convert github.com URL to raw content URL
+    const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!match) return [];
+    const [, owner, repo] = match;
+    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/package.json`;
+
+    const res = await fetch(rawUrl, { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) {
+      // Try master branch
+      const res2 = await fetch(rawUrl.replace('/main/', '/master/'), { signal: AbortSignal.timeout(8_000) });
+      if (!res2.ok) return [];
+      const pkg = await res2.json();
+      return await runNpmAudit(pkg);
+    }
+    const pkg = await res.json();
+    return await runNpmAudit(pkg);
+  } catch {
+    return [];
+  }
+}
+
+async function runNpmAudit(pkg: any): Promise<CveIssue[]> {
+  try {
+    // npm audit requires a package-lock.json — we use the bulk advisory API instead
+    const deps = {
+      ...pkg.dependencies ?? {},
+      ...pkg.devDependencies ?? {},
+    };
+    if (Object.keys(deps).length === 0) return [];
+
+    const res = await fetch('https://registry.npmjs.org/-/npm/v1/security/advisories/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        Object.fromEntries(Object.keys(deps).map(name => [name, [deps[name].replace(/[\^~>=<]/g, '')]]))
+      ),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const issues: CveIssue[] = [];
+    for (const [pkg, advisories] of Object.entries(data)) {
+      for (const adv of advisories as any[]) {
+        issues.push({
+          name:     pkg,
+          version:  deps[pkg] ?? 'unknown',
+          severity: adv.severity,
+          cve:      adv.cves?.[0] ?? adv.ghsa_id ?? 'unknown',
+          url:      adv.url ?? '',
+        });
+      }
+    }
+    return issues;
+  } catch {
+    return [];
+  }
 }

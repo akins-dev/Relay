@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import {
   dlpScan, samplingDlpScan, piiScan,
   checkElicitationUrl, contextLeakScan,
+  shellInjectionScan, indirectInjectionScan,
 } from '@/lib/security';
 
 export async function POST(
@@ -12,6 +14,17 @@ export async function POST(
   const { serverName, toolName } = params;
   const start    = Date.now();
   const supabase = createClient();
+
+  // Rate limiting — stricter for unauthenticated callers
+  const ip      = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+  const rlKey   = `proxy:${ip}`;
+  const rlCheck = rateLimit(rlKey, LIMITS.proxy);
+  if (!rlCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', resetAt: rlCheck.resetAt },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rlCheck.resetAt - Date.now()) / 1000)) } }
+    );
+  }
 
   // Resolve server
   const { data: server, error: serverErr } = await supabase
@@ -34,6 +47,9 @@ export async function POST(
 
   const reqBody = await req.text();
   const svc     = createServiceClient();
+
+  // Resolve caller identity for metering (optional — anonymous calls still work)
+  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
 
   // L4: DLP — block credentials in request body
   const reqDlp = dlpScan(reqBody);
@@ -69,6 +85,23 @@ export async function POST(
     }, { status: 400 });
   }
 
+  // S-12: Shell injection detection in tool arguments
+  const shellIssues = shellInjectionScan(reqBody);
+  if (shellIssues.length > 0) {
+    await logAudit(svc, {
+      server_id: server.id, action: 'shell_injection_blocked', tool_name: toolName,
+      request_size: reqBody.length, response_size: 0,
+      latency_ms: Date.now() - start, status_code: 400,
+      dlp_triggered: true, dlp_issues: shellIssues,
+      ip: req.headers.get('x-forwarded-for') || '',
+      user_agent: req.headers.get('user-agent') || '',
+    });
+    return NextResponse.json({
+      error: 'Request blocked — shell injection pattern detected in tool arguments',
+      issues: shellIssues,
+    }, { status: 400 });
+  }
+
   // L11: URL elicitation check — if request contains a URL field, validate it
   try {
     const parsed = JSON.parse(reqBody);
@@ -97,7 +130,7 @@ export async function POST(
       method:  'POST',
       headers: {
         'Content-Type':     'application/json',
-        'X-Registry-Proxy': 'mcp-registry',
+        'X-Registry-Proxy': 'openmcp',
         'X-Request-Id':     crypto.randomUUID(),
       },
       body:   reqBody,
@@ -130,12 +163,25 @@ export async function POST(
   // L12: Context leak scan on response
   const leakIssues = contextLeakScan(responseBody);
 
-  const allResponseIssues = [...new Set([...resDlp, ...piiIssues, ...leakIssues])];
+  const allResponseIssues = [...new Set([...resDlp, ...piiIssues, ...leakIssues, ...indirectIssues])];
 
   // Update server stats (fire and forget)
   const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
   svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).then(() => {});
   svc.rpc('increment_calls', { server_id: server.id }).then(() => {});
+
+  // Metering event — billing-grade per-call record
+  svc.from('metering_events').insert({
+    server_id:      server.id,
+    user_id:        user?.id ?? null,
+    tool_name:      toolName,
+    interface:      'rest',
+    request_bytes:  reqBody.length,
+    response_bytes: responseBody.length,
+    latency_ms:     latency,
+    status_code:    upstreamStatus,
+    dlp_triggered:  allResponseIssues.length > 0,
+  }).then(() => {});
 
   // Audit log
   const action = allResponseIssues.length > 0 ? 'proxy_dlp_warning_response' : 'proxy_call';

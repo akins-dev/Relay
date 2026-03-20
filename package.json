@@ -1,5 +1,5 @@
 {
-  "name": "mcp-registry",
+  "name": "openmcp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:types": "npx supabase gen types typescript --linked > src/types/supabase.ts"
+    "db:types": "npx supabase gen types typescript --linked > src/types/supabase.ts",
+    "test": "jest --testPathPattern=__tests__",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "next": "14.2.3",
@@ -16,7 +18,8 @@
     "@supabase/supabase-js": "^2.43.4",
     "@supabase/ssr": "^0.3.0",
     "zod": "^3.22.4",
-    "clsx": "^2.1.0"
+    "clsx": "^2.1.0",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -24,6 +27,27 @@
     "@types/react-dom": "^18",
     "typescript": "^5",
     "eslint": "^8",
-    "eslint-config-next": "14.2.3"
+    "eslint-config-next": "14.2.3",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "ts-jest": "^29.1.4"
+  },
+  "description": "Open-source security layer for the MCP ecosystem",
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "commonjs"
+          }
+        }
+      ]
+    }
   }
 }

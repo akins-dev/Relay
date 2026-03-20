@@ -21,6 +21,7 @@ export default function RegistryPage() {
   const tag      = sp.get('tag') || '';
   const sort     = sp.get('sort') || 'stars';
   const verified = sp.get('verified') || '';
+  const source   = sp.get('source') || '';
   const page     = parseInt(sp.get('page') || '1');
 
   const [searchInput, setSearchInput] = useState(q);
@@ -43,6 +44,7 @@ export default function RegistryPage() {
     if (q) p.q = q;
     if (tag) p.tag = tag;
     if (verified) p.verified = verified;
+    if (source)   p.source   = source;
     const qs = new URLSearchParams(p).toString();
     const res = await fetch(`/api/servers?${qs}`).then(r => r.json());
     setServers(res.servers || []);
@@ -66,7 +68,7 @@ export default function RegistryPage() {
     <div className="page">
       {/* Header */}
       <div style={{ marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '6px' }}>MCP Registry</h1>
+        <h1 style={{ fontSize: '32px', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '6px' }}>openMCP</h1>
         <p style={{ color: 'var(--text-2)', fontSize: '14px' }}>
           {total > 0 ? `${total} server${total !== 1 ? 's' : ''} available` : 'Discover MCP servers'}
           {totalCalls ? ` · ${(totalCalls / 1000).toFixed(0)}K calls today` : ''}
@@ -85,6 +87,13 @@ export default function RegistryPage() {
         <button onClick={() => set('verified', verified ? '' : 'true')} className={`btn ${verified ? 'btn-primary' : 'btn-ghost'}`}>
           ✓ Verified
         </button>
+        <select className="input" value={source} onChange={e => set('source', e.target.value)} style={{ width: 'auto' }}>
+          <option value="">All sources</option>
+          <option value="official">⬡ Official</option>
+          <option value="github">◆ GitHub</option>
+          <option value="smithery">◈ Smithery</option>
+          <option value="direct">◉ Direct</option>
+        </select>
       </div>
 
       {/* Tag pills */}

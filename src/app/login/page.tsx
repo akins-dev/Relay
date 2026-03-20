@@ -45,7 +45,7 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
           <Link href="/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '34px', height: '34px', background: 'linear-gradient(135deg,#22c55e,#16a34a)', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px' }}>⬡</div>
-            <span style={{ fontWeight: 700, fontSize: '18px' }}>mcpregistry</span>
+            <span style={{ fontWeight: 700, fontSize: '18px' }}>openMCP</span>
           </Link>
         </div>
 

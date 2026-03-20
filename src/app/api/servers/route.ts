@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
 
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
   const tag      = searchParams.get('tag') || '';
   const sort     = searchParams.get('sort') || 'stars';
   const verified = searchParams.get('verified') === 'true';
+  const source   = searchParams.get('source') || '';
   const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const limit    = Math.min(50, parseInt(searchParams.get('limit') || '12'));
   const from     = (page - 1) * limit;
@@ -41,6 +43,7 @@ export async function GET(req: NextRequest) {
     `, { count: 'exact' })
     .eq('status', 'active');
 
+  if (source)   query = query.eq('source', source);
   if (q)        query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
   if (tag)      query = query.contains('tags', [tag]);
   if (verified) query = query.eq('verified', true);
@@ -70,6 +73,9 @@ export async function POST(req: NextRequest) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const rlCheck = rateLimit(`publish:${user.id}`, LIMITS.publish);
+  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
 
   try {
     const body = PublishSchema.parse(await req.json());

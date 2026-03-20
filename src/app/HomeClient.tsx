@@ -1,33 +1,25 @@
-"use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ServerCard } from "@/components/registry/ServerCard";
-import type { Server, GlobalStats } from "@/types";
+'use client';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ServerCard } from '@/components/registry/ServerCard';
+import type { Server, GlobalStats } from '@/types';
 
 /* ── Animated Terminal ─────────────────────────────────── */
 const LINES = [
-  { t: "// host system prompt — the entire MCP config", c: "#333", d: 0 },
-  { t: "", c: "", d: 400 },
-  { t: "You have access to the MCP Registry.", c: "#a0a0a0", d: 700 },
-  { t: "When you need any capability, query it first:", c: "#a0a0a0", d: 1100 },
-  { t: "  GET /api/servers/search?q={intent}", c: "#22c55e", d: 1500 },
-  { t: "", c: "", d: 1900 },
-  { t: '> Agent: "charge the user $49 for their plan"', c: "#f0f0f0", d: 2200 },
-  { t: '→ search("payments charge subscription")...', c: "#555", d: 2900 },
-  { t: "← stripe-payments  trust:97  latency:42ms", c: "#555", d: 3500 },
-  { t: "→ connecting via secure proxy...", c: "#555", d: 4100 },
-  {
-    t: "← tools ready: charge_card, create_subscription +4",
-    c: "#22c55e",
-    d: 4700,
-  },
-  {
-    t: '→ charge_card({ amount: 4900, currency: "usd" })',
-    c: "#22c55e",
-    d: 5300,
-  },
-  { t: "", c: "", d: 5800 },
-  { t: "✓ ch_3Qx9Av... · $49.00 charged · 44ms", c: "#22c55e", d: 6100 },
+  { t: '// host system prompt — the entire MCP config', c: '#5a4f47', d: 0 },
+  { t: '', c: '', d: 400 },
+  { t: 'You have access to the openMCP.', c: '#8a7d74', d: 700 },
+  { t: 'When you need any capability, query it first:', c: '#8a7d74', d: 1100 },
+  { t: '  GET /api/servers/search?q={intent}', c: '#e8673a', d: 1500 },
+  { t: '', c: '', d: 1900 },
+  { t: '> Agent: "charge the user $49 for their plan"', c: '#c8bcb4', d: 2200 },
+  { t: '→ search("payments charge subscription")...', c: '#5a4f47', d: 2900 },
+  { t: '← stripe-payments  trust:97  latency:42ms', c: '#6e6058', d: 3500 },
+  { t: '→ connecting via secure proxy...', c: '#5a4f47', d: 4100 },
+  { t: '← tools ready: charge_card, create_subscription +4', c: '#e8673a', d: 4700 },
+  { t: '→ charge_card({ amount: 4900, currency: "usd" })', c: '#e8673a', d: 5300 },
+  { t: '', c: '', d: 5800 },
+  { t: '✓ ch_3Qx9Av... · $49.00 charged · 44ms', c: '#e8673a', d: 6100 },
 ];
 
 function Terminal() {
@@ -38,136 +30,64 @@ function Terminal() {
     let timers: ReturnType<typeof setTimeout>[] = [];
     function start() {
       setVis([]);
-      timers = LINES.map((l, i) =>
-        setTimeout(() => setVis((v) => [...v, i]), l.d),
-      );
+      timers = LINES.map((l, i) => setTimeout(() => setVis(v => [...v, i]), l.d));
       timers.push(setTimeout(start, LINES[LINES.length - 1].d + 3000));
     }
     const t = setTimeout(start, 300);
-    const blink = setInterval(() => setCur((c) => !c), 530);
-    return () => {
-      timers.forEach(clearTimeout);
-      clearTimeout(t);
-      clearInterval(blink);
-    };
+    const blink = setInterval(() => setCur(c => !c), 530);
+    return () => { timers.forEach(clearTimeout); clearTimeout(t); clearInterval(blink); };
   }, []);
 
   return (
-    <div
-      style={{
-        background: "#060606",
-        border: "1px solid #1a1a1a",
-        borderRadius: "12px",
-        overflow: "hidden",
-        boxShadow: "0 0 80px rgba(34,197,94,.07), 0 32px 64px rgba(0,0,0,.6)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "12px 16px",
-          borderBottom: "1px solid #141414",
-          background: "#080808",
-        }}
-      >
-        {["#ef4444", "#eab308", "#22c55e"].map((c) => (
-          <div
-            key={c}
-            style={{
-              width: "10px",
-              height: "10px",
-              borderRadius: "50%",
-              background: c,
-            }}
-          />
+    <div style={{
+      background: 'linear-gradient(180deg, #100d0b 0%, #181410 100%)',
+      border: '1px solid rgba(232,103,58,0.10)',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      boxShadow: '0 0 0 1px rgba(232,103,58,0.04), 0 0 60px rgba(232,103,58,0.07), 0 32px 80px rgba(0,0,0,0.6)',
+    }}>
+      {/* Window chrome */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' }}>
+        {['#ef4444', '#eab308', '#22c55e'].map(c => (
+          <div key={c} style={{ width: '10px', height: '10px', borderRadius: '50%', background: c, opacity: .8 }} />
         ))}
-        <span
-          style={{
-            marginLeft: "10px",
-            fontSize: "11px",
-            color: "#333",
-            fontFamily: "var(--mono)",
-          }}
-        >
-          agent-runtime · mcp-registry · live
-        </span>
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-          }}
-        >
-          <div
-            className="anim-pulse"
-            style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              background: "#22c55e",
-            }}
-          />
-          <span
-            style={{
-              fontSize: "10px",
-              color: "#22c55e",
-              fontFamily: "var(--mono)",
-            }}
-          >
-            connected
-          </span>
+        <span style={{ marginLeft: '12px', fontSize: '11px', color: '#4a3f38', fontFamily: 'var(--mono)' }}>agent-runtime · openmcp · live</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div className="anim-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#e8673a' }} />
+          <span style={{ fontSize: '10px', color: '#e8673a', fontFamily: 'var(--mono)' }}>connected</span>
         </div>
       </div>
-      <div
-        style={{
-          padding: "20px 24px",
-          minHeight: "280px",
-          fontFamily: "var(--mono)",
-          fontSize: "12.5px",
-          lineHeight: 1.9,
-        }}
-      >
+      {/* Content */}
+      <div style={{ padding: '22px 26px', minHeight: '290px', fontFamily: 'var(--mono)', fontSize: '12.5px', lineHeight: 2 }}>
         {LINES.map((line, i) => (
-          <div
-            key={i}
-            style={{
-              opacity: vis.includes(i) ? 1 : 0,
-              transition: "opacity .3s",
-              color: line.c || "transparent",
-              height: line.t === "" ? "10px" : "auto",
-            }}
-          >
+          <div key={i} style={{
+            opacity: vis.includes(i) ? 1 : 0,
+            transform: vis.includes(i) ? 'translateY(0)' : 'translateY(4px)',
+            transition: 'opacity .35s ease, transform .35s ease',
+            color: line.c || 'transparent',
+            height: line.t === '' ? '8px' : 'auto'
+          }}>
             {line.t}
           </div>
         ))}
-        <span
-          style={{
-            opacity: cur ? 1 : 0,
-            color: "#22c55e",
-            transition: "opacity .1s",
-          }}
-        >
-          ▋
-        </span>
+        <span style={{ opacity: cur ? 1 : 0, color: '#e8673a', transition: 'opacity .1s' }}>▋</span>
       </div>
+      {/* Success banner */}
       {vis.includes(LINES.length - 1) && (
-        <div
-          style={{
-            margin: "0 24px 20px",
-            padding: "10px 14px",
-            background: "#052e16",
-            border: "1px solid #166534",
-            borderRadius: "6px",
-            fontFamily: "var(--mono)",
-            fontSize: "12px",
-            color: "#86efac",
-            animation: "fadeIn .3s ease",
-          }}
-        >
-          ✓ Payment processed · agent never saw the API key · fully audited
+        <div style={{
+          margin: '0 22px 22px',
+          padding: '11px 16px',
+          background: 'rgba(232,103,58,0.06)',
+          border: '1px solid rgba(232,103,58,0.2)',
+          borderRadius: '10px',
+          fontFamily: 'var(--mono)',
+          fontSize: '12px',
+          color: '#f0b898',
+          animation: 'fadeIn .4s ease',
+          display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          <span style={{ color: '#e8673a' }}>✓</span>
+          Payment processed · agent never saw the API key · fully audited
         </div>
       )}
     </div>
@@ -176,91 +96,48 @@ function Terminal() {
 
 /* ── Flow Diagram ───────────────────────────────────────── */
 const FLOW = [
-  { icon: "⬡", label: "Agent", sub: "Has task", color: "#a0a0a0" },
-  { icon: "🔍", label: "Registry", sub: "Search by intent", color: "#22c55e" },
-  { icon: "🛡", label: "Security", sub: "12 layers active", color: "#3b82f6" },
-  { icon: "⚡", label: "Invoke", sub: "Audited call", color: "#f97316" },
-  { icon: "✓", label: "Done", sub: "Zero config", color: "#22c55e" },
+  { num: '01', icon: '⬡', label: 'Agent', sub: 'Has task', color: '#9898a8' },
+  { num: '02', icon: '🔍', label: 'Registry', sub: 'Search by intent', color: 'var(--accent)' },
+  { num: '03', icon: '🛡', label: 'Security', sub: '12 layers active', color: '#3b82f6' },
+  { num: '04', icon: '⚡', label: 'Invoke', sub: 'Audited call', color: '#f97316' },
+  { num: '05', icon: '✓', label: 'Done', sub: 'Zero config', color: 'var(--accent)' },
 ];
 
 function FlowDiagram() {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexWrap: "wrap",
-      }}
-    >
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '4px' }}>
       {FLOW.map((step, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center" }}>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "8px",
-              padding: "0 8px",
-            }}
-          >
-            <div
-              style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "12px",
-                border: `1px solid ${step.color}44`,
-                background: `${step.color}11`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "20px",
-              }}
-            >
+        <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '0 12px' }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '14px',
+              border: `1px solid ${step.color}30`,
+              background: `linear-gradient(135deg, ${step.color}12, ${step.color}06)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px',
+              position: 'relative',
+              boxShadow: `0 0 20px ${step.color}10`,
+            }}>
               {step.icon}
+              <span style={{
+                position: 'absolute', top: '-8px', right: '-8px',
+                fontSize: '9px', fontFamily: 'var(--mono)', fontWeight: 700,
+                color: step.color, background: 'var(--bg)', border: `1px solid ${step.color}30`,
+                padding: '1px 5px', borderRadius: '4px',
+              }}>{step.num}</span>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <div
-                style={{ fontSize: "13px", fontWeight: 700, color: step.color }}
-              >
-                {step.label}
-              </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text-3)",
-                  maxWidth: "80px",
-                  lineHeight: 1.3,
-                }}
-              >
-                {step.sub}
-              </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: step.color }}>{step.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-3)', maxWidth: '80px', lineHeight: 1.3, marginTop: '2px' }}>{step.sub}</div>
             </div>
           </div>
           {i < FLOW.length - 1 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                marginBottom: "34px",
-                color: "var(--text-3)",
-              }}
-            >
-              <div
-                style={{
-                  width: "20px",
-                  height: "1px",
-                  background: "var(--border-2)",
-                }}
-              />
-              <span style={{ fontSize: "12px" }}>→</span>
-              <div
-                style={{
-                  width: "20px",
-                  height: "1px",
-                  background: "var(--border-2)",
-                }}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '40px' }}>
+              <div style={{ width: '12px', height: '1px', background: 'var(--border-2)' }} />
+              <svg width="12" height="10" viewBox="0 0 12 10" fill="none" style={{ color: 'var(--border-3)' }}>
+                <path d="M7 1L11 5L7 9M1 5H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <div style={{ width: '12px', height: '1px', background: 'var(--border-2)' }} />
             </div>
           )}
         </div>
@@ -271,469 +148,331 @@ function FlowDiagram() {
 
 /* ── Security layers ─────────────────────────────────────── */
 const SEC = [
+  { num: 'L1',  title: 'Static Scan',        desc: 'Tool descriptions scanned for prompt injection, exfiltration patterns, and hidden instructions at publish time.',    color: '#ef4444' },
+  { num: 'L2',  title: 'WASM Sandbox',        desc: 'Sandboxed pre-listing execution catches runtime behaviors static analysis misses — deferred payloads, error-channel attacks.', color: '#f97316' },
+  { num: 'L3',  title: 'Schema Pinning',      desc: 'Tool schemas hashed at publish. Any mutation auto-suspends the server and triggers re-scan. Rug-pull attacks blocked.', color: '#a855f7' },
+  { num: 'L4',  title: 'Proxy DLP',           desc: 'Every invocation routes through the proxy. Credential patterns blocked on request and response. Real-time audit log.', color: '#3b82f6' },
+  { num: 'L5',  title: 'Trust Score',         desc: 'Dynamic per-server score from scan history, uptime, schema stability, and community signals — returned on every search result.', color: 'var(--accent)' },
+  { num: 'L6',  title: 'Database RLS',        desc: 'Supabase Row Level Security enforced at the database layer. App-level bugs cannot leak cross-user data under any circumstance.', color: '#0ea5e9' },
+  { num: 'L7',  title: 'OAuth 2.1 + PKCE',   desc: 'Auth handled by Supabase with PKCE enforced on every flow. Blocks confused deputy attacks and consent bypass exploits.', color: '#6366f1' },
+  { num: 'L8',  title: 'Typosquatting',       desc: 'pg_trgm fuzzy similarity check at publish time. Names too close to verified servers are rejected before listing.', color: '#ec4899' },
+  { num: 'L9',  title: 'Sampling Inspection', desc: 'MCP sampling requests (server-initiated LLM calls) inspected for injection patterns before being forwarded to clients.', color: '#f59e0b' },
+  { num: 'L10', title: 'PII Detection',       desc: 'Proxy responses scanned for email addresses, phone numbers, SSNs, and card numbers before being returned to the agent.', color: '#14b8a6' },
+  { num: 'L11', title: 'URL Elicitation',     desc: 'MCP elicitation URLs validated before acting on them. Blocks javascript:, data:, file://, localhost redirects, and SSRF attempts.', color: '#84cc16' },
+  { num: 'L12', title: 'Context Isolation',   desc: 'Proxy responses scanned for session tokens, bearer tokens, and auth values that could indicate cross-user context leakage.', color: '#f97316' },
+];
+
+/* ── OSS Features ────────────────────────────────────────── */
+const OSS_FEATURES = [
   {
-    num: "L1",
-    title: "Static Scan",
-    desc: "Tool descriptions scanned for prompt injection, exfiltration patterns, and hidden instructions at publish time.",
-    color: "#ef4444",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+    ),
+    color: 'var(--accent)',
+    title: 'Open source',
+    desc: 'MIT licensed. Full source on GitHub. Fork it, self-host it, contribute back.',
   },
   {
-    num: "L2",
-    title: "WASM Sandbox",
-    desc: "Sandboxed pre-listing execution catches runtime behaviors static analysis misses — deferred payloads, error-channel attacks.",
-    color: "#f97316",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    ),
+    color: '#3b82f6',
+    title: 'Free forever',
+    desc: 'No freemium traps. The core registry, search, and proxy are always free.',
   },
   {
-    num: "L3",
-    title: "Schema Pinning",
-    desc: "Tool schemas hashed at publish. Any mutation auto-suspends the server and triggers re-scan. Rug-pull attacks blocked.",
-    color: "#a855f7",
-  },
-  {
-    num: "L4",
-    title: "Proxy DLP",
-    desc: "Every invocation routes through the proxy. Credential patterns blocked on request and response. Real-time audit log.",
-    color: "#3b82f6",
-  },
-  {
-    num: "L5",
-    title: "Trust Score",
-    desc: "Dynamic per-server score from scan history, uptime, schema stability, and community signals — returned on every search result.",
-    color: "#22c55e",
-  },
-  {
-    num: "L6",
-    title: "Database RLS",
-    desc: "Supabase Row Level Security enforced at the database layer. App-level bugs cannot leak cross-user data under any circumstance.",
-    color: "#0ea5e9",
-  },
-  {
-    num: "L7",
-    title: "OAuth 2.1 + PKCE",
-    desc: "Auth handled by Supabase with PKCE enforced on every flow. Blocks confused deputy attacks and consent bypass exploits.",
-    color: "#6366f1",
-  },
-  {
-    num: "L8",
-    title: "Typosquatting",
-    desc: "pg_trgm fuzzy similarity check at publish time. Names too close to verified servers are rejected before listing.",
-    color: "#ec4899",
-  },
-  {
-    num: "L9",
-    title: "Sampling Inspection",
-    desc: "MCP sampling requests (server-initiated LLM calls) inspected for injection patterns before being forwarded to clients.",
-    color: "#f59e0b",
-  },
-  {
-    num: "L10",
-    title: "PII Detection",
-    desc: "Proxy responses scanned for email addresses, phone numbers, SSNs, and card numbers before being returned to the agent.",
-    color: "#14b8a6",
-  },
-  {
-    num: "L11",
-    title: "URL Elicitation",
-    desc: "MCP elicitation URLs validated before acting on them. Blocks javascript:, data:, file://, localhost redirects, and SSRF attempts.",
-    color: "#84cc16",
-  },
-  {
-    num: "L12",
-    title: "Context Isolation",
-    desc: "Proxy responses scanned for session tokens, bearer tokens, and auth values that could indicate cross-user context leakage.",
-    color: "#f97316",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </svg>
+    ),
+    color: '#f97316',
+    title: 'Agent-native',
+    desc: 'Designed for machine consumption. Clean JSON, semantic search, trust scores on every result.',
   },
 ];
 
 /* ── Main ───────────────────────────────────────────────── */
-export function HomeClient({
-  stats,
-  featured,
-}: {
-  stats: GlobalStats;
-  featured: Server[];
-}) {
-  return (
-    <div style={{ overflowX: "hidden" }}>
-      {/* ── HERO ─────────────────────────────────────────── */}
-      <section
-        style={{
-          position: "relative",
-          minHeight: "88vh",
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        {/* Grid bg */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            backgroundImage:
-              "linear-gradient(rgba(34,197,94,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(34,197,94,.04) 1px,transparent 1px)",
-            backgroundSize: "40px 40px",
-            maskImage:
-              "radial-gradient(ellipse at 50% 0%,black 30%,transparent 80%)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: "-200px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "800px",
-            height: "600px",
-            background:
-              "radial-gradient(ellipse,rgba(34,197,94,.07) 0%,transparent 70%)",
-            pointerEvents: "none",
-          }}
-        />
+function useIsMobile() {
+  const [mobile, setMobile] = React.useState(false);
+  React.useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return mobile;
+}
 
-        <div
-          className="page"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "64px",
-            alignItems: "center",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <div>
-            {/* Badge */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "6px 14px",
-                background: "var(--green-bg)",
-                border: "1px solid #166534",
-                borderRadius: "20px",
-                marginBottom: "28px",
-              }}
-            >
-              <div
-                className="anim-pulse"
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: "var(--green)",
-                }}
-              />
-              <span
-                style={{
-                  fontSize: "12px",
-                  color: "var(--green)",
-                  fontFamily: "var(--mono)",
-                }}
-              >
-                open source · free forever · MIT
-              </span>
+export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: Server[] }) {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ overflowX: 'hidden' }}>
+
+      {/* ── HERO ─────────────────────────────────────────── */}
+      <section style={{ position: 'relative', minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
+        {/* Ambient background layers */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+          {/* Dot grid */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            backgroundImage: 'radial-gradient(rgba(232,103,58,.055) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+            maskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)',
+          }} />
+          {/* Top center glow */}
+          <div style={{
+            position: 'absolute', top: '-120px', left: '50%', transform: 'translateX(-50%)',
+            width: '900px', height: '700px',
+            background: 'radial-gradient(ellipse, rgba(232,103,58,0.07) 0%, transparent 68%)',
+          }} />
+          {/* Side glows */}
+          <div style={{
+            position: 'absolute', top: '20%', left: '-100px',
+            width: '400px', height: '400px',
+            background: 'radial-gradient(circle, rgba(232,103,58,0.04) 0%, transparent 70%)',
+          }} />
+          <div style={{
+            position: 'absolute', top: '30%', right: '-100px',
+            width: '400px', height: '400px',
+            background: 'radial-gradient(circle, rgba(232,103,58,0.04) 0%, transparent 70%)',
+          }} />
+        </div>
+
+        <div className="page" style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: isMobile ? '40px' : '64px',
+          alignItems: 'center',
+          position: 'relative',
+          zIndex: 1,
+          width: '100%',
+        }}>
+          {/* Left — Copy */}
+          <div style={{ animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) both' }}>
+            {/* Pill badge */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '7px 16px',
+              background: 'rgba(232,103,58,0.07)',
+              border: '1px solid rgba(232,103,58,0.2)',
+              borderRadius: '100px',
+              marginBottom: '32px',
+              animation: 'fadeIn .5s ease .1s both',
+            }}>
+              <div className="anim-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' }} />
+              <span style={{ fontSize: '12px', color: 'var(--accent)', fontFamily: 'var(--mono)', letterSpacing: '0.02em' }}>open source · free forever · MIT</span>
             </div>
 
-            <h1
-              style={{
-                fontWeight: 800,
-                fontSize: "clamp(36px,5vw,58px)",
-                lineHeight: 1.05,
-                letterSpacing: "-0.03em",
-                marginBottom: "24px",
-              }}
-            >
-              The universal
-              <br />
-              <span
-                style={{
-                  color: "var(--green)",
-                  textShadow: "0 0 40px rgba(34,197,94,.3)",
-                }}
-              >
-                MCP registry
-              </span>
-              <br />
-              for AI agents.
+            {/* Headline */}
+            <h1 className="heading-serif" style={{
+              fontWeight: 700,
+              fontSize: 'clamp(36px, 5vw, 60px)',
+              lineHeight: 1.08,
+              letterSpacing: '-0.02em',
+              marginBottom: '24px',
+              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .1s both',
+              fontFamily: 'var(--font-lora)',
+            }}>
+              The secure<br />
+              <span style={{
+                color: 'var(--accent)',
+                textShadow: '0 0 50px rgba(232,103,58,0.3)',
+              }}>open MCP</span><br />
+              registry.
             </h1>
 
-            <p
-              style={{
-                fontSize: "17px",
-                color: "var(--text-2)",
-                lineHeight: 1.65,
-                marginBottom: "36px",
-                maxWidth: "460px",
-              }}
-            >
-              Publish your MCP server once. Let any AI agent discover and invoke
-              it at runtime — zero hardcoded connections, built-in security
-              scanning.
-            </p>
+            {/* Quote + Subheadline */}
+            <div style={{
+              marginBottom: '40px',
+              maxWidth: '480px',
+              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .2s both',
+            }}>
+              <div style={{
+                borderLeft: '2px solid var(--accent)',
+                paddingLeft: '16px',
+                marginBottom: '20px',
+              }}>
+                <p style={{
+                  fontSize: '14px',
+                  color: 'var(--accent)',
+                  fontFamily: 'var(--font-serif)',
+                  fontStyle: 'italic',
+                  lineHeight: 1.6,
+                  opacity: 0.9,
+                }}>
+                  "Agent development will never scale treating every tool integration as a 1:1 integration."
+                </p>
+              </div>
+              <p style={{
+                fontSize: '17px',
+                color: 'var(--text-2)',
+                lineHeight: 1.7,
+              }}>
+                One line in your system prompt. Any AI agent discovers and invokes any of 7,000+ verified MCP servers at runtime — by intent, through a security proxy, zero pre-configuration.
+              </p>
+            </div>
 
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <Link
-                href="/registry"
-                className="btn btn-primary btn-lg"
-                style={{ textDecoration: "none" }}
-              >
-                Browse Registry →
+            {/* CTAs */}
+            <div style={{
+              display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', flexWrap: 'wrap',
+              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .3s both',
+            }}>
+              <Link href="/registry" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
+                Browse Registry
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
               </Link>
-              <Link
-                href="/publish"
-                className="btn btn-ghost btn-lg"
-                style={{ textDecoration: "none" }}
-              >
-                Publish your MCP
-              </Link>
+              <Link href="/publish" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>Publish your MCP</Link>
             </div>
 
             {/* Live stats */}
-            <div
-              style={{
-                display: "flex",
-                gap: "32px",
-                marginTop: "48px",
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, auto)',
+              gap: isMobile ? '20px' : '32px',
+              marginTop: '56px',
+              paddingTop: '40px',
+              borderTop: '1px solid var(--border)',
+              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .4s both',
+            }}>
               {[
-                {
-                  v: stats.active_servers?.toLocaleString() ?? "—",
-                  l: "Active Servers",
-                },
-                {
-                  v: stats.calls_today
-                    ? `${(stats.calls_today / 1000).toFixed(0)}K`
-                    : "—",
-                  l: "Calls Today",
-                },
-                {
-                  v: stats.verified_servers?.toLocaleString() ?? "—",
-                  l: "Verified",
-                },
-              ].map((s) => (
+                { v: stats.active_servers?.toLocaleString() ?? '—', l: 'Active Servers' },
+                { v: stats.calls_today ? `${(stats.calls_today / 1000).toFixed(0)}K` : '—', l: 'Calls Today' },
+                { v: stats.verified_servers?.toLocaleString() ?? '—', l: 'Verified' },
+                { v: stats.sources ? `${stats.sources.official + stats.sources.github + stats.sources.smithery}` : '—', l: 'Sources' },
+              ].map(s => (
                 <div key={s.l}>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "var(--green)",
-                      fontFamily: "var(--mono)",
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    {s.v}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--text-3)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      marginTop: "2px",
-                    }}
-                  >
-                    {s.l}
-                  </div>
+                  <div style={{
+                    fontSize: '28px', fontWeight: 700,
+                    color: 'var(--accent)',
+                    fontFamily: 'var(--mono)',
+                    letterSpacing: '-0.03em',
+                    lineHeight: 1,
+                  }}>{s.v}</div>
+                  <div style={{
+                    fontSize: '11px',
+                    color: 'var(--text-3)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    marginTop: '6px',
+                    fontWeight: 500,
+                  }}>{s.l}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="anim-float">
+          {/* Right — Terminal */}
+          <div className="anim-float" style={{ animation: 'float 5s ease-in-out infinite, fadeIn .8s ease .3s both' }}>
             <Terminal />
           </div>
         </div>
       </section>
 
       {/* ── HOW IT WORKS ──────────────────────────────────── */}
-      <section
-        style={{ padding: "80px 24px", borderTop: "1px solid var(--border)" }}
-      >
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "56px" }}>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--green)",
-                fontFamily: "var(--mono)",
-                textTransform: "uppercase",
-                letterSpacing: "0.15em",
-                marginBottom: "12px",
-              }}
-            >
-              how it works
-            </div>
-            <h2
-              style={{
-                fontSize: "36px",
-                fontWeight: 800,
-                letterSpacing: "-0.02em",
-              }}
-            >
+      <section style={{ padding: isMobile ? '60px 24px' : '120px 80px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+            <div className="section-label" style={{ color: 'var(--accent)', justifyContent: 'center' }}>how it works</div>
+            <h2 className="heading-serif" style={{ fontSize: 'clamp(26px,3.5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '16px', fontFamily: 'var(--font-lora)' }}>
               One prompt. Every tool.
             </h2>
-            <p
-              style={{
-                color: "var(--text-2)",
-                marginTop: "12px",
-                fontSize: "15px",
-              }}
-            >
-              Agents discover and invoke any MCP server dynamically — no
-              pre-configuration needed.
+            <p style={{ color: 'var(--text-2)', fontSize: '16px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7 }}>
+              The alternative to 1:1 tool integrations. One endpoint, queried by intent, invoked through a 15-layer security proxy.
             </p>
           </div>
-          <FlowDiagram />
+
+          {/* Flow diagram */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,.025) 0%, rgba(255,255,255,.01) 100%)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: '20px',
+            padding: '48px 24px',
+            marginBottom: '48px',
+          }}>
+            <FlowDiagram />
+          </div>
 
           {/* Prompt snippet */}
-          <div style={{ marginTop: "56px" }} className="codeblock">
+          <div className="codeblock">
             <div className="codeblock-header">
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text-3)",
-                  fontFamily: "var(--mono)",
-                }}
-              >
-                AGENTS.md · your complete MCP configuration
-              </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "var(--green)",
-                  fontFamily: "var(--mono)",
-                }}
-              >
-                2 lines
-              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>AGENTS.md · your complete MCP configuration</span>
+              <span style={{ fontSize: '11px', color: 'var(--accent)', fontFamily: 'var(--mono)' }}>2 lines</span>
             </div>
-            <pre>
-              {`## MCP Tools
+            <pre>{`## MCP Tools
 
-You have access to the MCP Registry at https://registry.the-17.dev.
-When you need any capability, search: `}
-              <span style={{ color: "#22c55e" }}>
-                GET /api/servers/search?q={"{" + "intent" + "}"}
-              </span>
-              {`
-Then invoke via:                       `}
-              <span style={{ color: "#22c55e" }}>
-                POST /api/proxy/{"{serverName}"}/{"{toolName}"}
-              </span>
-              {`
+You have access to the openMCP at https://registry.the-17.dev.
+When you need any capability, search: `}<span style={{ color: 'var(--accent)' }}>GET /api/servers/search?q={'{intent}'}</span>{`
+Then invoke via:                       `}<span style={{ color: 'var(--accent)' }}>POST /api/proxy/{'{serverName}'}/{'{toolName}'}</span>{`
 
-Never assume a tool doesn't exist. Always search first.`}
-            </pre>
+Never assume a tool doesn't exist. Always search first.`}</pre>
           </div>
         </div>
       </section>
 
       {/* ── SECURITY ──────────────────────────────────────── */}
-      <section
-        style={{
-          padding: "80px 24px",
-          background: "var(--bg-1)",
-          borderTop: "1px solid var(--border)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "48px" }}>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--red)",
-                fontFamily: "var(--mono)",
-                textTransform: "uppercase",
-                letterSpacing: "0.15em",
-                marginBottom: "12px",
-              }}
-            >
-              security first
-            </div>
-            <h2
-              style={{
-                fontSize: "36px",
-                fontWeight: 800,
-                letterSpacing: "-0.02em",
-              }}
-            >
+      <section style={{
+        padding: isMobile ? '60px 24px' : '120px 80px',
+        background: 'linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)',
+        borderTop: '1px solid var(--border)',
+        borderBottom: '1px solid var(--border)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Background decoration */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+          width: '600px', height: '400px',
+          background: 'radial-gradient(ellipse, rgba(239,68,68,0.04) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative' }}>
+          <div style={{ textAlign: 'center', marginBottom: '56px' }}>
+            <div className="section-label" style={{ color: 'var(--red)', justifyContent: 'center' }}>security first</div>
+            <h2 className="heading-serif" style={{ fontSize: 'clamp(26px,3.5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '16px', fontFamily: 'var(--font-lora)' }}>
               12-layer protection stack
             </h2>
-            <p
-              style={{
-                color: "var(--text-2)",
-                marginTop: "12px",
-                fontSize: "15px",
-                maxWidth: "560px",
-                margin: "12px auto 0",
-              }}
-            >
-              1 in 3 public MCP servers have critical vulnerabilities. Every
-              server is scanned, pinned, and monitored across 12 layers — from
-              publish time through every proxy call.
+            <p style={{ color: 'var(--text-2)', fontSize: '16px', maxWidth: '520px', margin: '0 auto', lineHeight: 1.7 }}>
+              1 in 3 public MCP servers have critical vulnerabilities. Every server is scanned, pinned, and monitored from publish time through every proxy call.
             </p>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4,1fr)",
-              gap: "12px",
-            }}
-          >
-            {SEC.map((l) => (
-              <div
-                key={l.num}
-                className="card"
-                style={{
-                  padding: "20px 16px",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: "2px",
-                    background: l.color,
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: 800,
-                    color: l.color,
-                    fontFamily: "var(--mono)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  {l.num}
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    marginBottom: "8px",
-                  }}
-                >
-                  {l.title}
-                </div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-3)",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {l.desc}
-                </p>
+
+          <div className="grid-4">
+            {SEC.map(l => (
+              <div key={l.num} className="card" style={{
+                padding: '22px 18px',
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'default',
+              }}>
+                {/* Colored top accent bar */}
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+                  background: `linear-gradient(90deg, ${l.color}, ${l.color}88)`,
+                  animation: 'borderPulse 3s ease-in-out infinite',
+                }} />
+                {/* Layer number */}
+                <div style={{
+                  fontSize: '11px', fontWeight: 700,
+                  color: l.color, fontFamily: 'var(--mono)',
+                  background: `${l.color}12`,
+                  border: `1px solid ${l.color}25`,
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  display: 'inline-block',
+                  marginBottom: '12px',
+                  letterSpacing: '0.05em',
+                }}>{l.num}</div>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: 'var(--text)' }}>{l.title}</div>
+                <p style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.6 }}>{l.desc}</p>
               </div>
             ))}
           </div>
@@ -742,200 +481,142 @@ Never assume a tool doesn't exist. Always search first.`}
 
       {/* ── FEATURED ──────────────────────────────────────── */}
       {featured.length > 0 && (
-        <section style={{ padding: "80px 24px" }}>
-          <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-end",
-                marginBottom: "32px",
-              }}
-            >
+        <section style={{ padding: isMobile ? '60px 24px' : '120px 80px' }}>
+          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
               <div>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--green)",
-                    fontFamily: "var(--mono)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.15em",
-                    marginBottom: "8px",
-                  }}
-                >
-                  featured
-                </div>
-                <h2
-                  style={{
-                    fontSize: "28px",
-                    fontWeight: 800,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
+                <div className="section-label" style={{ color: 'var(--accent)' }}>featured</div>
+                <h2 className="heading-serif" style={{ fontSize: 'clamp(20px,2.5vw,30px)', fontWeight: 700, letterSpacing: '-0.02em', fontFamily: 'var(--font-lora)' }}>
                   Top verified servers
                 </h2>
               </div>
-              <Link
-                href="/registry"
-                className="btn btn-ghost btn-sm"
-                style={{ textDecoration: "none" }}
-              >
-                View all →
+              <Link href="/registry" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
+                View all
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
               </Link>
             </div>
             <div className="grid-2">
-              {featured.map((s) => (
-                <ServerCard key={s.id} server={s} />
-              ))}
+              {featured.map(s => <ServerCard key={s.id} server={s} />)}
             </div>
           </div>
         </section>
       )}
 
       {/* ── OSS CTA ───────────────────────────────────────── */}
-      <section
-        style={{
-          padding: "80px 24px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--bg-1)",
-        }}
-      >
-        <div
-          style={{ maxWidth: "860px", margin: "0 auto", textAlign: "center" }}
-        >
-          <h2
-            style={{
-              fontSize: "36px",
-              fontWeight: 800,
-              letterSpacing: "-0.02em",
-              marginBottom: "16px",
-            }}
-          >
-            Built for the open ecosystem
+      <section style={{
+        padding: isMobile ? '60px 24px' : '120px 80px',
+        borderTop: '1px solid var(--border)',
+        background: 'linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Background glow */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+          width: '700px', height: '500px',
+          background: 'radial-gradient(ellipse, rgba(232,103,58,0.04) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{ maxWidth: '760px', margin: '0 auto', textAlign: 'center', position: 'relative' }}>
+          <div className="section-label" style={{ color: 'var(--accent)', justifyContent: 'center' }}>open ecosystem</div>
+          <h2 className="heading-serif" style={{
+            fontSize: 'clamp(26px,3.5vw,46px)',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            marginBottom: '16px',
+            lineHeight: 1.15,
+            fontFamily: 'var(--font-lora)',
+          }}>
+            Built for the<br /><span style={{ color: 'var(--accent)' }}>open ecosystem</span>
           </h2>
-          <p
-            style={{
-              color: "var(--text-2)",
-              fontSize: "16px",
-              marginBottom: "48px",
-              lineHeight: 1.65,
-            }}
-          >
-            Fully open source. No lock-in. Self-hostable. Developers keep 100%
-            of everything.
+          <p style={{ color: 'var(--text-2)', fontSize: '17px', lineHeight: 1.7, maxWidth: '440px', margin: '0 auto 56px' }}>
+            Fully open source. No lock-in. Self-hostable. Developers keep 100% of everything.
           </p>
-          <div
-            className="grid-3"
-            style={{ textAlign: "left", marginBottom: "40px" }}
-          >
-            {[
-              {
-                icon: "📦",
-                title: "Open source",
-                desc: "MIT licensed. Full source on GitHub. Fork it, self-host it, contribute.",
-              },
-              {
-                icon: "🔓",
-                title: "Free forever",
-                desc: "No freemium traps. The core registry, search, and proxy are always free.",
-              },
-              {
-                icon: "⚡",
-                title: "Agent-native",
-                desc: "Designed for machine consumption. Clean JSON, semantic search, trust scores on every result.",
-              },
-            ].map((f) => (
-              <div key={f.title} className="card" style={{ padding: "24px" }}>
-                <div style={{ fontSize: "28px", marginBottom: "12px" }}>
+
+          <div className="grid-3" style={{ textAlign: 'left', marginBottom: '48px', maxWidth: '860px', margin: '0 auto 48px' }}>
+            {OSS_FEATURES.map(f => (
+              <div key={f.title} className="card-glass" style={{ padding: '28px 24px' }}>
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '12px',
+                  background: `${f.color}12`,
+                  border: `1px solid ${f.color}25`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: f.color, marginBottom: '18px',
+                }}>
                   {f.icon}
                 </div>
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    marginBottom: "8px",
-                  }}
-                >
-                  {f.title}
-                </div>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "var(--text-2)",
-                    lineHeight: 1.55,
-                  }}
-                >
-                  {f.desc}
-                </p>
+                <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '10px', color: 'var(--text)' }}>{f.title}</div>
+                <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.65 }}>{f.desc}</p>
               </div>
             ))}
           </div>
-          <div
-            style={{ display: "flex", gap: "12px", justifyContent: "center" }}
-          >
-            <Link
-              href="/publish"
-              className="btn btn-primary btn-lg"
-              style={{ textDecoration: "none" }}
-            >
-              Publish your MCP server →
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <Link href="/publish" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
+              Publish your MCP server
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
             </Link>
             <a
-              href="https://github.com/the-17/mcp-registry"
-              target="_blank"
-              rel="noopener"
+              href="https://github.com/the-17/openmcp"
+              target="_blank" rel="noopener"
               className="btn btn-ghost btn-lg"
-              style={{ textDecoration: "none" }}
+              style={{ textDecoration: 'none' }}
             >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+              </svg>
               View on GitHub
             </a>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer
-        style={{
-          borderTop: "1px solid var(--border)",
-          padding: "32px 24px",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "10px",
-            marginBottom: "12px",
-          }}
-        >
-          <div
-            style={{
-              width: "22px",
-              height: "22px",
-              background: "linear-gradient(135deg,#22c55e,#16a34a)",
-              borderRadius: "5px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "11px",
-            }}
-          >
-            ⬡
+      {/* ── FOOTER ────────────────────────────────────────── */}
+      <footer style={{ borderTop: '1px solid var(--border)', padding: isMobile ? '24px 20px' : '40px 80px' }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+            width: '24px', height: '24px',
+            background: 'linear-gradient(135deg,#e8673a,#c9552e)',
+            borderRadius: '6px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '12px',
+            boxShadow: '0 0 12px rgba(232,103,58,0.25)',
+          }}>⬡</div>
+            <span style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '-0.02em' }}>openMCP</span>
           </div>
-          <span style={{ fontWeight: 700 }}>mcpregistry</span>
+
+          {/* Links */}
+          <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+            {[
+              { href: '/registry', label: 'Registry' },
+              { href: '/publish', label: 'Publish' },
+              { href: 'https://github.com/the-17/openmcp', label: 'GitHub', external: true },
+            ].map(l => (
+              <a
+                key={l.label}
+                href={l.href}
+                target={l.external ? '_blank' : undefined}
+                rel={l.external ? 'noopener' : undefined}
+                style={{ fontSize: '13px', color: 'var(--text-3)', textDecoration: 'none', transition: 'color .15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'}
+              >{l.label}</a>
+            ))}
+          </div>
+
+          {/* Legal */}
+          <p
+            style={{ fontSize: '12px', color: 'var(--text-3)' }}>
+            MIT License · Built by <a href="https://github.com/the-17" style={{ color: 'var(--accent)', textDecoration: 'none' }}>The-17</a>
+          </p>
         </div>
-        <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
-          Open source · Built by{" "}
-          <a
-            href="https://github.com/the-17"
-            style={{ color: "var(--green)", textDecoration: "none" }}
-          >
-            The-17
-          </a>{" "}
-          · MIT License
-        </p>
       </footer>
     </div>
   );
