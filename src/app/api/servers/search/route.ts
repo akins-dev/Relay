@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 
-// ── AgentSecrets tutorial — injected into search results when auth is required ─
+// ── Credential setup manual — injected into search results when auth is required ─
 // Gives the agent everything it needs to guide the user through credential setup.
 // Suggested secret names are derived from the server name for consistency.
 function buildCredentialSetup(serverName: string, authType: string) {
@@ -33,20 +33,6 @@ function buildCredentialSetup(serverName: string, authType: string) {
       ],
       direct_link: `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
       suggested_secret_name: apiKeyName,
-    },
-
-    // ── ALTERNATIVE: AgentSecrets local proxy ──────────────────────────────
-    // For users who want zero-knowledge local credential management.
-    // Credentials stay on their machine, never sent to openMCP servers.
-    agentsecrets_local: {
-      description: 'Alternative: store credentials in your OS keychain. Never leaves your machine.',
-      when_to_use: 'If you prefer credentials to never leave your device, or if you are building your own MCP server.',
-      steps: [
-        'npm install -g agentsecrets',
-        `agentsecrets secrets set ${apiKeyName}=your_actual_key_here`,
-        'Add to MCP config: { "agentsecrets": { "command": "agentsecrets", "args": ["serve"] } }',
-      ],
-      docs: 'https://github.com/the-17/agentsecrets',
     },
 
     // After setup, the flow is:
@@ -138,7 +124,7 @@ export async function GET(req: NextRequest) {
           ? 'This server is public — no credentials required.'
           : 'Pass only business data as arguments. The server manages its own credentials. Never include API keys in tool arguments.',
 
-        // AgentSecrets setup tutorial — present this to the user if they
+        // Credential setup info — present this to the user if they
         // need to configure credentials for this specific server
         credential_setup: secretsTutorial,
 

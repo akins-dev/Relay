@@ -67,11 +67,11 @@ Content-Type: application/json
   "body": "Thank you for your purchase!"
 }`,
 
-  agentSecrets: `# 1. Store your API key once (never in a file)
-agentsecrets secrets set SENDGRID_API_KEY=SG.xxxx
+  openMcpVault: `# 1. Store your API key once in the dashboard
+# Go to https://openmcp.dev/dashboard/secrets
 
 # 2. Agent calls openMCP proxy
-# 3. Proxy resolves key from AgentSecrets vault
+# 3. Proxy resolves key from the openMCP vault
 # 4. Injects into upstream call
 # 5. Agent gets response — never saw the key`,
 
@@ -299,17 +299,25 @@ export default function DocsPage() {
             response, it is flagged before being returned to the agent.
           </P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>AgentSecrets — the complete solution</h3>
+          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>openMCP Vault — the complete solution</h3>
           <P>
-            For full zero-knowledge credential handling, use AgentSecrets alongside openMCP. AgentSecrets
-            stores credentials in your OS keychain (never a file), runs as an MCP server, and injects
+            For full zero-knowledge credential handling, use the built-in openMCP Vault.
+            Store credentials in your dashboard (never a file), and the proxy injects
             credentials at the transport layer so your agent never sees the value.
           </P>
-          <CodeBlock code={CODE.agentSecrets} label="AgentSecrets flow" />
+          <CodeBlock code={CODE.openMcpVault} label="openMCP Vault flow" />
           <P>
-            Install AgentSecrets:{' '}
-            <a href="https://agentsecrets.theseventeen.co" style={{ color: 'var(--accent)' }}>agentsecrets.theseventeen.co</a>
-            {' '}— one command sets up both Claude Desktop and Cursor.
+            Configure openMCP Vault securely at:{' '}
+            <a href="https://openmcp.dev/dashboard/secrets" style={{ color: 'var(--accent)' }}>openmcp.dev/dashboard/secrets</a>
+            {' '}— manage all your server credentials in one place.
+          </P>
+
+          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Dynamic Credential Prompting</h3>
+          <P>
+            Because the registry has thousands of servers, you won't know upfront which ones your agent will decide to use. 
+            When an agent tries to call a server that requires a credential you haven't set yet, the proxy intercepts it 
+            and returns a structured 401 response. Your agent will read this response and ask you for the specific API key it needs, 
+            giving you the exact name to use and a direct link to the dashboard.
           </P>
 
           <Callout color="var(--bg-1)">
@@ -454,7 +462,7 @@ export default function DocsPage() {
             ['Do I need to register to use it?',
              'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
             ['How do credentials work if my MCP needs an API key?',
-             'Right now: you pass the required arguments as part of the tool call, same as you would with any API. We recommend using AgentSecrets (agentsecrets.theseventeen.co) for zero-knowledge credential injection — credentials stored in OS keychain, never in any file, never in agent memory.'],
+             'You store the required API keys securely in the openMCP Vault via your dashboard (openmcp.dev/dashboard/secrets). The proxy injects them at the transport layer for zero-knowledge credential injection — credentials are never stored in any configuration file, and never in agent memory.'],
             ['What is the difference between openMCP and Smithery?',
              'Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. openMCP is designed for agents to use autonomously at runtime. It also scans every server before listing (Smithery does not), and exposes a native MCP server so agents need zero configuration beyond one URL.'],
             ['Can I use openMCP with Antigravity?',

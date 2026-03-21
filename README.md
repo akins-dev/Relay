@@ -61,33 +61,15 @@ curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
 
 ---
 
-## Credentials — use AgentSecrets
+## Credentials — use openMCP Vault
 
 Most MCP servers require API keys. Never paste credentials into a config file or a conversation.
 
-**[AgentSecrets](https://github.com/the-17/agentsecrets)** runs as a local MCP proxy. Credentials stay in your OS keychain — agent memory never sees raw values. Credentials are injected at the transport layer.
+**openMCP Vault** securely stores API keys in your dashboard. The proxy resolves and injects them as Authorization headers at the transport layer. Agent memory never sees raw values.
 
-```bash
-# Install AgentSecrets
-npm install -g agentsecrets
+**Dynamic Credential Prompting:** Because agents discover servers dynamically, you don't need to configure keys upfront. When your agent calls a server missing a required credential, openMCP's proxy returns a structured 401 response. Your agent will read this response and proactively ask you for the specific API key it needs, providing a direct dashboard link to securely store it.
 
-# Store once
-agentsecrets secrets set STRIPE_KEY=sk_live_...
-
-# Agent calls normally — AgentSecrets injects the key before the request goes out
-# openMCP's DLP still scans request and response for leaked credentials
-```
-
-Add AgentSecrets alongside openMCP in your MCP config:
-
-```json
-{
-  "mcpServers": {
-    "openmcp":       { "url": "https://openmcp.dev/api/mcp-server" },
-    "agentsecrets":  { "command": "agentsecrets", "args": ["serve"] }
-  }
-}
-```
+You can manage all your API keys at https://openmcp.dev/dashboard/secrets.
 
 ---
 
@@ -137,11 +119,20 @@ bun install   # or: npm install
 
 ### 2. Supabase
 
-Create a project at [supabase.com](https://supabase.com). Run migrations in order in the SQL Editor:
+Create a project at [supabase.com](https://supabase.com).
 
+**Option A: Supabase CLI (Recommended)**
+```bash
+supabase link --project-ref your-project-ref
+supabase db push
 ```
+
+**Option B: SQL Editor**
+If you prefer the web UI, run these migrations in order in the Supabase SQL Editor:
+
+```text
 supabase/migrations/001_initial_schema.sql      ← full schema, RLS, FTS, RPCs
-supabase/migrations/002_seed_data.sql           ← 8 demo servers for local dev (sign up first)
+supabase/migrations/002_seed_data.sql           ← 7 demo servers for local dev (sign up first)
 supabase/migrations/003_source_and_cve.sql      ← source provenance + CVE fields
 supabase/migrations/004_mcp_server_and_schemas.sql ← tool schemas + mcp_connections
 supabase/migrations/005_metering.sql            ← per-call metering + revenue views

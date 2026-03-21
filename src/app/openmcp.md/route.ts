@@ -64,11 +64,6 @@ Flow:
 If a tool call returns 401, it means no credential is stored yet. The response includes
 a direct link to the secrets dashboard with the exact name to use.
 
-### Alternative: AgentSecrets local proxy
-
-For zero-knowledge local credential management (credentials stay on your device):
-https://github.com/the-17/agentsecrets
-
 ### What not to do
 
 Never pass API keys as tool arguments. The DLP layer will block the call with an explanation.
