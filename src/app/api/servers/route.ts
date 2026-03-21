@@ -74,8 +74,8 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const rlCheck = rateLimit(`publish:${user.id}`, LIMITS.publish);
-  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
+  const rlCheck = await rateLimit(`publish:${user.id}`, LIMITS.publish);
+  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: 'Create a free API key at openmcp.dev for higher limits (200 calls/min)' }, { status: 429 });
 
   try {
     const body = PublishSchema.parse(await req.json());

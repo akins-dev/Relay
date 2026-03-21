@@ -1,67 +1,103 @@
 /**
- * Simple in-memory rate limiter.
- * Uses a sliding window counter per key.
- * For production at scale, swap backing store to Upstash Redis.
+ * openMCP — Rate Limiting
+ *
+ * Uses Upstash Redis when UPSTASH_REDIS_REST_URL is set (production).
+ * Falls back to in-memory store for local development.
+ *
+ * Setup (free tier sufficient for launch):
+ *   1. Create a database at console.upstash.com
+ *   2. Add to .env.local:
+ *      UPSTASH_REDIS_REST_URL=https://...
+ *      UPSTASH_REDIS_REST_TOKEN=...
  */
 
-interface Window {
-  count:      number;
-  resetAt:    number;
-}
+// ── In-memory fallback (development only) ─────────────────────────────────────
+const memStore = new Map<string, { count: number; resetAt: number }>();
 
-const store = new Map<string, Window>();
-
-export interface RateLimitConfig {
-  limit:      number;  // max requests
-  windowMs:   number;  // window in ms
-}
-
-export interface RateLimitResult {
-  allowed:    boolean;
-  remaining:  number;
-  resetAt:    number;
-}
-
-export function rateLimit(key: string, config: RateLimitConfig): RateLimitResult {
+function memRateLimit(key: string, limit: number, windowMs: number) {
   const now   = Date.now();
-  const entry = store.get(key);
-
+  const entry = memStore.get(key);
   if (!entry || now > entry.resetAt) {
-    const resetAt = now + config.windowMs;
-    store.set(key, { count: 1, resetAt });
-    return { allowed: true, remaining: config.limit - 1, resetAt };
+    memStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: limit - 1 };
   }
-
-  if (entry.count >= config.limit) {
-    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
-  }
-
+  if (entry.count >= limit) return { allowed: false, remaining: 0 };
   entry.count++;
-  return { allowed: true, remaining: config.limit - entry.count, resetAt: entry.resetAt };
+  return { allowed: true, remaining: limit - entry.count };
 }
 
-// Cleanup old entries every 5 minutes (prevents memory leak)
+// Cleanup stale entries every 5 minutes
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of store.entries()) {
-      if (now > entry.resetAt) store.delete(key);
-    }
+    for (const [k, v] of memStore) if (now > v.resetAt) memStore.delete(k);
   }, 5 * 60 * 1000);
 }
 
-// ── Preset configs ────────────────────────────────────────────────────────────
+// ── Upstash Redis limiter (production) ────────────────────────────────────────
+let upstashClient: any = null;
+let upstashRatelimit: any = null;
+
+// Cache Ratelimit instances by config key — creating per request is expensive
+const limiterCache = new Map<string, any>();
+
+async function getUpstash() {
+  if (!process.env.UPSTASH_REDIS_REST_URL) return null;
+  if (upstashRatelimit) return upstashRatelimit;
+  try {
+    const { Redis }     = await import('@upstash/redis');
+    const { Ratelimit } = await import('@upstash/ratelimit');
+    upstashClient = new Redis({
+      url:   process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    });
+    upstashRatelimit = { Redis, Ratelimit, redis: upstashClient };
+    return upstashRatelimit;
+  } catch {
+    return null;
+  }
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+export interface RateLimitResult {
+  allowed:   boolean;
+  remaining: number;
+}
+
+export async function rateLimit(
+  key:      string,
+  config:   { limit: number; windowMs: number }
+): Promise<RateLimitResult> {
+  const upstash = await getUpstash();
+
+  if (upstash) {
+    // Cache limiter instances — creating new Ratelimit per request is expensive
+    const cacheKey = `${config.limit}:${config.windowMs}`;
+    if (!limiterCache.has(cacheKey)) {
+      const { Ratelimit, redis } = upstash;
+      limiterCache.set(cacheKey, new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(config.limit, `${config.windowMs}ms`),
+        prefix:  'openmcp',
+      }));
+    }
+    const limiter = limiterCache.get(cacheKey);
+    const { success, remaining } = await limiter.limit(key);
+    return { allowed: success, remaining };
+  }
+
+  // In-memory fallback
+  return memRateLimit(key, config.limit, config.windowMs);
+}
+
+// ── Preset configs ─────────────────────────────────────────────────────────────
 export const LIMITS = {
-  // Public read endpoints
-  search:    { limit: 60,  windowMs: 60_000 },  // 60/min per IP
-  browse:    { limit: 120, windowMs: 60_000 },  // 120/min per IP
-
-  // Proxy — most sensitive, must rate limit hard
-  proxy:     { limit: 30,  windowMs: 60_000 },  // 30 calls/min per IP
-  proxyAuth: { limit: 100, windowMs: 60_000 },  // 100/min for authed users
-
-  // Write endpoints
-  publish:   { limit: 10,  windowMs: 60_000 },  // 10 publishes/min per user
-  auth:      { limit: 10,  windowMs: 60_000 },  // 10 auth attempts/min per IP
-  apiKeys:   { limit: 20,  windowMs: 60_000 },  // 20 key ops/min per user
+  search:    { limit: 60,  windowMs: 60_000 },   // 60/min per IP
+  browse:    { limit: 120, windowMs: 60_000 },   // 120/min per IP
+  proxy:     { limit: 30,  windowMs: 60_000 },   // 30/min per IP (unauthenticated)
+  proxyAuth: { limit: 200, windowMs: 60_000 },   // 200/min for authed users
+  publish:   { limit: 10,  windowMs: 60_000 },   // 10 publishes/min per user
+  auth:      { limit: 10,  windowMs: 60_000 },   // 10 auth attempts/min per IP
+  mcpServer: { limit: 60,  windowMs: 60_000 },   // 60/min for MCP server calls
+  ingest:    { limit: 5,   windowMs: 60_000 },   // 5 ingest triggers/min
 };

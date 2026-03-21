@@ -1,3 +1,4 @@
+import { safeCompare } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import {
@@ -10,7 +11,7 @@ import {
 } from '@/lib/ingest';
 
 function isAuthorized(req: NextRequest) {
-  return req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
+  return safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`);
 }
 
 export async function POST(req: NextRequest) {

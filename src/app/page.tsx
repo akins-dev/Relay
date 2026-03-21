@@ -15,12 +15,14 @@ async function getHomeData() {
 
   const raw   = (statsRes.data as any) ?? {};
   const stats: GlobalStats = {
-    total_servers:    raw.total_servers    ?? 0,
-    active_servers:   raw.active_servers   ?? 0,
-    verified_servers: raw.verified_servers ?? 0,
-    total_calls:      raw.total_calls      ?? 0,
-    calls_today:      raw.calls_today      ?? 0,
-    avg_trust_score:  raw.avg_trust_score  ?? 0,
+    total_servers:     raw.total_servers     ?? 0,
+    active_servers:    raw.active_servers    ?? 0,
+    invokable_servers: raw.invokable_servers ?? 0,
+    local_servers:     raw.local_servers     ?? 0,
+    verified_servers:  raw.verified_servers  ?? 0,
+    total_calls:       raw.total_calls       ?? 0,
+    calls_today:       raw.calls_today       ?? 0,
+    avg_trust_score:   raw.avg_trust_score   ?? 0,
   };
   return { stats, featured: featuredRes.data ?? [] };
 }

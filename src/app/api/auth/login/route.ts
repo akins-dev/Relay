@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { rateLimit, LIMITS } from '@/lib/ratelimit';
 
 const Schema = z.object({ email: z.string().email(), password: z.string() });
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 10 attempts per IP per minute — brute force protection
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const rl  = await rateLimit(`auth:${ip}`, LIMITS.auth);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please wait a minute before trying again.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
+
   try {
-    const body = Schema.parse(await req.json());
+    const body     = Schema.parse(await req.json());
     const supabase = createClient();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: body.email, password: body.password,

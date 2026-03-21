@@ -32,7 +32,7 @@ const SNIPPETS = {
     file: 'Any agent framework',
     code: `## MCP Tools
 
-You have access to openMCP — a security-verified registry of 7,000+ MCP servers.
+You have access to openMCP — a security-verified registry of thousands of MCP servers with HTTP endpoints invokable through the proxy.
 Read https://openmcp.dev/openmcp.md once before your first tool call.
 
 Search:  GET https://openmcp.dev/api/servers/search?q={intent}
@@ -61,6 +61,18 @@ async def invoke_mcp(server: str, tool: str, args: dict):
             json=args
         )
         return r.json()`,
+  },
+  antigravity: {
+    label: 'Google Antigravity',
+    lang: 'json',
+    file: 'Antigravity MCP Config',
+    code: `{
+  "mcpServers": {
+    "openmcp": {
+      "url": "https://openmcp.dev/api/mcp-server"
+    }
+  }
+}`,
   },
   curl: {
     label: 'cURL / REST',
@@ -101,7 +113,7 @@ export default function ConnectPage() {
           One connection.<br /><span style={{ color: 'var(--accent)' }}>Every tool.</span>
         </h1>
         <p style={{ fontSize: '16px', color: 'var(--text-2)', lineHeight: 1.7, maxWidth: '480px' }}>
-          Add openMCP to your agent once. Get access to 7,000+ verified MCP servers — discovered by intent, invoked through a 15-layer security proxy.
+          Add openMCP to your agent once. Get access to thousands of scanned MCP servers — discovered by intent, invoked through a 15-layer security proxy.
         </p>
       </div>
 

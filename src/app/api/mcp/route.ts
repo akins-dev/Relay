@@ -11,7 +11,7 @@ export async function GET() {
     version:     '0.1.0',
     description: [
       'Open-source security layer for the MCP ecosystem.',
-      'Ingests from the official MCP registry, Smithery, and GitHub.',
+      'Ingests from five sources: official MCP registry, Smithery, Glama, PulseMCP, GitHub. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
       'Every server is scanned through 12 security layers before listing.',
       'Agents invoke tools through the proxy — DLP, schema pinning, and audit trails on every call.',
     ].join(' '),
@@ -27,7 +27,7 @@ export async function GET() {
     },
     sources: [
       'registry.modelcontextprotocol.io — official Anthropic registry',
-      'registry.smithery.ai — 7,300+ community servers',
+      'registry.smithery.ai — 7,300+ community servers (HTTP endpoint servers only returned in agent search)',
       'github.com/modelcontextprotocol/servers — GitHub-verified servers',
       'direct — servers published directly to this registry',
     ],

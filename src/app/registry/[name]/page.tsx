@@ -15,7 +15,20 @@ export default function ServerDetailPage() {
   const [starred, setStarred] = useState(false);
   const [tab,     setTab]     = useState<'overview'|'tools'|'security'|'analytics'|'integrate'>('overview');
   const [copied,  setCopied]  = useState('');
-  const [analytics, setAnalytics] = useState<any>(null);
+  const [analytics,  setAnalytics]  = useState<any>(null);
+  const [connected,  setConnected]  = useState<boolean | null>(null); // OAuth connection state
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    // Check OAuth connection status if user is logged in
+    if (user) {
+      fetch('/api/oauth/connections').then(r => r.json())
+        .then(d => {
+          const conn = (d.connections ?? []).find((c: any) => c.server_name === name);
+          setConnected(!!conn);
+        }).catch(() => {});
+    }
+  }, [user, name]);
 
   useEffect(() => {
     // cookies sent automatically — no Authorization header needed
@@ -33,6 +46,18 @@ export default function ServerDetailPage() {
         .catch(() => {});
     }
   }, [tab, server]);
+
+  async function startOAuth() {
+    if (!user) { window.location.href = '/login'; return; }
+    setConnecting(true);
+    window.location.href = `/api/oauth/start?server=${name}&redirect=/registry/${name}`;
+  }
+
+  async function disconnectOAuth() {
+    if (!confirm('Disconnect your account from this server?')) return;
+    await fetch(`/api/oauth/connections?server=${name}`, { method: 'DELETE' });
+    setConnected(false);
+  }
 
   async function toggleStar() {
     if (!user || !server) return;

@@ -1,3 +1,4 @@
+import { isSafeUrl } from '@/lib/utils';
 /**
  * openMCP — Registry Ingest Pipeline
  *
@@ -42,6 +43,7 @@ export interface IngestServer {
   official_id?:     string;
   glama_id?:        string;
   verified?:        boolean;
+  transport?:       'stdio' | 'sse' | 'streamable_http' | 'unknown';
 }
 
 /**
@@ -51,6 +53,7 @@ export interface IngestServer {
  */
 export async function fetchToolSchemas(endpoint: string): Promise<ToolSchema[]> {
   try {
+    if (!isSafeUrl(endpoint)) return [];
     const res = await fetch(endpoint, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,6 +82,83 @@ export interface IngestResult {
   skipped:  number;
   errors:   string[];
 }
+
+/**
+ * Parse tool names and descriptions from a GitHub README.
+ * Fallback for servers that don't expose a live /tools/list endpoint.
+ *
+ * Looks for markdown patterns like:
+ *   ### tool_name          (h3 headings that look like tool names)
+ *   #### `tool_name`       (h4 code headings)
+ *   | tool_name | desc |   (markdown tables)
+ *   - `tool_name`: desc    (bullet lists)
+ *
+ * Returns partial ToolSchema objects (no inputSchema — just name + description).
+ * These are better than nothing for agent discovery.
+ */
+export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[]> {
+  try {
+    // Convert github.com URL to raw.githubusercontent.com
+    const rawUrl = githubUrl
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace(/\/tree\/[^/]+/, '')
+      + '/main/README.md';
+
+    if (!isSafeUrl(rawUrl)) return [];
+    const res = await fetch(rawUrl, {
+      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+
+    const tools: ToolSchema[] = [];
+    const seen = new Set<string>();
+
+    // Pattern 1: markdown table rows with tool names
+    // | tool_name | description |
+    const tableRow = /\|\s*`?([a-z][a-z0-9_]{2,40})`?\s*\|\s*([^|\n]+)/g;
+    let m;
+    while ((m = tableRow.exec(text)) !== null) {
+      const name = m[1].trim();
+      const desc = m[2].trim();
+      if (!seen.has(name) && /^[a-z][a-z0-9_]+$/.test(name)) {
+        seen.add(name);
+        tools.push({ name, description: desc });
+      }
+    }
+
+    // Pattern 2: h3/h4 headings that look like tool names
+    // ### send_email or #### `create_subscription`
+    const heading = /^#{2,4}\s+`?([a-z][a-z0-9_]{2,40})`?/gm;
+    while ((m = heading.exec(text)) !== null) {
+      const name = m[1].trim();
+      if (!seen.has(name) && /^[a-z][a-z0-9_]+$/.test(name)) {
+        seen.add(name);
+        // Try to get description from the next line
+        const afterHeading = text.slice(m.index + m[0].length, m.index + m[0].length + 200);
+        const desc = afterHeading.split('\n').find(l => l.trim().length > 10)?.trim() ?? '';
+        tools.push({ name, description: desc });
+      }
+    }
+
+    // Pattern 3: bullet points with tool names
+    // - `tool_name`: description
+    const bullet = /^-\s+`([a-z][a-z0-9_]{2,40})`[:\s]+(.+)$/gm;
+    while ((m = bullet.exec(text)) !== null) {
+      const name = m[1].trim();
+      if (!seen.has(name)) {
+        seen.add(name);
+        tools.push({ name, description: m[2].trim() });
+      }
+    }
+
+    return tools.slice(0, 50); // cap at 50 tools
+  } catch {
+    return [];
+  }
+}
+
 
 // ── Official MCP Registry ─────────────────────────────────────────────────────
 
@@ -329,6 +409,59 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
 }
 
 
+/**
+ * Detect MCP server transport type from endpoint URL.
+ * This determines whether the server is invokable through the openMCP proxy.
+ *
+ * stdio: local process — cannot be reached over HTTP, excluded from agent search
+ * sse | streamable_http: public HTTP endpoint — invokable through proxy
+ * unknown: no clear signal — treated as stdio (excluded) until proven otherwise
+ */
+export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' | 'sse' | 'streamable_http' | 'unknown' {
+  if (!endpoint) {
+    // No endpoint at all — if there's a github URL, it's stdio
+    return githubUrl ? 'stdio' : 'unknown';
+  }
+
+  const e = endpoint.toLowerCase().trim();
+
+  // Clear HTTP endpoints — invokable
+  if (e.startsWith('https://') || e.startsWith('http://')) {
+    // Check if it's a GitHub repo URL masquerading as an endpoint
+    if (e.includes('github.com/') && !e.includes('/api/') && !e.includes('/sse')) {
+      return 'stdio';
+    }
+    // StreamableHTTP pattern: /mcp, /api/mcp, /mcp-server
+    if (e.includes('/mcp') || e.includes('/sse') || e.includes('/stream')) {
+      return 'streamable_http';
+    }
+    return 'sse'; // default HTTP assumption
+  }
+
+  // Local process indicators
+  if (
+    e.startsWith('npx ') ||
+    e.startsWith('node ') ||
+    e.startsWith('python') ||
+    e.startsWith('uvx ') ||
+    e.startsWith('cargo ') ||
+    e.startsWith('/') ||           // file path
+    e.endsWith('.js') ||
+    e.endsWith('.py') ||
+    e.endsWith('.ts')
+  ) {
+    return 'stdio';
+  }
+
+  // GitHub URL with no HTTP component
+  if (e.includes('github.com')) {
+    return 'stdio';
+  }
+
+  return 'unknown';
+}
+
+
 // ── Upsert pipeline ───────────────────────────────────────────────────────────
 
 export async function upsertServers(
@@ -341,6 +474,21 @@ export async function upsertServers(
     try {
       // Skip if name or endpoint missing
       if (!s.name || !s.endpoint) { result.skipped++; continue; }
+
+      // Validate endpoint URL before storing — prevents SSRF via ingest
+      if (s.endpoint && !isSafeUrl(s.endpoint)) {
+        result.skipped++;
+        continue;
+      }
+
+      // Skip stdio-only servers — they cannot be invoked through the openMCP proxy
+      // stdio servers run as local processes on the developer's machine, not as HTTP endpoints
+      // They should be listed on Smithery or run locally — not in a proxy-based registry
+      const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
+      if (transport === 'stdio') {
+        result.skipped++;
+        continue;
+      }
 
       // Sanitise name to registry format
       s.name = slugify(s.name).slice(0, 64);
@@ -366,10 +514,15 @@ export async function upsertServers(
       let toolSchemas = s.tool_schemas ?? [];
       if (toolSchemas.length === 0 && s.endpoint) {
         toolSchemas = await fetchToolSchemas(s.endpoint);
-        // Backfill tool names from schemas if tools array is empty
-        if (s.tools.length === 0 && toolSchemas.length > 0) {
-          s.tools = toolSchemas.map(t => t.name);
-        }
+      }
+      // Fallback: parse README for tool names + descriptions
+      // Used when server is stdio-only (not reachable as HTTP endpoint)
+      if (toolSchemas.length === 0 && s.github_url) {
+        toolSchemas = await parseReadmeSchemas(s.github_url);
+      }
+      // Backfill tool names from schemas if tools array is empty
+      if (s.tools.length === 0 && toolSchemas.length > 0) {
+        s.tools = toolSchemas.map(t => t.name);
       }
 
       // Reject on critical scan issues
@@ -427,6 +580,7 @@ export async function upsertServers(
         tags:             s.tags.length > 0 ? s.tags : ['general'],
         tools:            s.tools,
         tool_schemas:     toolSchemas as any,
+        transport:        s.transport ?? detectTransport(s.endpoint, s.github_url),
         source:           s.source,
         smithery_id:      s.smithery_id ?? null,
         official_id:      s.official_id ?? null,

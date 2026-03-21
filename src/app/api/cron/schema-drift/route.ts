@@ -1,9 +1,10 @@
+import { safeCompare, isSafeUrl } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createHash } from 'crypto';
 
 function isAuthorized(req: NextRequest) {
-  return req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
+  return safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`);
 }
 
 export async function GET(req: NextRequest) {
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
   for (const server of servers ?? []) {
     results.checked++;
     try {
+      if (!isSafeUrl(server.endpoint)) { results.errors++; continue; }
       const res = await fetch(`${server.endpoint}/tools`, {
         signal: AbortSignal.timeout(10_000),
         headers: { 'X-Registry-Probe': 'schema-drift' },

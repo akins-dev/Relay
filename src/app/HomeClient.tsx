@@ -2,97 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ServerCard } from '@/components/registry/ServerCard';
+import { AgentSimulation } from '@/components/AgentSimulation';
 import type { Server, GlobalStats } from '@/types';
 
-/* ── Animated Terminal ─────────────────────────────────── */
-const LINES = [
-  { t: '// host system prompt — the entire MCP config', c: '#5a4f47', d: 0 },
-  { t: '', c: '', d: 400 },
-  { t: 'You have access to the openMCP.', c: '#8a7d74', d: 700 },
-  { t: 'When you need any capability, query it first:', c: '#8a7d74', d: 1100 },
-  { t: '  GET /api/servers/search?q={intent}', c: '#e8673a', d: 1500 },
-  { t: '', c: '', d: 1900 },
-  { t: '> Agent: "charge the user $49 for their plan"', c: '#c8bcb4', d: 2200 },
-  { t: '→ search("payments charge subscription")...', c: '#5a4f47', d: 2900 },
-  { t: '← stripe-payments  trust:97  latency:42ms', c: '#6e6058', d: 3500 },
-  { t: '→ connecting via secure proxy...', c: '#5a4f47', d: 4100 },
-  { t: '← tools ready: charge_card, create_subscription +4', c: '#e8673a', d: 4700 },
-  { t: '→ charge_card({ amount: 4900, currency: "usd" })', c: '#e8673a', d: 5300 },
-  { t: '', c: '', d: 5800 },
-  { t: '✓ ch_3Qx9Av... · $49.00 charged · 44ms', c: '#e8673a', d: 6100 },
-];
-
-function Terminal() {
-  const [vis, setVis] = useState<number[]>([]);
-  const [cur, setCur] = useState(true);
-
-  useEffect(() => {
-    let timers: ReturnType<typeof setTimeout>[] = [];
-    function start() {
-      setVis([]);
-      timers = LINES.map((l, i) => setTimeout(() => setVis(v => [...v, i]), l.d));
-      timers.push(setTimeout(start, LINES[LINES.length - 1].d + 3000));
-    }
-    const t = setTimeout(start, 300);
-    const blink = setInterval(() => setCur(c => !c), 530);
-    return () => { timers.forEach(clearTimeout); clearTimeout(t); clearInterval(blink); };
-  }, []);
-
-  return (
-    <div style={{
-      background: 'linear-gradient(180deg, #100d0b 0%, #181410 100%)',
-      border: '1px solid rgba(232,103,58,0.10)',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      boxShadow: '0 0 0 1px rgba(232,103,58,0.04), 0 0 60px rgba(232,103,58,0.07), 0 32px 80px rgba(0,0,0,0.6)',
-    }}>
-      {/* Window chrome */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' }}>
-        {['#ef4444', '#eab308', '#22c55e'].map(c => (
-          <div key={c} style={{ width: '10px', height: '10px', borderRadius: '50%', background: c, opacity: .8 }} />
-        ))}
-        <span style={{ marginLeft: '12px', fontSize: '11px', color: '#4a3f38', fontFamily: 'var(--mono)' }}>agent-runtime · openmcp · live</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div className="anim-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#e8673a' }} />
-          <span style={{ fontSize: '10px', color: '#e8673a', fontFamily: 'var(--mono)' }}>connected</span>
-        </div>
-      </div>
-      {/* Content */}
-      <div style={{ padding: '22px 26px', minHeight: '290px', fontFamily: 'var(--mono)', fontSize: '12.5px', lineHeight: 2 }}>
-        {LINES.map((line, i) => (
-          <div key={i} style={{
-            opacity: vis.includes(i) ? 1 : 0,
-            transform: vis.includes(i) ? 'translateY(0)' : 'translateY(4px)',
-            transition: 'opacity .35s ease, transform .35s ease',
-            color: line.c || 'transparent',
-            height: line.t === '' ? '8px' : 'auto'
-          }}>
-            {line.t}
-          </div>
-        ))}
-        <span style={{ opacity: cur ? 1 : 0, color: '#e8673a', transition: 'opacity .1s' }}>▋</span>
-      </div>
-      {/* Success banner */}
-      {vis.includes(LINES.length - 1) && (
-        <div style={{
-          margin: '0 22px 22px',
-          padding: '11px 16px',
-          background: 'rgba(232,103,58,0.06)',
-          border: '1px solid rgba(232,103,58,0.2)',
-          borderRadius: '10px',
-          fontFamily: 'var(--mono)',
-          fontSize: '12px',
-          color: '#f0b898',
-          animation: 'fadeIn .4s ease',
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span style={{ color: '#e8673a' }}>✓</span>
-          Payment processed · agent never saw the API key · fully audited
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ── Flow Diagram ───────────────────────────────────────── */
 const FLOW = [
@@ -183,7 +95,7 @@ const OSS_FEATURES = [
     ),
     color: '#3b82f6',
     title: 'Free forever',
-    desc: 'No freemium traps. The core registry, search, and proxy are always free.',
+    desc: 'Free forever. No rate limits on core features. No credit card required. No lock-in.',
   },
   {
     icon: (
@@ -221,26 +133,26 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           {/* Dot grid */}
           <div style={{
             position: 'absolute', inset: 0,
-            backgroundImage: 'radial-gradient(rgba(232,103,58,.055) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(rgba(194,68,12,.07) 1px, transparent 1px)',
             backgroundSize: '28px 28px',
-            maskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)', maskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)',
           }} />
           {/* Top center glow */}
           <div style={{
             position: 'absolute', top: '-120px', left: '50%', transform: 'translateX(-50%)',
             width: '900px', height: '700px',
-            background: 'radial-gradient(ellipse, rgba(232,103,58,0.07) 0%, transparent 68%)',
+            background: 'radial-gradient(ellipse, rgba(194,68,12,0.06) 0%, transparent 68%)',
           }} />
           {/* Side glows */}
           <div style={{
             position: 'absolute', top: '20%', left: '-100px',
             width: '400px', height: '400px',
-            background: 'radial-gradient(circle, rgba(232,103,58,0.04) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(194,68,12,0.04) 0%, transparent 70%)',
           }} />
           <div style={{
             position: 'absolute', top: '30%', right: '-100px',
             width: '400px', height: '400px',
-            background: 'radial-gradient(circle, rgba(232,103,58,0.04) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(194,68,12,0.04) 0%, transparent 70%)',
           }} />
         </div>
 
@@ -259,8 +171,8 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px',
               padding: '7px 16px',
-              background: 'rgba(232,103,58,0.07)',
-              border: '1px solid rgba(232,103,58,0.2)',
+              background: 'rgba(194,68,12,0.06)',
+              border: '1px solid rgba(194,68,12,0.15)',
               borderRadius: '100px',
               marginBottom: '32px',
               animation: 'fadeIn .5s ease .1s both',
@@ -314,7 +226,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 color: 'var(--text-2)',
                 lineHeight: 1.7,
               }}>
-                One line in your system prompt. Any AI agent discovers and invokes any of 7,000+ verified MCP servers at runtime — by intent, through a security proxy, zero pre-configuration.
+                Your AI agent can now find and use any tool it needs — automatically. thousands of scanned MCP servers, discovered by intent, invoked through a security proxy. Zero pre-configuration. Always free.
               </p>
             </div>
 
@@ -323,13 +235,13 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', flexWrap: 'wrap',
               animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .3s both',
             }}>
-              <Link href="/registry" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
-                Browse Registry
+              <Link href="/connect" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
+                Connect your agent
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
               </Link>
-              <Link href="/publish" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>Publish your MCP</Link>
+              <Link href="/registry" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>Browse registry</Link>
             </div>
 
             {/* Live stats */}
@@ -343,7 +255,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .4s both',
             }}>
               {[
-                { v: stats.active_servers?.toLocaleString() ?? '—', l: 'Active Servers' },
+                { v: stats.invokable_servers?.toLocaleString() ?? stats.active_servers?.toLocaleString() ?? '—', l: 'Invokable Servers' },
                 { v: stats.calls_today ? `${(stats.calls_today / 1000).toFixed(0)}K` : '—', l: 'Calls Today' },
                 { v: stats.verified_servers?.toLocaleString() ?? '—', l: 'Verified' },
                 { v: stats.sources ? `${stats.sources.official + stats.sources.github + stats.sources.smithery}` : '—', l: 'Sources' },
@@ -369,9 +281,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             </div>
           </div>
 
-          {/* Right — Terminal */}
-          <div className="anim-float" style={{ animation: 'float 5s ease-in-out infinite, fadeIn .8s ease .3s both' }}>
-            <Terminal />
+          {/* Right — Interactive simulation */}
+          <div style={{ animation: 'fadeIn .8s ease .3s both' }}>
+            <AgentSimulation />
           </div>
         </div>
       </section>
@@ -391,8 +303,8 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
 
           {/* Flow diagram */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,.025) 0%, rgba(255,255,255,.01) 100%)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            background: 'var(--bg-1)',
+            border: '1px solid var(--border)',
             borderRadius: '20px',
             padding: '48px 24px',
             marginBottom: '48px',
@@ -420,7 +332,7 @@ Never assume a tool doesn't exist. Always search first.`}</pre>
       {/* ── SECURITY ──────────────────────────────────────── */}
       <section style={{
         padding: isMobile ? '60px 24px' : '120px 80px',
-        background: 'linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)',
+        background: 'var(--bg-1)',
         borderTop: '1px solid var(--border)',
         borderBottom: '1px solid var(--border)',
         position: 'relative',
@@ -430,7 +342,7 @@ Never assume a tool doesn't exist. Always search first.`}</pre>
         <div style={{
           position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
           width: '600px', height: '400px',
-          background: 'radial-gradient(ellipse, rgba(239,68,68,0.04) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse, rgba(220,38,38,0.03) 0%, transparent 70%)',
           pointerEvents: 'none',
         }} />
 
@@ -508,7 +420,7 @@ Never assume a tool doesn't exist. Always search first.`}</pre>
       <section style={{
         padding: isMobile ? '60px 24px' : '120px 80px',
         borderTop: '1px solid var(--border)',
-        background: 'linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)',
+        background: 'var(--bg-1)',
         position: 'relative',
         overflow: 'hidden',
       }}>
@@ -516,7 +428,7 @@ Never assume a tool doesn't exist. Always search first.`}</pre>
         <div style={{
           position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
           width: '700px', height: '500px',
-          background: 'radial-gradient(ellipse, rgba(232,103,58,0.04) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse, rgba(194,68,12,0.04) 0%, transparent 70%)',
           pointerEvents: 'none',
         }} />
 

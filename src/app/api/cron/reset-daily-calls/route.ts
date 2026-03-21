@@ -1,8 +1,9 @@
+import { safeCompare } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 
 export async function GET(req: NextRequest) {
-  if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const svc = createServiceClient();

@@ -101,20 +101,75 @@ export function scanServer(data: {
 // ── L5: Trust score ───────────────────────────────────────────────────────────
 
 export function computeTrustScore(params: {
-  verified:        number;
-  scanScore:       number;
-  uptimePct:       number;
-  stars:           number;
-  daysSinceChange: number;
+  verified:          number;
+  scanScore:         number;
+  uptimePct:         number;
+  stars:             number;
+  daysSinceChange:   number;
+  // Optional: request failure rate from metering (0-100, 0=perfect)
+  failureRatePct?:   number;
+  // Optional: DLP trigger rate from proxy calls (0-100, 0=clean)
+  dlpRatePct?:       number;
+  // Optional: days since first listing (for new server boost in ranking, not score)
+  daysSinceListing?: number;
 }): number {
   let s = 0;
+
+  // Verified publisher — 25 pts
   s += params.verified ? 25 : 0;
-  s += (params.scanScore  / 100) * 30;
-  s += (params.uptimePct  / 100) * 20;
+
+  // Scan quality — 30 pts
+  s += (params.scanScore / 100) * 30;
+
+  // Uptime — 20 pts (measured every 15 min by cron)
+  s += (params.uptimePct / 100) * 20;
+
+  // Schema stability — 15 pts (servers that mutate schemas are less trustworthy)
   s += (Math.min(params.daysSinceChange, 90) / 90) * 15;
+
+  // Community signals — 10 pts (log scale prevents large servers dominating)
   s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 10;
-  return Math.round(s);
+
+  // Runtime penalties (from metering — applied after ingest scores stabilise)
+  // High request failure rate: up to -15 pts
+  if (params.failureRatePct !== undefined) {
+    const failurePenalty = (params.failureRatePct / 100) * 15;
+    s = Math.max(0, s - failurePenalty);
+  }
+
+  // DLP trigger rate: up to -10 pts (server returning credentials in responses)
+  if (params.dlpRatePct !== undefined && params.dlpRatePct > 5) {
+    const dlpPenalty = ((params.dlpRatePct - 5) / 100) * 10;
+    s = Math.max(0, s - dlpPenalty);
+  }
+
+  return Math.round(Math.min(100, Math.max(0, s)));
 }
+
+/**
+ * Search ranking boost for new servers.
+ * Does NOT affect the trust score — the score stays honest.
+ * Only used in search ranking to surface new servers alongside established ones.
+ *
+ * Returns a multiplier (1.0 = no boost, up to 1.4 = 40% ranking boost).
+ * Decays linearly over 90 days from first listing.
+ */
+export function newServerRankingBoost(daysSinceListing: number): number {
+  if (daysSinceListing >= 90) return 1.0;
+  // Max 40% boost in first week, decays to 0% at day 90
+  const boost = 0.4 * (1 - daysSinceListing / 90);
+  return 1.0 + boost;
+}
+
+/**
+ * Category balance check.
+ * When a category has N servers above threshold, signal that lower-scored
+ * servers should be surfaced for ecosystem diversity.
+ *
+ * Used by the search RPC to inject diversity into results.
+ */
+export const CATEGORY_SATURATION_THRESHOLD = 5;
+export const CATEGORY_HIGH_SCORE_THRESHOLD = 85;
 
 // ── L4: Proxy DLP — credentials ───────────────────────────────────────────────
 

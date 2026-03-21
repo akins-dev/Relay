@@ -142,7 +142,12 @@ async function handleToolsList(id: any) {
 
 async function handleToolsCall(id: any, params: any, req: NextRequest) {
   const { name, arguments: args } = params;
-  const ip   = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+  // Never use 'unknown' as a rate limit key — all unknown IPs would share one bucket
+  // Use a fingerprint combining multiple headers as fallback
+  const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const ip    = rawIp && rawIp !== 'unknown' && rawIp.length > 0
+    ? rawIp
+    : `fp:${Buffer.from((req.headers.get('user-agent') ?? '') + (req.headers.get('accept-language') ?? '')).toString('base64').slice(0, 16)}`;
   const auth = await resolveApiKey(req);
 
   if (name === 'search_tools') {
@@ -156,8 +161,8 @@ async function handleToolsCall(id: any, params: any, req: NextRequest) {
 }
 
 async function handleSearchTools(id: any, args: any, ip: string) {
-  const rl = rateLimit(`mcp-search:${ip}`, LIMITS.search);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded');
+  const rl = await rateLimit(`mcp-search:${ip}`, LIMITS.search);
+  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
 
   const intent = String(args?.intent ?? '').trim();
   if (!intent) return mcpError(id, -32602, 'intent is required');
@@ -196,6 +201,8 @@ async function handleSearchTools(id: any, args: any, ip: string) {
         : { name: t.name, description: t.description, inputSchema: t.inputSchema }
     )),
     usage: `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
+    credential_note: 'Pass only business data as tool arguments. Never include API keys. The server manages its own credentials.',
+    is_new: s.is_new ?? false,
   }));
 
   return mcpResponse(id, {
@@ -214,8 +221,8 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
   // Authenticated users get the proxy limit; anonymous callers get search limit
   const rlKey    = auth?.userId ? `mcp-invoke:user:${auth.userId}` : `mcp-invoke:ip:${ip}`;
   const rlConfig = auth?.userId ? LIMITS.proxy : LIMITS.search;
-  const rl = rateLimit(rlKey, rlConfig);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded');
+  const rl = await rateLimit(rlKey, rlConfig);
+  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
 
   const { server: serverName, tool: toolName, args: toolArgs } = args ?? {};
   if (!serverName || !toolName) {

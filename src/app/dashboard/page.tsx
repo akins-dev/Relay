@@ -8,7 +8,7 @@ export default function DashboardPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [data,        setData]        = useState<any>(null);
-  const [tab,         setTab]         = useState<'servers'|'keys'|'account'>('servers');
+  const [tab,         setTab]         = useState<'servers'|'keys'|'secrets'|'policies'|'account'>('servers');
   const [keyName,     setKeyName]     = useState('');
   const [createdKey,  setCreatedKey]  = useState('');
   const [pageLoading, setPageLoading] = useState(true);
@@ -83,7 +83,7 @@ export default function DashboardPage() {
 
       {/* Tabs */}
       <div style={{ borderBottom: '1px solid var(--border)', marginBottom: '28px', display: 'flex' }}>
-        {(['servers','keys','account'] as const).map(t => (
+        {(['servers','keys','secrets','policies','account'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--green)' : '2px solid transparent', color: tab === t ? 'var(--text)' : 'var(--text-3)', padding: '10px 18px', cursor: 'pointer', fontSize: '13px', fontFamily: 'var(--font)', fontWeight: tab === t ? 600 : 400 }}>
             {t === 'keys' ? 'API Keys' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -155,6 +155,29 @@ export default function DashboardPage() {
       )}
 
       {/* Account */}
+      {tab === 'secrets' && (
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔑</div>
+          <p style={{ color: 'var(--text-2)', marginBottom: '20px', fontSize: '15px' }}>
+            Store API keys and tokens once. The proxy injects them automatically — your agent never sees the raw value.
+          </p>
+          <Link href="/dashboard/secrets" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+            Manage Secrets →
+          </Link>
+        </div>
+      )}
+
+      {tab === 'policies' && (
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <p style={{ color: 'var(--text-2)', marginBottom: '20px' }}>
+            Control what your agents can do — allow, block, or require confirmation for different tool categories.
+          </p>
+          <Link href="/dashboard/policies" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+            Manage Permissions →
+          </Link>
+        </div>
+      )}
+
       {tab === 'account' && (
         <div className="card" style={{ padding: '24px', maxWidth: '440px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '18px' }}>Account Details</h3>

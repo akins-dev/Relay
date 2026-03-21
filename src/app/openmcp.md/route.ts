@@ -18,7 +18,7 @@ export async function GET() {
   const { data: stats } = await supabase.rpc('global_stats').single();
   const s = (stats as any) ?? {};
 
-  const activeServers   = s.active_servers   ?? '7,000+';
+  const activeServers   = s.active_servers   ?? 'thousands of';
   const verifiedServers = s.verified_servers ?? '0';
   const callsToday      = s.calls_today      ?? '0';
 
@@ -31,7 +31,8 @@ The secure, open-source MCP registry. ${activeServers} verified servers. Zero co
 
 ## What you can do
 
-- Discover any MCP server by describing what you need
+- Discover any invokable MCP server by describing what you need
+- Note: only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned — stdio-only local servers are excluded from agent search
 - Invoke tools through a security proxy — DLP, schema pinning, audit trail on every call
 - Trust every result — each server scanned across 15 security layers before listing
 
@@ -43,6 +44,35 @@ The secure, open-source MCP registry. ${activeServers} verified servers. Zero co
 - Sources: Official MCP Registry + Smithery + Glama + GitHub
 
 ---
+
+## How credentials work
+
+Most MCP servers require authentication. You NEVER pass credentials as tool arguments.
+
+### The openMCP vault (recommended)
+
+Store your API key once at https://openmcp.dev/dashboard/secrets.
+The proxy injects it automatically on every call. Your agent never sees the raw value.
+
+Flow:
+1. User stores STRIPE_API_KEY in openMCP dashboard (one time)
+2. Agent calls: POST /api/proxy/stripe-payments/charge_card { "amount": 4900, "currency": "usd" }
+3. Proxy resolves STRIPE_API_KEY from vault, injects as Authorization header
+4. Stripe receives the authenticated call
+5. Agent gets the result — key never in context, never in arguments, never in logs
+
+If a tool call returns 401, it means no credential is stored yet. The response includes
+a direct link to the secrets dashboard with the exact name to use.
+
+### Alternative: AgentSecrets local proxy
+
+For zero-knowledge local credential management (credentials stay on your device):
+https://github.com/the-17/agentsecrets
+
+### What not to do
+
+Never pass API keys as tool arguments. The DLP layer will block the call with an explanation.
+Never put credentials in the system prompt. They end up in logs and conversation history.
 
 ## Finding tools
 
@@ -174,6 +204,13 @@ GET https://openmcp.dev/api/mcp
 \`\`\`
 
 Returns full endpoint map, all security layers, and this prompt template.
+
+---
+
+## Coming soon
+
+- **Per-user OAuth delegation:** Connect GitHub, Gmail, Slack, and Stripe to your account. The proxy will orchestrate the OAuth flow and inject your token automatically. Static key vault works today for API-key-based servers.
+- **WASM sandbox execution:** Pre-listing sandboxed execution to catch runtime-only payloads. Brings OWASP MCP Top 10 coverage from ~70% to ~85%.
 
 ---
 

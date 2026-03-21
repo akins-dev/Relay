@@ -13,13 +13,14 @@ export function Nav() {
   const navLinks = [
     { href: '/registry', label: 'Registry' },
     { href: '/connect',  label: 'Connect'  },
+    { href: '/docs',     label: 'Docs'     },
     { href: '/publish',  label: 'Publish'  },
   ];
 
   return (
     <nav style={{
       position: 'sticky', top: 0, zIndex: 100,
-      background: 'rgba(19,17,16,0.92)',
+      background: 'rgba(253,252,251,0.95)',
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
       borderBottom: '1px solid var(--border)',
@@ -86,7 +87,7 @@ export function Nav() {
 
         {/* Mobile hamburger */}
         <button className="nav-mobile" onClick={() => setMenuOpen(m => !m)} style={{
-          background: 'none', border: '1px solid var(--border)', borderRadius: '8px',
+          background: 'none', border: '1px solid var(--border-2)', borderRadius: '8px',
           padding: '8px 10px', cursor: 'pointer', color: 'var(--text-2)',
           display: 'none', // shown via CSS
         }}>
@@ -98,7 +99,7 @@ export function Nav() {
       {menuOpen && (
         <div style={{
           borderTop: '1px solid var(--border)',
-          background: 'var(--bg-1)',
+          background: 'var(--surface)',
           padding: '12px 20px 20px',
           display: 'flex', flexDirection: 'column', gap: '4px',
         }}>
