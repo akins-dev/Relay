@@ -4,7 +4,7 @@
  * Initiates the OAuth flow for a server that requires it.
  * 1. Validates user is authenticated
  * 2. Looks up server OAuth metadata (authorization_url, client_id, scopes)
- * 3. Generates PKCE + CSRF state, stores in oauth_states table
+ * 3. Generates CSRF state, stores it in oauth_states table
  * 4. Redirects user to the provider's authorization endpoint
  */
 import { NextRequest, NextResponse }         from 'next/server';

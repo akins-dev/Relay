@@ -197,14 +197,14 @@ export default function DocsPage() {
             openMCP Documentation
           </h1>
           <p style={{ fontSize: '17px', color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Everything you need to connect your AI agents to thousands of scanned MCP servers.
+            Everything you need to connect your AI agents to network-reachable MCP servers today, with local CLI support planned next.
           </p>
         </div>
 
         {/* What is openMCP */}
         <Section id="what-is-openmcp" title="What is openMCP?">
           <P>
-            openMCP is the missing layer between AI agents and MCP servers. Today, every agent must have
+            openMCP is the missing layer between AI agents and remote MCP servers. Today, every agent must have
             MCP servers explicitly configured before deployment. There is no way for an agent to discover
             what tools exist, evaluate their quality, or connect to them autonomously.
           </P>
@@ -213,14 +213,19 @@ export default function DocsPage() {
             gets back verified servers with full tool schemas, and invokes tools through a security proxy —
             at runtime by intent — never pre-loaded, never eating your context window.
           </P>
+          <P>
+            Today, openMCP focuses on network-reachable MCP servers with HTTP transports. Local
+            <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', background: 'var(--bg-2)', padding: '1px 6px', borderRadius: '4px', marginLeft: '4px', marginRight: '4px' }}>stdio</code>
+            support is planned for openMCP CLI.
+          </P>
           <Callout>
             <p style={{ fontSize: '14px', fontStyle: 'italic', color: 'var(--accent)', fontFamily: 'var(--font-serif)', lineHeight: 1.6 }}>
               "Agent development will never scale treating every tool integration as a 1:1 integration."
             </p>
           </Callout>
           <P>
-            <strong>Free forever.</strong> The core registry, semantic search, and proxy are always free.
-            No credit card. No rate limits on core features. No lock-in.
+            <strong>Free to use.</strong> The core registry, semantic search, and proxy are available
+            without a paid plan. No credit card. Transparent limits. No lock-in.
           </P>
           <P>
             <strong>Open source.</strong> MIT licensed. Full source at{' '}
@@ -236,8 +241,8 @@ export default function DocsPage() {
             ['1', 'Agent has a task', 'Needs to send an email, create a PR, charge a card — any capability.'],
             ['2', 'Queries openMCP by intent', 'GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.'],
             ['3', 'Reads the inputSchema', 'No guessing. The agent knows exactly what arguments each tool requires before calling.'],
-            ['4', 'Invokes through the proxy', 'POST /api/proxy/sendgrid-mail/send_email — every call is DLP-scanned, shell-injection blocked, PII-checked, and audited.'],
-            ['5', 'Gets a response', 'The upstream result, scrubbed for credentials and PII, returned to the agent. Audit trail written.'],
+            ['4', 'Invokes through the proxy', 'POST /api/proxy/sendgrid-mail/send_email — every call blocks sensitive request patterns, applies policy, scans responses, and writes an audit trail.'],
+            ['5', 'Gets a response', 'The upstream result is returned with trust and warning metadata. If response scans trigger, the agent gets the result plus warning headers for review.'],
           ].map(([num, title, desc]) => (
             <div key={num} style={{ display: 'flex', gap: '16px', marginBottom: '12px', padding: '16px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>
               <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', fontWeight: 700, flexShrink: 0, width: '20px' }}>{num}</span>
@@ -296,7 +301,7 @@ export default function DocsPage() {
             The openMCP proxy runs DLP on every request and response — 11 credential patterns. If a
             credential pattern appears in a tool argument (the agent accidentally including an API key),
             the call is blocked before it reaches the upstream server. If a credential appears in a
-            response, it is flagged before being returned to the agent.
+            response, it is flagged in warning headers and audit logs for review.
           </P>
 
           <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>openMCP Vault — the complete solution</h3>
@@ -310,7 +315,7 @@ export default function DocsPage() {
           <P>
             Manage secrets:{' '}
             <a href="https://openmcp.dev/dashboard/secrets" style={{ color: 'var(--accent)' }}>openmcp.dev/dashboard/secrets</a>
-            {' '}— one command sets up both Claude Desktop and Cursor.
+            {' '}— store once, then let the proxy inject automatically.
           </P>
 
           <Callout color="var(--bg-1)">
@@ -332,7 +337,7 @@ export default function DocsPage() {
           </P>
           <P>
             <strong>Transports supported:</strong> StreamableHTTP (POST — primary) and SSE (GET — for
-            older clients). stdio is not supported — openMCP is a hosted service, not a local process.
+            older clients). stdio is not supported yet — openMCP is a hosted service today, with a CLI bridge planned next.
           </P>
 
           <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>search_tools</h3>
@@ -341,8 +346,8 @@ export default function DocsPage() {
           <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>invoke_tool</h3>
           <CodeBlock code={CODE.mcpServerInvoke} label="Invoke any tool through the security proxy" />
           <P>
-            Every invoke_tool call runs through the same 15-layer security proxy as the REST API.
-            DLP, shell injection detection, PII scan, audit log — all applied.
+            Every invoke_tool call runs through the same remote trust and proxy layer as the REST API.
+            Request blocking, response scanning, trust metadata, and audit logging are all applied.
           </P>
         </Section>
 
@@ -354,7 +359,7 @@ export default function DocsPage() {
             { method: 'GET',  path: '/api/servers/search?q={intent}',    desc: 'Semantic search — returns servers with full inputSchema' },
             { method: 'GET',  path: '/api/servers?sort=trust&source=official', desc: 'Browse with filters: sort, verified, source, tag, page' },
             { method: 'GET',  path: '/api/servers/:name',                desc: 'Server detail — scan history, CVE issues, tools' },
-            { method: 'POST', path: '/api/proxy/:serverName/:toolName',  desc: '15-layer security proxy — DLP, shell inject, audit' },
+            { method: 'POST', path: '/api/proxy/:serverName/:toolName',  desc: 'Remote invocation proxy — request blocking, response scanning, audit' },
             { method: 'POST', path: '/api/mcp-server',                   desc: 'Native MCP server (StreamableHTTP) — search_tools + invoke_tool' },
             { method: 'GET',  path: '/api/mcp-server',                   desc: 'Native MCP server (SSE — for older clients)' },
             { method: 'GET',  path: '/api/servers/:name/analytics',      desc: '30-day call volume, latency, DLP events, tool breakdown' },
@@ -429,7 +434,7 @@ export default function DocsPage() {
         {/* Categories */}
         <Section id="categories" title="MCP categories">
           <P>
-            openMCP indexes thousands of servers across 12 categories. Servers with HTTP endpoints are invokable through the proxy. stdio-only local servers are browseable but not agent-invokable. About 70% of invokable servers require credentials.
+            openMCP indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for openMCP CLI. About 70% of invokable servers require credentials.
           </P>
           <div className="grid-2" style={{ gap: '10px' }}>
             {CATEGORIES.map(cat => (
@@ -451,7 +456,7 @@ export default function DocsPage() {
         <Section id="faq" title="FAQ">
           {[
             ['Is openMCP really free?',
-             'Yes. The core registry, semantic search, and proxy are free forever. No credit card, no rate limits on core features, no freemium trap. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core stays free.'],
+             'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.'],
             ['Do I need to register to use it?',
              'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
             ['How do credentials work if my MCP needs an API key?',
@@ -461,9 +466,11 @@ export default function DocsPage() {
             ['Can I use openMCP with Antigravity?',
              'Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "openmcp": { "url": "https://openmcp.dev/api/mcp-server" } } }'],
             ['How does openMCP compare to Arcade or Composio?',
-             'Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure (SOC 2, managed OAuth) but do not scan the servers they connect to. openMCP scans everything — shell injection, prompt injection in descriptions, CVEs, schema drift — but currently relies on users passing credentials normally. The two approaches are complementary.'],
+             'Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while openMCP focuses on discovery, trust, and secure invocation of remote MCP servers. openMCP scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.'],
+            ['Does openMCP support stdio or local MCP servers today?',
+             'Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. openMCP CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.'],
             ['What does the 15-layer security stack actually do?',
-             'See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in proxy traffic. S-12 blocks OS command injection in tool arguments. S-13 blocks instruction-like language injected into response data. Full details at /api/mcp.'],
+             'See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.'],
           ].map(([q, a]) => (
             <div key={q as string} style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--text)' }}>{q as string}</div>
@@ -482,9 +489,14 @@ export default function DocsPage() {
           </p>
           {[
             {
+              title: 'openMCP CLI for local stdio servers',
+              status: 'Next launch wave',
+              detail: 'A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from openMCP, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.',
+            },
+            {
               title: 'Per-user OAuth delegation',
               status: 'Coming in v0.3',
-              detail: 'For servers requiring per-user OAuth (GitHub, Gmail, Slack, Stripe connected to your account), the proxy will orchestrate the OAuth consent flow and store your token encrypted in the vault. The static key vault works for API-key-based servers today.',
+              detail: 'Expand OAuth coverage and auto-discovery for servers requiring per-user accounts (GitHub, Gmail, Slack, Stripe connected to your account). The static key vault works for API-key-based servers today.',
             },
             {
               title: 'WASM sandbox pre-listing execution',

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
  *
  * Machine-readable skill file for AI agents.
  * Agents fetch this once and understand how to use the entire platform.
- * Pattern: same as Smithery's skill.md — but for fully autonomous,
+ * Pattern: same as Smithery's skill.md — but for remote-first,
  * zero-human-intervention agent workflows.
  *
  * Usage in system prompt:
@@ -24,7 +24,7 @@ export async function GET() {
 
   const md = `# openMCP
 
-The secure, open-source MCP registry. ${activeServers} verified servers. Zero configuration.
+The secure, open-source discovery and invocation layer for remote MCP servers. ${activeServers} verified servers. Zero configuration.
 
 > "Every agent framework is hitting the same wall: 30 pre-loaded tools, shrinking context windows, humans configuring servers before the agent runs. openMCP removes that wall."
 >
@@ -32,9 +32,9 @@ The secure, open-source MCP registry. ${activeServers} verified servers. Zero co
 
 ## What you can do
 
-- Discover any invokable MCP server by describing what you need
-- Note: only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned — stdio-only local servers are excluded from agent search
-- Invoke tools through a security proxy — DLP, schema pinning, audit trail on every call
+- Discover invokable remote MCP servers by describing what you need
+- Note: only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned today — stdio-only local servers are excluded until openMCP CLI ships
+- Invoke tools through a security proxy — request DLP blocking, response scanning, audit trail on every call
 - Trust every result — each server scanned across 15 security layers before listing
 
 ## Live stats (as of this request)
@@ -125,7 +125,7 @@ Content-Type: application/json
 \`\`\`
 
 Every call is:
-- DLP-scanned on request and response (credentials never leak)
+- DLP-blocked on requests; response matches are surfaced via warnings and audit metadata
 - Shell injection checked (18 OS command patterns blocked)
 - PII-scanned on response (email, phone, SSN, card numbers)
 - Audited — full log with credential presence marked ABSENT
@@ -146,7 +146,7 @@ If your framework supports MCP, connect to openMCP once and get
 {
   "mcpServers": {
     "openmcp": {
-      "url": "https://openmcp.dev/api/mcp-server/sse"
+      "url": "https://openmcp.dev/api/mcp-server"
     }
   }
 }
@@ -173,7 +173,7 @@ Then call:
 
 **Publish-time:** Static scan (L1) · Schema pinning (L3) · npm CVE scan · Typosquatting (L8)
 **Runtime proxy:** Credential DLP (L4) · Shell injection (S-12) · Indirect injection (S-13) · PII detection (L10) · URL elicitation (L11) · Context isolation (L12)
-**Infrastructure:** Trust score (L5) · Database RLS (L6) · OAuth 2.1 + PKCE (L7)
+**Infrastructure:** Trust score (L5) · Database RLS (L6) · OAuth flow security (L7)
 
 Current OWASP MCP Top 10 coverage: ~70%. Target: 90%+ with WASM sandbox.
 
@@ -207,7 +207,7 @@ Returns full endpoint map, all security layers, and this prompt template.
 
 ## Works with CLI-first frameworks
 
-If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): openMCP integrates with one config line. You get runtime discovery and security on top of whatever execution model you already use. No ceremony required.
+If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): openMCP integrates with one config line today for remote MCP discovery and invocation. A dedicated local CLI bridge for stdio servers is planned next.
 
 ```json
 { "mcpServers": { "openmcp": { "url": "https://openmcp.dev/api/mcp-server" } } }
@@ -215,7 +215,9 @@ If you are running in a CLI-first agent framework (OpenClaw, shell-based agents)
 
 ## Coming soon
 
-- **Per-user OAuth delegation:** Connect GitHub, Gmail, Slack, and Stripe to your account. The proxy will orchestrate the OAuth flow and inject your token automatically. Static key vault works today for API-key-based servers.
+- **openMCP CLI:** Use the same discovery layer for local stdio MCP servers. The bridge will route remote servers through openMCP cloud and local servers through a local process runner.
+- **AgentSecrets-backed local credentials:** The CLI will use AgentSecrets as the credential substrate so local MCP servers can run without exposing secret values to agent context.
+- **Expanded OAuth coverage:** Broader per-user OAuth support, provider auto-discovery, and improved connected-account UX. Static key vault works today for API-key-based servers.
 - **WASM sandbox execution:** Pre-listing sandboxed execution to catch runtime-only payloads. Brings OWASP MCP Top 10 coverage from ~70% to ~85%.
 
 ---

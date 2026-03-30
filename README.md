@@ -1,10 +1,10 @@
 # ⬡ openMCP
 
-**The secure, open-source MCP registry. Free forever.**
+**The secure, open-source discovery and invocation layer for remote MCP servers.**
 
 > "Agent development will never scale treating every tool integration as a 1:1 integration."
 
-Break the 30-tool limit. Any agent discovers thousands of scanned MCP servers at runtime — by intent, through a 15-layer security proxy, zero pre-configuration.
+Break the 30-tool limit. Any agent discovers remote MCP servers at runtime — by intent, through a security and trust layer, with zero pre-configuration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-e8673a.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
@@ -14,9 +14,11 @@ Break the 30-tool limit. Any agent discovers thousands of scanned MCP servers at
 
 ## Core vision
 
-Today's agents are bottlenecked at 30 tools, pre-loaded by a human before the agent ever runs, competing for context window space with every tool that gets added. Nobody solved this — universal MCP servers still pre-load a fixed catalog. openMCP removes the constraint entirely: agents describe what they need at runtime, get exactly those tools with full schemas, invoke through a 15-layer security proxy, and never pre-load anything. The context window cost is always exactly two tools — search and invoke.
+Today's agents are bottlenecked at 30 tools, pre-loaded by a human before the agent ever runs, competing for context window space with every tool that gets added. openMCP removes that constraint for network-reachable MCP servers: agents describe what they need at runtime, get exactly those tools with full schemas, invoke through a security proxy, and never pre-load anything. The context window cost is always exactly two tools — search and invoke.
 
 openMCP is the registry layer: one endpoint, semantic discovery, full tool schemas returned, every server scanned across 15 security layers before listing, every call proxied through DLP and injection detection.
+
+Today openMCP focuses on remote MCP servers with HTTP endpoints. Local `stdio` support is planned via `openMCP CLI`.
 
 **Not an auth platform.** Not a developer marketplace. The public, open, security-native discovery and proxy layer — the npm registry for MCP.
 
@@ -53,7 +55,7 @@ Invoke:  POST https://openmcp.dev/api/proxy/{serverName}/{toolName}
 # Discover by intent — returns full inputSchema per tool
 curl "https://openmcp.dev/api/servers/search?q=send+transactional+email"
 
-# Invoke through the 15-layer security proxy
+# Invoke through the secure proxy
 curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
   -H "Content-Type: application/json" \
   -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
@@ -99,18 +101,18 @@ Every server scanned before listing. Every proxy call inspected.
 - S-14 npm CVE scan — package.json checked against npm advisory database
 
 **Runtime proxy (per call):**
-- L4 DLP — 11 credential patterns on request and response
+- L4 DLP — 11 credential patterns blocked on requests; response matches surfaced via warning headers and audit logs
 - S-12 Shell injection — 18 OS command patterns (43% of MCP CVEs are this class)
 - S-13 Indirect injection — instruction language in response data
 - L9 Sampling inspection — server-initiated LLM call hijacking
-- L10 PII detection — email, phone, SSN, card numbers in responses
+- L10 PII detection — email, phone, SSN, card numbers scanned in responses
 - L11 URL elicitation — SSRF, javascript:, file:// blocked
 - L12 Context isolation — session tokens leaking in responses
 
 **Infrastructure:**
 - L5 Trust score — 0–100 composite: scan quality + uptime + schema stability + community signals
 - L6 Supabase RLS — database-level enforcement on all tables
-- L7 OAuth 2.1 + PKCE — Supabase Auth, no localStorage tokens
+- L7 OAuth connection security — validated redirects, state verification, encrypted token storage
 
 Current OWASP MCP Top 10 coverage: **~70%**. Target: 90%+ with WASM sandbox (L2).
 

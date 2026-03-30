@@ -63,13 +63,13 @@ const SEC = [
   { num: 'L1',  title: 'Static Scan',        desc: 'Tool descriptions scanned for prompt injection, exfiltration patterns, and hidden instructions at publish time.',    color: '#ef4444' },
   { num: 'L2',  title: 'WASM Sandbox',        desc: 'Sandboxed pre-listing execution catches runtime behaviors static analysis misses — deferred payloads, error-channel attacks.', color: '#f97316' },
   { num: 'L3',  title: 'Schema Pinning',      desc: 'Tool schemas hashed at publish. Any mutation auto-suspends the server and triggers re-scan. Rug-pull attacks blocked.', color: '#a855f7' },
-  { num: 'L4',  title: 'Proxy DLP',           desc: 'Every invocation routes through the proxy. Credential patterns blocked on request and response. Real-time audit log.', color: '#3b82f6' },
+  { num: 'L4',  title: 'Proxy DLP',           desc: 'Every invocation routes through the proxy. Credential patterns are blocked in requests, and response matches are surfaced as warnings and audit events.', color: '#3b82f6' },
   { num: 'L5',  title: 'Trust Score',         desc: 'Dynamic per-server score from scan history, uptime, schema stability, and community signals — returned on every search result.', color: 'var(--accent)' },
   { num: 'L6',  title: 'Database RLS',        desc: 'Supabase Row Level Security enforced at the database layer. App-level bugs cannot leak cross-user data under any circumstance.', color: '#0ea5e9' },
-  { num: 'L7',  title: 'OAuth 2.1 + PKCE',   desc: 'Auth handled by Supabase with PKCE enforced on every flow. Blocks confused deputy attacks and consent bypass exploits.', color: '#6366f1' },
+  { num: 'L7',  title: 'OAuth Flow Security', desc: 'Connected-account flows use validated redirects, CSRF state checks, encrypted token storage, and route-level rate limits.', color: '#6366f1' },
   { num: 'L8',  title: 'Typosquatting',       desc: 'pg_trgm fuzzy similarity check at publish time. Names too close to verified servers are rejected before listing.', color: '#ec4899' },
   { num: 'L9',  title: 'Sampling Inspection', desc: 'MCP sampling requests (server-initiated LLM calls) inspected for injection patterns before being forwarded to clients.', color: '#f59e0b' },
-  { num: 'L10', title: 'PII Detection',       desc: 'Proxy responses scanned for email addresses, phone numbers, SSNs, and card numbers before being returned to the agent.', color: '#14b8a6' },
+  { num: 'L10', title: 'PII Detection',       desc: 'Proxy responses are scanned for email addresses, phone numbers, SSNs, and card numbers. Matches are surfaced for review and auditing.', color: '#14b8a6' },
   { num: 'L11', title: 'URL Elicitation',     desc: 'MCP elicitation URLs validated before acting on them. Blocks javascript:, data:, file://, localhost redirects, and SSRF attempts.', color: '#84cc16' },
   { num: 'L12', title: 'Context Isolation',   desc: 'Proxy responses scanned for session tokens, bearer tokens, and auth values that could indicate cross-user context leakage.', color: '#f97316' },
 ];
@@ -95,7 +95,7 @@ const OSS_FEATURES = [
     ),
     color: '#3b82f6',
     title: 'Free forever',
-    desc: 'Free forever. No rate limits on core features. No credit card required. No lock-in.',
+    desc: 'Free to use. No credit card required. Transparent limits. No lock-in.',
   },
   {
     icon: (
@@ -226,7 +226,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 color: 'var(--text-2)',
                 lineHeight: 1.7,
               }}>
-                Your agent is pre-loaded with 30 tools. Every tool you add shrinks the context window. openMCP removes that constraint — thousands of verified servers, discovered by intent at runtime, invoked through a security proxy. Always free.
+                Your agent is pre-loaded with 30 tools. Every tool you add shrinks the context window. openMCP removes that constraint for network-reachable MCP servers — discovered by intent at runtime, invoked through a security proxy. Remote MCP today. CLI bridge next.
               </p>
             </div>
 
@@ -297,7 +297,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               One prompt. Every tool.
             </h2>
             <p style={{ color: 'var(--text-2)', fontSize: '16px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7 }}>
-              The alternative to 1:1 tool integrations. One endpoint, queried by intent, invoked through a 15-layer security proxy.
+              The alternative to 1:1 tool integrations. One endpoint for discovering and securely invoking remote MCP tools at runtime.
             </p>
           </div>
 
@@ -320,7 +320,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             </div>
             <pre>{`## MCP Tools
 
-You have access to the openMCP at https://registry.the-17.dev.
+You have access to openMCP at https://openmcp.dev.
 When you need any capability, search: `}<span style={{ color: 'var(--accent)' }}>GET /api/servers/search?q={'{intent}'}</span>{`
 Then invoke via:                       `}<span style={{ color: 'var(--accent)' }}>POST /api/proxy/{'{serverName}'}/{'{toolName}'}</span>{`
 
@@ -442,7 +442,7 @@ Never assume a tool doesn't exist. Always search first.`}</pre>
             lineHeight: 1.15,
             fontFamily: 'var(--font-lora)',
           }}>
-            Built for the<br /><span style={{ color: 'var(--accent)' }}>open ecosystem</span>
+            Built for the<br /><span style={{ color: 'var(--accent)' }}>remote-first ecosystem</span>
           </h2>
           <p style={{ color: 'var(--text-2)', fontSize: '17px', lineHeight: 1.7, maxWidth: '440px', margin: '0 auto 56px' }}>
             Fully open source. No lock-in. Self-hostable. Developers keep 100% of everything.

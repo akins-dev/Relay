@@ -110,10 +110,10 @@ export default function ConnectPage() {
       <div style={{ marginBottom: '48px' }}>
         <div className="section-label" style={{ color: 'var(--accent)', marginBottom: '12px' }}>connect</div>
         <h1 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: '16px', fontFamily: 'var(--font-serif)' }}>
-          One connection.<br /><span style={{ color: 'var(--accent)' }}>Every tool.</span>
+          One connection.<br /><span style={{ color: 'var(--accent)' }}>Remote MCP first.</span>
         </h1>
         <p style={{ fontSize: '16px', color: 'var(--text-2)', lineHeight: 1.7, maxWidth: '480px' }}>
-          Add openMCP to your agent once. Get access to thousands of scanned MCP servers — discovered by intent, invoked through a 15-layer security proxy.
+          Add openMCP to your agent once. Discover network-reachable MCP servers by intent and invoke them through a security and trust layer. Local CLI support is coming next.
         </p>
       </div>
 
@@ -171,7 +171,7 @@ export default function ConnectPage() {
           { num: '01', title: 'Agent has a task', desc: 'Needs to send an email, create a PR, charge a card — any capability.' },
           { num: '02', title: 'Queries openMCP by intent', desc: 'GET /api/servers/search?q=send+transactional+email — returns verified servers with full tool schemas.' },
           { num: '03', title: 'Reads the inputSchema', desc: 'No guessing. The agent knows exactly what arguments each tool requires before calling.' },
-          { num: '04', title: 'Invokes through the proxy', desc: 'POST /api/proxy/sendgrid-mail/send_email — DLP scanned, audited, credentials never exposed.' },
+          { num: '04', title: 'Invokes through the proxy', desc: 'POST /api/proxy/sendgrid-mail/send_email — request DLP enforced, response issues surfaced, credentials never exposed.' },
         ].map(step => (
           <div key={step.num} style={{
             display: 'flex', gap: '16px', alignItems: 'flex-start',
@@ -199,7 +199,7 @@ export default function ConnectPage() {
           Security on every call
         </div>
         <div style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.7 }}>
-          Every server scanned across 15 layers before listing. Every proxy call DLP-checked, shell-injection blocked, PII-scanned, and audited.
+          Every server is scanned before listing. Every proxy call blocks sensitive request patterns, scans responses for issues, and writes an audit trail.
           Current OWASP MCP Top 10 coverage: ~70%.{' '}
           <a href="/registry" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Browse verified servers →</a>
         </div>
