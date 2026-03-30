@@ -1,40 +1,35 @@
 'use client';
 import { useEffect } from 'react';
-import Link from 'next/link';
+import Link          from 'next/link';
+import * as Sentry   from '@sentry/nextjs';
 
-export default function GlobalError({
-  error,
-  reset,
-}: {
+export default function GlobalError({ error, reset }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log to error tracking (console in dev, Sentry/similar in prod)
-    console.error('[openMCP] Unhandled error:', error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (
-    <div style={{
-      minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', gap: '20px', padding: '40px', textAlign: 'center',
-    }}>
-      <div style={{ fontSize: '32px' }}>⚠</div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>
-        Something went wrong
-      </h2>
-      <p style={{ color: 'var(--text-2)', fontSize: '15px', maxWidth: '400px', lineHeight: 1.7 }}>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-5 px-6 text-center">
+      <div className="text-3xl">⚠</div>
+      <h2 className="text-xl font-bold tracking-tight text-foreground">Something went wrong</h2>
+      <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
         An unexpected error occurred. The team has been notified.
         {error.digest && (
-          <span style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: '12px',
-            color: 'var(--text-3)', marginTop: '8px' }}>
-            Error ID: {error.digest}
+          <span className="mt-2 block font-mono text-xs text-muted-foreground/60">
+            ID: {error.digest}
           </span>
         )}
       </p>
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <button onClick={reset} className="btn btn-primary">Try again</button>
-        <Link href="/" className="btn btn-ghost" style={{ textDecoration: 'none' }}>Go home</Link>
+      <div className="flex gap-3">
+        <button onClick={reset} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dim">
+          Try again
+        </button>
+        <Link href="/" className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
+          Go home
+        </Link>
       </div>
     </div>
   );

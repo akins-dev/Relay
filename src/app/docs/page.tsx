@@ -67,11 +67,11 @@ Content-Type: application/json
   "body": "Thank you for your purchase!"
 }`,
 
-  openMcpVault: `# 1. Store your API key once in the dashboard
-# Go to https://openmcp.dev/dashboard/secrets
+  agentSecrets: `# 1. Store your API key once (never in a file)
+# Store once in openMCP Vault at openmcp.dev/dashboard/secrets
 
 # 2. Agent calls openMCP proxy
-# 3. Proxy resolves key from the openMCP vault
+# 3. Proxy resolves key from openMCP Vault
 # 4. Injects into upstream call
 # 5. Agent gets response — never saw the key`,
 
@@ -211,7 +211,7 @@ export default function DocsPage() {
           <P>
             openMCP solves this with a single endpoint. Your agent queries it by describing what it needs,
             gets back verified servers with full tool schemas, and invokes tools through a security proxy —
-            all at runtime, with zero pre-configuration.
+            at runtime by intent — never pre-loaded, never eating your context window.
           </P>
           <Callout>
             <p style={{ fontSize: '14px', fontStyle: 'italic', color: 'var(--accent)', fontFamily: 'var(--font-serif)', lineHeight: 1.6 }}>
@@ -301,23 +301,16 @@ export default function DocsPage() {
 
           <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>openMCP Vault — the complete solution</h3>
           <P>
-            For full zero-knowledge credential handling, use the built-in openMCP Vault.
-            Store credentials in your dashboard (never a file), and the proxy injects
-            credentials at the transport layer so your agent never sees the value.
+            Store credentials once in the openMCP Vault. They are encrypted with AES-256-GCM via Supabase
+            pgsodium. The proxy decrypts at call time and injects as an Authorization header. The raw
+            value is never stored in plaintext, never returned through the API, and never visible after
+            you save it — only the secret name is shown.
           </P>
-          <CodeBlock code={CODE.openMcpVault} label="openMCP Vault flow" />
+          <CodeBlock code={CODE.agentSecrets} label="openMCP Vault flow" />
           <P>
-            Configure openMCP Vault securely at:{' '}
+            Manage secrets:{' '}
             <a href="https://openmcp.dev/dashboard/secrets" style={{ color: 'var(--accent)' }}>openmcp.dev/dashboard/secrets</a>
-            {' '}— manage all your server credentials in one place.
-          </P>
-
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Dynamic Credential Prompting</h3>
-          <P>
-            Because the registry has thousands of servers, you won't know upfront which ones your agent will decide to use. 
-            When an agent tries to call a server that requires a credential you haven't set yet, the proxy intercepts it 
-            and returns a structured 401 response. Your agent will read this response and ask you for the specific API key it needs, 
-            giving you the exact name to use and a direct link to the dashboard.
+            {' '}— one command sets up both Claude Desktop and Cursor.
           </P>
 
           <Callout color="var(--bg-1)">
@@ -462,7 +455,7 @@ export default function DocsPage() {
             ['Do I need to register to use it?',
              'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
             ['How do credentials work if my MCP needs an API key?',
-             'You store the required API keys securely in the openMCP Vault via your dashboard (openmcp.dev/dashboard/secrets). The proxy injects them at the transport layer for zero-knowledge credential injection — credentials are never stored in any configuration file, and never in agent memory.'],
+             'API keys are stored in the openMCP Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.'],
             ['What is the difference between openMCP and Smithery?',
              'Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. openMCP is designed for agents to use autonomously at runtime. It also scans every server before listing (Smithery does not), and exposes a native MCP server so agents need zero configuration beyond one URL.'],
             ['Can I use openMCP with Antigravity?',

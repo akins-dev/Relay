@@ -26,8 +26,9 @@ export async function GET() {
 
 The secure, open-source MCP registry. ${activeServers} verified servers. Zero configuration.
 
-> "Agent development will never scale treating every tool integration as a 1:1 integration."
-> openMCP is the answer: one endpoint, every tool, discovered by intent.
+> "Every agent framework is hitting the same wall: 30 pre-loaded tools, shrinking context windows, humans configuring servers before the agent runs. openMCP removes that wall."
+>
+> Agents describe what they need. openMCP finds it, verifies it, and invokes it — at runtime. The context window cost is always exactly two tools.
 
 ## What you can do
 
@@ -49,25 +50,27 @@ The secure, open-source MCP registry. ${activeServers} verified servers. Zero co
 
 Most MCP servers require authentication. You NEVER pass credentials as tool arguments.
 
-### The openMCP vault (recommended)
+### The openMCP Vault
 
 Store your API key once at https://openmcp.dev/dashboard/secrets.
-The proxy injects it automatically on every call. Your agent never sees the raw value.
+The proxy decrypts and injects it at call time. You can view the secret name but never the value after saving. Your agent never sees the raw key at any point.
 
-Flow:
-1. User stores STRIPE_API_KEY in openMCP dashboard (one time)
-2. Agent calls: POST /api/proxy/stripe-payments/charge_card { "amount": 4900, "currency": "usd" }
-3. Proxy resolves STRIPE_API_KEY from vault, injects as Authorization header
-4. Stripe receives the authenticated call
-5. Agent gets the result — key never in context, never in arguments, never in logs
+**Setup flow (one time per service):**
+1. Get your API key from the service's dashboard
+2. Go to https://openmcp.dev/dashboard/secrets
+3. Set Server: the server name, Name: the suggested name from the 401 response, Value: your key
+4. Tell your agent to proceed — works automatically forever after
 
-If a tool call returns 401, it means no credential is stored yet. The response includes
-a direct link to the secrets dashboard with the exact name to use.
+**Call flow (every invocation):**
+1. Agent calls POST /api/proxy/stripe-payments/charge_card { "amount": 4900, "currency": "usd" }
+2. Proxy looks up STRIPE_PAYMENTS_API_KEY from vault (AES-256-GCM encrypted, pgsodium)
+3. Decrypts and injects as Authorization header
+4. Upstream server receives authenticated call
+5. Response returned — key never touched agent memory, logs, or request body
 
-### What not to do
+**If a call returns 401:** the response includes the exact secret name to use and a direct dashboard link.
 
-Never pass API keys as tool arguments. The DLP layer will block the call with an explanation.
-Never put credentials in the system prompt. They end up in logs and conversation history.
+**Never do this:** pass API keys as tool arguments. The DLP layer blocks it with an explanation.
 
 ## Finding tools
 
@@ -201,6 +204,14 @@ GET https://openmcp.dev/api/mcp
 Returns full endpoint map, all security layers, and this prompt template.
 
 ---
+
+## Works with CLI-first frameworks
+
+If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): openMCP integrates with one config line. You get runtime discovery and security on top of whatever execution model you already use. No ceremony required.
+
+```json
+{ "mcpServers": { "openmcp": { "url": "https://openmcp.dev/api/mcp-server" } } }
+```
 
 ## Coming soon
 

@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Inter loaded via next/font in layout.tsx — zero layout shift */
 /* Lora + JetBrains Mono via Google Fonts — editorial headings and code */
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -6,6 +10,28 @@
 
 :root {
   /* Light backgrounds — warm near-white */
+  /* ── shadcn/ui CSS variables (HSL format) ─────────────────────────────── */
+  --background:   34 20% 99%;
+  --foreground:   20 40% 10%;
+  --card:         0 0% 100%;
+  --card-foreground: 20 40% 10%;
+  --popover:      0 0% 100%;
+  --popover-foreground: 20 40% 10%;
+  --primary:      17 88% 40%;        /* brand orange #c2440c */
+  --primary-foreground: 0 0% 100%;
+  --secondary:    30 15% 96%;
+  --secondary-foreground: 20 25% 30%;
+  --muted:        30 15% 96%;
+  --muted-foreground: 20 15% 55%;
+  --accent:       17 88% 40%;
+  --accent-foreground: 0 0% 100%;
+  --destructive:  0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border:       30 20% 88%;
+  --input:        30 20% 88%;
+  --ring:         17 88% 40%;
+  --radius:       8px;
+
   --bg:          #fdfcfb;
   --bg-1:        #f9f7f5;
   --bg-2:        #f4f1ee;

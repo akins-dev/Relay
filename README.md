@@ -4,7 +4,7 @@
 
 > "Agent development will never scale treating every tool integration as a 1:1 integration."
 
-One line connects any AI agent to thousands of scanned MCP servers — discovered by intent, invoked through a 15-layer security proxy, zero pre-configuration.
+Break the 30-tool limit. Any agent discovers thousands of scanned MCP servers at runtime — by intent, through a 15-layer security proxy, zero pre-configuration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-e8673a.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
@@ -14,7 +14,7 @@ One line connects any AI agent to thousands of scanned MCP servers — discovere
 
 ## Core vision
 
-Agents should not need to know which tools exist before they start. They should describe what they need and get it — securely, at runtime, without pre-configuration.
+Today's agents are bottlenecked at 30 tools, pre-loaded by a human before the agent ever runs, competing for context window space with every tool that gets added. Nobody solved this — universal MCP servers still pre-load a fixed catalog. openMCP removes the constraint entirely: agents describe what they need at runtime, get exactly those tools with full schemas, invoke through a 15-layer security proxy, and never pre-load anything. The context window cost is always exactly two tools — search and invoke.
 
 openMCP is the registry layer: one endpoint, semantic discovery, full tool schemas returned, every server scanned across 15 security layers before listing, every call proxied through DLP and injection detection.
 
@@ -61,15 +61,30 @@ curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
 
 ---
 
-## Credentials — use openMCP Vault
+## Credentials — openMCP Vault
 
-Most MCP servers require API keys. Never paste credentials into a config file or a conversation.
+Most MCP servers require API keys. Store them once in the openMCP Vault. The proxy decrypts and injects at call time — your agent never sees the raw value. You can view the secret name but not the value after saving.
 
-**openMCP Vault** securely stores API keys in your dashboard. The proxy resolves and injects them as Authorization headers at the transport layer. Agent memory never sees raw values.
+**One-time setup per service:**
 
-**Dynamic Credential Prompting:** Because agents discover servers dynamically, you don't need to configure keys upfront. When your agent calls a server missing a required credential, openMCP's proxy returns a structured 401 response. Your agent will read this response and proactively ask you for the specific API key it needs, providing a direct dashboard link to securely store it.
+1. Get your API key from the service dashboard
+2. Go to [openmcp.dev/dashboard/secrets](https://openmcp.dev/dashboard/secrets)
+3. Enter the server name, the suggested variable name (shown in any 401 response), and your key
+4. Done — every future call through openMCP injects it automatically
 
-You can manage all your API keys at https://openmcp.dev/dashboard/secrets.
+**What happens on every call:**
+
+```
+Agent: POST /api/proxy/stripe-payments/charge_card {"amount": 4900}
+  ↓
+openMCP Proxy: decrypts STRIPE_PAYMENTS_API_KEY from vault (AES-256-GCM)
+  ↓
+Upstream server: receives Authorization: Bearer sk_live_...
+  ↓
+Agent: gets {"charge_id": "ch_..."} — key never in context, logs, or arguments
+```
+
+If a call returns 401, the response includes the exact secret name and a direct dashboard link.
 
 ---
 
@@ -119,20 +134,11 @@ bun install   # or: npm install
 
 ### 2. Supabase
 
-Create a project at [supabase.com](https://supabase.com).
+Create a project at [supabase.com](https://supabase.com). Run migrations in order in the SQL Editor:
 
-**Option A: Supabase CLI (Recommended)**
-```bash
-supabase link --project-ref your-project-ref
-supabase db push
 ```
-
-**Option B: SQL Editor**
-If you prefer the web UI, run these migrations in order in the Supabase SQL Editor:
-
-```text
 supabase/migrations/001_initial_schema.sql      ← full schema, RLS, FTS, RPCs
-supabase/migrations/002_seed_data.sql           ← 7 demo servers for local dev (sign up first)
+supabase/migrations/002_seed_data.sql           ← 8 demo servers for local dev (sign up first)
 supabase/migrations/003_source_and_cve.sql      ← source provenance + CVE fields
 supabase/migrations/004_mcp_server_and_schemas.sql ← tool schemas + mcp_connections
 supabase/migrations/005_metering.sql            ← per-call metering + revenue views

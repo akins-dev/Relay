@@ -1,34 +1,25 @@
-import Link from 'next/link';
+import Link          from 'next/link';
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = {
-  title: '404 — Page Not Found',
-};
+export const metadata: Metadata = { title: '404 — Page Not Found' };
 
 export default function NotFound() {
   return (
-    <div style={{
-      minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', gap: '20px', padding: '40px', textAlign: 'center',
-    }}>
-      <div style={{
-        fontSize: '13px', fontFamily: 'var(--mono)', color: 'var(--accent)',
-        background: 'var(--accent-bg)', padding: '6px 14px', borderRadius: '20px',
-        border: '1px solid rgba(194,68,12,0.2)',
-      }}>404</div>
-      <h1 style={{ fontSize: '28px', fontWeight: 700, letterSpacing: '-0.02em',
-        fontFamily: 'var(--font-serif)', color: 'var(--text)' }}>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-5 px-6 text-center">
+      <span className="rounded-full border border-brand/20 bg-brand-bg px-3 py-1 font-mono text-xs font-semibold text-brand">
+        404
+      </span>
+      <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground">
         Page not found
       </h1>
-      <p style={{ color: 'var(--text-2)', fontSize: '15px', maxWidth: '400px', lineHeight: 1.7 }}>
-        This page does not exist. If you followed a link from the registry,
-        the server may have been removed or renamed.
+      <p className="max-w-sm text-[15px] leading-relaxed text-muted-foreground">
+        This page does not exist. If you followed a link from the registry, the server may have been removed or renamed.
       </p>
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <Link href="/registry" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+      <div className="flex gap-3">
+        <Link href="/registry" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dim">
           Browse Registry
         </Link>
-        <Link href="/" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+        <Link href="/" className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
           Go home
         </Link>
       </div>

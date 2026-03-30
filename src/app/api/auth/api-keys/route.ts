@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createHash, randomBytes } from 'crypto';
+import { z } from 'zod';
+import { zodError } from '@/lib/api';
+
+const CreateKeySchema = z.object({
+  name: z.string().min(1).max(64).default('Default Key'),
+});
 
 export async function POST(req: NextRequest) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { name = 'Default Key' } = await req.json().catch(() => ({}));
+  let body: z.infer<typeof CreateKeySchema>;
+  try { body = CreateKeySchema.parse(await req.json().catch(() => ({}))); }
+  catch (e) { return zodError(e); }
+  const { name } = body;
   const { count } = await supabase.from('api_keys').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
   if ((count ?? 0) >= 10) return NextResponse.json({ error: 'Maximum 10 API keys' }, { status: 429 });
 

@@ -26,6 +26,16 @@ BEGIN
     schema_hash, last_scanned_at
   ) VALUES
   (
+    'agentsecrets', 'AgentSecrets',
+    'Zero-knowledge credential proxy for AI agents. Secrets injected at transport layer — agent memory never sees raw credentials.',
+    'AgentSecrets is the credential security layer for the AI agent economy. Agents call tools normally — no credentials enter context, logs, or memory.',
+    seed_user_id, '1.0.0', 'https://api.agentsecrets.dev', 'https://github.com/the-17/agentsecrets',
+    ARRAY['security','credentials','proxy','zero-knowledge'],
+    ARRAY['inject_credential','rotate_secret','audit_log','bind_domain','dlp_scan'],
+    'active', TRUE, 1102, 298000, 8900, 18, 100.00, 98.00, 'passed', '[]',
+    encode(sha256('agentsecrets-1.0.0'::bytea), 'hex'), NOW()
+  ),
+  (
     'stripe-payments', 'Stripe Payments',
     'Accept payments, manage subscriptions, issue refunds, and query transaction history.',
     'Full Stripe API coverage for AI agents. Charge cards, manage customers, handle subscriptions, process refunds.',
@@ -93,5 +103,5 @@ BEGIN
     encode(sha256('filesystem-ops-2.3.1'::bytea), 'hex'), NOW()
   );
 
-  RAISE NOTICE 'Seeded 7 servers successfully.';
+  RAISE NOTICE 'Seeded 8 servers successfully.';
 END $$;

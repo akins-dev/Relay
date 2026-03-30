@@ -1,127 +1,124 @@
 'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAuth } from '@/components/AuthProvider';
+import { useState }        from 'react';
+import Link                from 'next/link';
+import { usePathname }     from 'next/navigation';
+import { useAuth }         from '@/components/AuthProvider';
+import { cn }              from '@/lib/cn';
+import { Menu, X }         from 'lucide-react';
+
+const navLinks = [
+  { href: '/registry', label: 'Registry' },
+  { href: '/connect',  label: 'Connect'  },
+  { href: '/docs',     label: 'Docs'     },
+  { href: '/publish',  label: 'Publish'  },
+];
 
 export function Nav() {
   const { user, loading, logout } = useAuth();
   const path = usePathname();
-  const active = (href: string) => path.startsWith(href);
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const navLinks = [
-    { href: '/registry', label: 'Registry' },
-    { href: '/connect',  label: 'Connect'  },
-    { href: '/docs',     label: 'Docs'     },
-    { href: '/publish',  label: 'Publish'  },
-  ];
+  const isActive = (href: string) => path.startsWith(href);
+  const [open, setOpen] = useState(false);
 
   return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 100,
-      background: 'rgba(253,252,251,0.95)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      borderBottom: '1px solid var(--border)',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 28px', height: '60px', maxWidth: '1200px', margin: '0 auto',
-      }}>
+    <nav className="sticky top-0 z-50 border-b border-border bg-[rgba(253,252,251,0.95)] backdrop-blur-xl">
+      <div className="mx-auto flex h-15 max-w-[1200px] items-center justify-between px-6 sm:px-8">
+
         {/* Logo */}
-        <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          <div style={{
-            width: '30px', height: '30px',
-            background: 'linear-gradient(135deg,#e8673a,#c9552e)',
-            borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '14px', fontWeight: 800, color: '#fff',
-            boxShadow: '0 0 16px rgba(232,103,58,0.25)',
-          }}>⬡</div>
-          <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', letterSpacing: '-0.03em' }}>
-            open<span style={{ color: 'var(--accent)' }}>MCP</span>
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 no-underline">
+          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-gradient-to-br from-[#e8673a] to-[#c9552e] text-sm font-black text-white shadow-[0_0_16px_rgba(232,103,58,0.25)]">
+            ⬡
+          </div>
+          <span className="text-[15px] font-bold tracking-tight text-foreground">
+            open<span className="text-brand">MCP</span>
           </span>
-          <span className="badge badge-green" style={{ marginLeft: '2px', opacity: .8 }}>v0.1</span>
+          <span className="hidden rounded-full border border-brand/20 bg-brand-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand sm:inline">
+            v0.1
+          </span>
         </Link>
 
-        {/* Desktop nav links */}
-        <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {/* Desktop links */}
+        <div className="hidden items-center gap-1 sm:flex">
           {navLinks.map(l => (
-            <Link key={l.href} href={l.href} style={{
-              textDecoration: 'none', padding: '6px 14px', borderRadius: '8px',
-              fontSize: '13px', fontWeight: active(l.href) ? 600 : 400,
-              color: active(l.href) ? 'var(--text)' : 'var(--text-3)',
-              background: active(l.href) ? 'var(--bg-2)' : 'transparent',
-              transition: 'color .15s, background .15s',
-            }}
-              onMouseEnter={e => { if (!active(l.href)) (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}
-              onMouseLeave={e => { if (!active(l.href)) (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; }}
-            >{l.label}</Link>
+            <Link
+              key={l.href}
+              href={l.href}
+              className={cn(
+                'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                isActive(l.href)
+                  ? 'bg-muted font-semibold text-foreground'
+                  : 'font-normal text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {l.label}
+            </Link>
           ))}
-
-          {/* GitHub */}
-          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener"
-            style={{ textDecoration: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '13px', color: 'var(--text-3)', transition: 'color .15s' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'}
-          >GitHub</a>
         </div>
 
         {/* Desktop auth */}
-        <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {!loading && (
-            user ? (
-              <>
-                <Link href="/dashboard" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Dashboard</Link>
-                <button onClick={() => logout().then(() => window.location.href = '/')} className="btn btn-ghost btn-sm">Sign out</button>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Sign in</Link>
-                <Link href="/publish" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>Publish</Link>
-              </>
-            )
+        <div className="hidden items-center gap-2 sm:flex">
+          {loading ? null : user ? (
+            <>
+              <Link href="/dashboard" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+                Dashboard
+              </Link>
+              <button onClick={logout} className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+                Sign in
+              </Link>
+              <Link href="/login?mode=register" className="rounded-lg bg-brand px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-dim">
+                Get started
+              </Link>
+            </>
           )}
         </div>
 
         {/* Mobile hamburger */}
-        <button className="nav-mobile" onClick={() => setMenuOpen(m => !m)} style={{
-          background: 'none', border: '1px solid var(--border-2)', borderRadius: '8px',
-          padding: '8px 10px', cursor: 'pointer', color: 'var(--text-2)',
-          display: 'none', // shown via CSS
-        }}>
-          {menuOpen ? '✕' : '☰'}
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
+          aria-label="Toggle menu"
+        >
+          {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {/* Mobile dropdown */}
-      {menuOpen && (
-        <div style={{
-          borderTop: '1px solid var(--border)',
-          background: 'var(--surface)',
-          padding: '12px 20px 20px',
-          display: 'flex', flexDirection: 'column', gap: '4px',
-        }}>
-          {navLinks.map(l => (
-            <Link key={l.href} href={l.href}
-              onClick={() => setMenuOpen(false)}
-              style={{
-                textDecoration: 'none', padding: '10px 12px', borderRadius: '8px',
-                fontSize: '14px', fontWeight: active(l.href) ? 600 : 400,
-                color: active(l.href) ? 'var(--text)' : 'var(--text-2)',
-                background: active(l.href) ? 'var(--bg-2)' : 'transparent',
-              }}
-            >{l.label}</Link>
-          ))}
-          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener"
-            style={{ textDecoration: 'none', padding: '10px 12px', fontSize: '14px', color: 'var(--text-3)' }}
-          >GitHub</a>
-          <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />
-          {!loading && (user
-            ? <button onClick={() => { logout(); setMenuOpen(false); }} className="btn btn-ghost btn-sm">Sign out</button>
-            : <Link href="/login" onClick={() => setMenuOpen(false)} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', textAlign: 'center' }}>Sign in</Link>
-          )}
+      {/* Mobile drawer */}
+      {open && (
+        <div className="border-t border-border bg-background px-6 py-4 sm:hidden">
+          <div className="flex flex-col gap-1">
+            {navLinks.map(l => (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                  isActive(l.href)
+                    ? 'bg-muted font-semibold text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <div className="my-2 h-px bg-border" />
+            {!loading && (user ? (
+              <>
+                <Link href="/dashboard" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground">Dashboard</Link>
+                <button onClick={() => { logout(); setOpen(false); }} className="rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground">Sign out</button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground">Sign in</Link>
+                <Link href="/login?mode=register" onClick={() => setOpen(false)} className="rounded-lg bg-brand px-3 py-2.5 text-sm font-medium text-white">Get started</Link>
+              </>
+            ))}
+          </div>
         </div>
       )}
     </nav>

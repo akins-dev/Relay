@@ -12,7 +12,7 @@ export async function GET() {
     description: [
       'Open-source security layer for the MCP ecosystem.',
       'Ingests from five sources: official MCP registry, Smithery, Glama, PulseMCP, GitHub. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
-      'Every server is scanned through 12 security layers before listing.',
+      'Every server is scanned through 15 security layers before listing. Runtime proxy adds 7 additional layers on every call.',
       'Agents invoke tools through the proxy — DLP, schema pinning, and audit trails on every call.',
     ].join(' '),
     why: {
@@ -46,7 +46,7 @@ export async function GET() {
         'npm CVE scan — package.json scanned against npm audit API for supply chain attacks',
       ],
       runtime_proxy: [
-        'L4: DLP — 11 credential patterns blocked on request AND response',
+        'L4: DLP — 11 credential patterns blocked on request AND response. Credentials auto-injected from openMCP Vault — agents never handle raw keys.',
         'L9: Sampling inspection — injection patterns in MCP server-initiated sampling requests',
         'L10: PII detection — email, phone, SSN, card numbers blocked in responses',
         'L11: URL elicitation safety — javascript:, data:, file://, localhost, SSRF blocked',
@@ -57,20 +57,21 @@ export async function GET() {
         'L6: Supabase RLS — database-level row access, not just app-level',
         'L7: OAuth 2.1 + PKCE — Supabase Auth handles PKCE on every flow',
       ],
-      roadmap: [
-        'L2: WASM sandbox — pre-listing sandboxed execution for runtime-only payloads',
-        'Shell injection detection — OS command patterns in tool arguments (43% of real CVEs)',
-        'Indirect prompt injection — instruction-like language in tool response data',
+      coming_soon: [
+        'L2: WASM sandbox — pre-listing sandboxed execution for runtime-only payloads (~85% OWASP coverage)',
+        'Per-user OAuth delegation — connect GitHub, Gmail, Slack, Stripe to your account',
       ],
     },
     agent_usage: {
       system_prompt: [
-        'You have access to the openMCP — a security-verified catalog of MCP servers.',
-        'Every server has been scanned for prompt injection, credential leakage, schema drift, and supply chain attacks.',
-        'Search: GET /api/servers/search?q={your intent}',
+        'You have access to openMCP — a security-verified registry of thousands of MCP servers.',
+        'Every server is scanned across 15 layers before listing. Every proxy call is inspected.',
+        'Read https://openmcp.dev/openmcp.md for full documentation before your first tool call.',
+        'Search: GET /api/servers/search?q={your intent}&limit=5',
         'Invoke: POST /api/proxy/{serverName}/{toolName}',
+        'If a tool call returns 401: the server needs a credential. The response includes setup_url pointing to your dashboard.',
         'Never assume a tool does not exist. Always search first.',
-        'Trust scores are returned with every search result — prefer servers with score > 80.',
+        'Prefer servers with trust_score > 80 for production use.',
       ].join('\n'),
       trust_score_guide: 'Score 90-100: verified, stable, high uptime. 70-89: good signal. Below 70: use with caution.',
     },

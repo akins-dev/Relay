@@ -1,4 +1,10 @@
 import { safeCompare } from '@/lib/utils';
+import { z } from 'zod';
+import { zodError } from '@/lib/api';
+
+const IngestSchema = z.object({
+  source: z.enum(['all','official','smithery','glama','pulsemcp','github']).default('all'),
+});
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import {
@@ -17,7 +23,10 @@ function isAuthorized(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { source = 'all' } = await req.json().catch(() => ({}));
+  let body: z.infer<typeof IngestSchema>;
+  try { body = IngestSchema.parse(await req.json().catch(() => ({}))); }
+  catch (e) { return zodError(e); }
+  const { source } = body;
   const svc = createServiceClient();
   const startedAt = new Date().toISOString();
   const results: Record<string, any> = {};

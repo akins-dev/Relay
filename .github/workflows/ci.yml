@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint + Typecheck + Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      # Dummy values — tests mock Supabase, no real DB needed
+      NEXT_PUBLIC_SUPABASE_URL:      https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder_anon_key
+      SUPABASE_SERVICE_ROLE_KEY:     placeholder_service_key
+      CRON_SECRET:                   ci-test-cron-secret
+      TOKEN_SECRET:                  ci-test-token-secret-32chars-min
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx next lint --max-warnings 0
+
+      - name: Run tests
+        run: npx jest --ci --coverage --coverageReporters=text-summary
+        env:
+          NODE_ENV: test
+
+      - name: Coverage gate (security.ts must be 100%)
+        run: |
+          npx jest --ci --coverage --coverageThreshold='{"./src/lib/security.ts":{"lines":90}}' \
+            --testPathPattern=security

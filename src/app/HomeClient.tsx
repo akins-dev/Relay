@@ -226,7 +226,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 color: 'var(--text-2)',
                 lineHeight: 1.7,
               }}>
-                Your AI agent can now find and use any tool it needs — automatically. thousands of scanned MCP servers, discovered by intent, invoked through a security proxy. Zero pre-configuration. Always free.
+                Your agent is pre-loaded with 30 tools. Every tool you add shrinks the context window. openMCP removes that constraint — thousands of verified servers, discovered by intent at runtime, invoked through a security proxy. Always free.
               </p>
             </div>
 

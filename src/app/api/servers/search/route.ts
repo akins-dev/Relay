@@ -3,40 +3,43 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 
-// ── Credential setup manual — injected into search results when auth is required ─
+// ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
 // Suggested secret names are derived from the server name for consistency.
+/**
+ * Build credential setup instructions for a server that requires auth.
+ * Returned in every search result — gives agents everything needed to
+ * guide the user through vault configuration.
+ *
+ * The openMCP Vault is the only credential storage mechanism.
+ * Users store their key once. The proxy injects it on every call.
+ * The user can view the secret name but never the value after storage.
+ */
 function buildCredentialSetup(serverName: string, authType: string) {
   if (authType === 'none') return null;
 
-  // Derive canonical secret name for this server
   const base       = serverName.toUpperCase().replace(/-/g, '_').replace(/[^A-Z0-9_]/g, '');
   const apiKeyName = `${base}_API_KEY`;
-  const tokenName  = `${base}_TOKEN`;
 
   return {
-    requires_user_auth: authType !== 'none',
-    auth_type: authType,
+    requires_credential: authType !== 'none',
+    auth_type:           authType,
+    suggested_secret_name: apiKeyName,
 
-    // ── PRIMARY: openMCP built-in vault ────────────────────────────────────
-    // User stores their key in openMCP once. Proxy injects it on every call.
-    // No local setup required. Works on all platforms (Claude Desktop, Cursor, etc.)
-    openmcp_vault: {
-      description: 'Store your credential in openMCP once. The proxy injects it automatically on every call — your agent never sees the raw value.',
-      how_it_works: [
-        '1. Go to: https://openmcp.dev/dashboard/secrets',
-        `2. Click "Add Secret"`,
-        `3. Server name: ${serverName}`,
-        `4. Secret name: ${apiKeyName}`,
-        `5. Value: your API key from the service dashboard`,
-        '6. Done — all future calls through openMCP inject it automatically',
+    // Complete setup instructions — agent presents these to the user
+    setup: {
+      description: `${serverName} requires an API key. Store it once in the openMCP Vault — the proxy injects it on every future call automatically. You can view the secret name but not the value after saving.`,
+      steps: [
+        `1. Get your API key from the ${serverName} service dashboard`,
+        `2. Open: https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+        `3. Paste your key in the "Value" field and click "Store securely"`,
+        `4. Tell your agent to proceed — this call will work automatically from now on`,
       ],
-      direct_link: `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
-      suggested_secret_name: apiKeyName,
+      dashboard_url: `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
     },
 
-    // After setup, the flow is:
-    what_happens: `Agent calls tool → openMCP proxy → resolves ${apiKeyName} from vault → injects as Authorization header → upstream server → API → response. Agent never sees the key.`,
+    // What happens after setup
+    flow: `Agent calls tool → openMCP proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory or request arguments.`,
   };
 }
 
@@ -124,8 +127,7 @@ export async function GET(req: NextRequest) {
           ? 'This server is public — no credentials required.'
           : 'Pass only business data as arguments. The server manages its own credentials. Never include API keys in tool arguments.',
 
-        // Credential setup info — present this to the user if they
-        // need to configure credentials for this specific server
+        // Credential setup — vault-based, presented to agent for user guidance
         credential_setup: secretsTutorial,
 
         // How to invoke
