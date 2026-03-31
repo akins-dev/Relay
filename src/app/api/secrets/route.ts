@@ -2,9 +2,9 @@
  * openMCP — User Secrets API
  *
  * ⚠️  BEFORE USING THIS API IN PRODUCTION:
- * Disable Supabase statement logging first.
- * Dashboard → Database → Database Settings → Log Settings → Statement log level: none
- * Without this, secrets will appear in your Supabase logs in plaintext.
+ * Ensure your Supabase project does not log data statements with SQL values.
+ * Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl or none
+ * This is a permanent project setting requirement, not just a migration-time step.
  *
  * POST   /api/secrets        — store a new secret
  * GET    /api/secrets        — list secrets (metadata only, never values)

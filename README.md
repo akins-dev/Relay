@@ -155,7 +155,7 @@ supabase/migrations/012_oauth_connections.sql   ← per-user OAuth connections s
 
 > **Note on 002:** Seed data is for local development only — it gives you 8 demo servers so the UI is not empty while developing. Once ingest runs, seeded servers are replaced by real data. You can skip 002 in production.
 >
-> **Note on 011:** Read the header first and confirm statement logging is not set to log data statements before enabling vault-backed secret storage.
+> **Note on 011:** Read the header first and confirm your Supabase project keeps statement logging at `ddl` or `none`. This is an ongoing operational requirement for any route that stores secrets or OAuth tokens, not just a one-time migration concern.
 
 ### 3. Environment
 

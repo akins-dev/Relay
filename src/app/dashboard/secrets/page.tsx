@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 // ── ⚠️  CRITICAL REMINDER ─────────────────────────────────────────────────────
-// Before this page can store secrets safely, Supabase statement logging
-// must be disabled. See migration 011 header for instructions.
-// Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl
+// Before this page can store secrets safely, your Supabase project must not
+// log data statements with SQL values. See migration 011 header for details.
+// Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl or none
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Secret {
