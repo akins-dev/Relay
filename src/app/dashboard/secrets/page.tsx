@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 // ── ⚠️  CRITICAL REMINDER ─────────────────────────────────────────────────────
 // Before this page can store secrets safely, your Supabase project must not
 // log data statements with SQL values. See migration 011 header for details.
-// Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl or none
+// Verify from SQL Editor using pg_settings: log_statement = ddl or none,
+// pgaudit.log = none, and pgaudit.log_parameter = off.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Secret {

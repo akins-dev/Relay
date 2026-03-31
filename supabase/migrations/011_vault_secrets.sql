@@ -7,8 +7,16 @@
 -- Before running this migration, confirm your Supabase project is NOT configured
 -- to log data statements that include SQL values:
 --
---   Supabase Dashboard → Database → Database Settings → Log Settings
---   Set "Statement log level" to: ddl or none
+--   Verify from SQL Editor with:
+--
+--     SELECT name, setting
+--     FROM pg_settings
+--     WHERE name IN ('log_statement', 'pgaudit.log', 'pgaudit.log_parameter');
+--
+--   Safe baseline for openMCP:
+--     log_statement = 'ddl' or 'none'
+--     pgaudit.log = 'none'
+--     pgaudit.log_parameter = 'off'
 --
 --   WHY: When your application stores a secret or OAuth token, the SQL statement
 --   can contain the plaintext value. If statement logging captures data

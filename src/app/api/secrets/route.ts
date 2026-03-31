@@ -3,7 +3,8 @@
  *
  * ⚠️  BEFORE USING THIS API IN PRODUCTION:
  * Ensure your Supabase project does not log data statements with SQL values.
- * Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl or none
+ * Verify from SQL Editor via pg_settings: log_statement should be ddl or none,
+ * pgaudit.log should be none, and pgaudit.log_parameter should be off.
  * This is a permanent project setting requirement, not just a migration-time step.
  *
  * POST   /api/secrets        — store a new secret
