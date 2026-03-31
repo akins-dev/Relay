@@ -39,6 +39,9 @@ WHERE transport = 'unknown';
 -- Agents should only discover servers they can actually invoke through the proxy.
 -- stdio servers are listed in the human browse UI but not returned in search.
 
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.search_servers(
   query_text   TEXT,
   result_limit INTEGER DEFAULT 5,

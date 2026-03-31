@@ -147,9 +147,15 @@ supabase/migrations/005_metering.sql            ← per-call metering + revenue 
 supabase/migrations/006_analytics.sql           ← analytics views (server health, platform KPIs)
 supabase/migrations/007_tool_policies.sql       ← user-controlled CRUD permission layer
 supabase/migrations/008_anomaly_detection.sql   ← suspicious traffic views
+supabase/migrations/009_transport_and_stdio_filter.sql ← transport metadata + stdio exclusion in agent search
+supabase/migrations/010_auth_transparency_and_audit_public.sql ← auth metadata + public transparency views
+supabase/migrations/011_vault_secrets.sql       ← vault-backed secret storage (read header before running)
+supabase/migrations/012_oauth_connections.sql   ← per-user OAuth connections stored in vault
 ```
 
 > **Note on 002:** Seed data is for local development only — it gives you 8 demo servers so the UI is not empty while developing. Once ingest runs, seeded servers are replaced by real data. You can skip 002 in production.
+>
+> **Note on 011:** Read the header first and confirm statement logging is not set to log data statements before enabling vault-backed secret storage.
 
 ### 3. Environment
 

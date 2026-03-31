@@ -100,6 +100,8 @@ GRANT SELECT ON public.platform_transparency TO anon, authenticated;
 -- ── Update search RPC to include auth_type ────────────────────────────────────
 -- Agents need to know upfront whether they need to set up auth
 -- before attempting to call a tool
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.search_servers(
   query_text    TEXT,
   result_limit  INTEGER DEFAULT 5,
