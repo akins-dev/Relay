@@ -8,6 +8,7 @@ Canonical tracker for the remote-first launch, future CLI bridge, and claim-alig
 - `AgentSecrets` remains a separate TheSeventeen product and is the planned credential substrate for `openMCP CLI`.
 - Remote HTTP/SSE/StreamableHTTP support is the launch surface today.
 - Local `stdio` support is intentionally deferred to `openMCP CLI`.
+- Working rebrand direction is documented in [agentrail-brand-identity.md](/home/akins-dev/projects/mcp-registry-next/docs/agentrail-brand-identity.md).
 
 ## Launch Phases
 
@@ -92,6 +93,15 @@ Must be true before announcement:
 - [ ] Write the CLI follow-up announcement.
 - [ ] Build a remote-first demo: search -> trust selection -> secure invoke.
 - [ ] Build a CLI demo: search -> local spawn -> AgentSecrets-backed auth -> tool result.
+
+### Brand and website
+
+- [x] Create a working brand identity doc for the rename direction.
+- [ ] Confirm the final product name after availability/trademark review.
+- [ ] Translate the chosen brand system into site-wide design tokens.
+- [ ] Decide the website information architecture for the rename launch.
+- [ ] Migrate shared UI primitives to Tailwind before page-by-page redesign.
+- [ ] Redesign the homepage under the new brand.
 
 ## Risks / Claim Gaps
 
@@ -178,3 +188,4 @@ These are the highest-priority implementation fixes identified during the pre-ma
 - Launch order: `openMCP` remote first, `openMCP CLI` second.
 - Credential strategy for CLI: use AgentSecrets rather than building a second credential subsystem inside openMCP.
 - Positioning at launch: discovery and secure invocation for remote/network-reachable MCP servers.
+- Working rename direction: `Agentrail`.
