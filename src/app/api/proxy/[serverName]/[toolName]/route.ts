@@ -13,6 +13,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
 import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
+import { createHash }                        from 'crypto';
 import {
   dlpScan, samplingDlpScan, piiScan,
   checkElicitationUrl, contextLeakScan,
@@ -29,6 +30,33 @@ function secretVariants(serverName: string): string[] {
 const ua  = (r: NextRequest) => r.headers.get('user-agent') ?? '';
 const xip = (r: NextRequest) => extractIp(r);
 
+async function resolveApiKeyUser(
+  req: NextRequest,
+  svc: ReturnType<typeof createServiceClient>
+): Promise<{ userId: string | null; keyId: string | null }> {
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return { userId: null, keyId: null };
+
+  const token = authHeader.slice(7);
+  if (!token.startsWith('sk_mcp_')) return { userId: null, keyId: null };
+
+  const keyHash = createHash('sha256').update(token).digest('hex');
+  const { data } = await svc
+    .from('api_keys')
+    .select('id, user_id')
+    .eq('key_hash', keyHash)
+    .single();
+
+  if (!data) return { userId: null, keyId: null };
+
+  svc.from('api_keys')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('id', data.id)
+    .catch(() => {});
+
+  return { userId: data.user_id, keyId: data.id };
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { serverName: string; toolName: string } }
@@ -36,10 +64,21 @@ export async function POST(
   const { serverName, toolName } = params;
   const start    = Date.now();
   const supabase = createClient();
+  const svc      = createServiceClient();
   const ip       = xip(req);
+  const apiKey   = await resolveApiKeyUser(req, svc);
+  const { data: { user: sessionUser } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+
+  if (sessionUser && apiKey.userId && sessionUser.id !== apiKey.userId) {
+    return NextResponse.json({ error: 'Authorization API key does not match the current session' }, { status: 401 });
+  }
+
+  const callerUserId = sessionUser?.id ?? apiKey.userId;
 
   // ── Rate limit ───────────────────────────────────────────────────────────────
-  const rl = await rateLimit(`proxy:${ip}`, LIMITS.proxy);
+  const rlKey    = callerUserId ? `proxy:user:${callerUserId}` : `proxy:ip:${ip}`;
+  const rlConfig = callerUserId ? LIMITS.proxyAuth : LIMITS.proxy;
+  const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded', hint: 'Add Authorization: Bearer sk_mcp_... for 200/min' },
@@ -50,7 +89,7 @@ export async function POST(
   // ── Server lookup — also fetches auth_type for 401 handling ─────────────────
   const { data: server, error: serverErr } = await supabase
     .from('servers')
-    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url')
+    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url, oauth_authorization_url')
     .eq('name', serverName)
     .eq('status', 'active')
     .single();
@@ -76,9 +115,6 @@ export async function POST(
   if (rawBody.length > 1_000_000) {
     return NextResponse.json({ error: 'Request body exceeds 1 MB limit' }, { status: 413 });
   }
-
-  const svc = createServiceClient();
-
   // ── HMAC confirm token (replaces plain base64 — forgeable) ──────────────────
   let confirmationVerified = false;
   const confirmHeader = req.headers.get('x-confirm-token');
@@ -87,13 +123,10 @@ export async function POST(
     confirmationVerified = !!(decoded?.server === serverName && decoded?.tool === toolName);
   }
 
-  // ── Caller identity ──────────────────────────────────────────────────────────
-  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-
   // ── Tool policy ──────────────────────────────────────────────────────────────
-  if (user) {
+  if (callerUserId) {
     const { data: policy } = await svc.rpc('check_tool_policy', {
-      p_user_id: user.id, p_server: serverName, p_tool: toolName,
+      p_user_id: callerUserId, p_server: serverName, p_tool: toolName,
     });
 
     if (policy === 'blocked') {
@@ -107,7 +140,7 @@ export async function POST(
     }
 
     if (policy === 'require_confirmation' && !confirmationVerified) {
-      const token = signToken({ server: serverName, tool: toolName, uid: user.id });
+      const token = signToken({ server: serverName, tool: toolName, uid: callerUserId });
       return NextResponse.json({
         status: 'confirmation_required',
         message: `'${toolName}' requires your confirmation before running`,
@@ -171,18 +204,20 @@ export async function POST(
     'X-Request-Id':     crypto.randomUUID(),
   };
 
-  if (user) {
+  const isOAuthServer = Boolean((server as any).oauth_authorization_url);
+
+  if (callerUserId) {
     // Try OAuth token first (for oauth auth_type servers)
-    if ((server as any).auth_type === 'oauth') {
+    if (isOAuthServer) {
       const { data: oauthToken } = await svc.rpc('get_oauth_token', {
-        p_user_id: user.id, p_server_name: serverName,
+        p_user_id: callerUserId, p_server_name: serverName,
       });
       if (oauthToken) upstreamHeaders['Authorization'] = `Bearer ${oauthToken}`;
     } else {
       // Try all static key variants from vault
       for (const secretName of secretVariants(serverName)) {
         const { data: val } = await svc.rpc('get_user_secret', {
-          p_user_id: user.id, p_server_name: serverName, p_secret_name: secretName,
+          p_user_id: callerUserId, p_server_name: serverName, p_secret_name: secretName,
         });
         if (val) { upstreamHeaders['Authorization'] = `Bearer ${val}`; break; }
       }
@@ -206,7 +241,7 @@ export async function POST(
 
     // ── Structured 401 — OAuth vs API key ────────────────────────────────────
     if (upstreamStatus === 401) {
-      const isOAuth    = (server.auth_type === 'oauth');
+      const isOAuth    = isOAuthServer;
       const base       = serverName.toUpperCase().replace(/-/g, '_');
       const keyName    = `${base}_API_KEY`;
 
@@ -270,9 +305,10 @@ export async function POST(
   const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
   svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).catch(() => {});
   svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
+  const callInterface = req.headers.get('x-openmcp-interface') === 'mcp_server' ? 'mcp_server' : 'rest';
   svc.from('metering_events').insert({
-    server_id: server.id, user_id: user?.id ?? null, tool_name: toolName,
-    interface: 'rest', request_bytes: rawBody.length, response_bytes: responseBody.length,
+    server_id: server.id, user_id: callerUserId ?? null, tool_name: toolName,
+    interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length,
     latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0,
   }).catch(() => {});
 

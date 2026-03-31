@@ -93,7 +93,7 @@ Available tools: ${server.tools.join(', ')}
 
 Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
 
-  const curlSnippet = `curl -X POST https://registry.the-17.dev/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
+  const curlSnippet = `curl -X POST https://openmcp.dev/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
   -H "Content-Type: application/json" \\
   -d '{"param": "value"}'`;
 

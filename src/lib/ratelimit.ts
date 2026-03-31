@@ -19,11 +19,11 @@ function memRateLimit(key: string, limit: number, windowMs: number) {
   const entry = memStore.get(key);
   if (!entry || now > entry.resetAt) {
     memStore.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: limit - 1 };
+    return { allowed: true, remaining: limit - 1, resetAt: now + windowMs };
   }
-  if (entry.count >= limit) return { allowed: false, remaining: 0 };
+  if (entry.count >= limit) return { allowed: false, remaining: 0, resetAt: entry.resetAt };
   entry.count++;
-  return { allowed: true, remaining: limit - entry.count };
+  return { allowed: true, remaining: limit - entry.count, resetAt: entry.resetAt };
 }
 
 // Cleanup stale entries every 5 minutes
@@ -62,6 +62,7 @@ async function getUpstash() {
 export interface RateLimitResult {
   allowed:   boolean;
   remaining: number;
+  resetAt:   number;
 }
 
 export async function rateLimit(
@@ -82,8 +83,12 @@ export async function rateLimit(
       }));
     }
     const limiter = limiterCache.get(cacheKey);
-    const { success, remaining } = await limiter.limit(key);
-    return { allowed: success, remaining };
+    const { success, remaining, reset } = await limiter.limit(key);
+    return {
+      allowed: success,
+      remaining,
+      resetAt: typeof reset === 'number' ? reset : Date.now() + config.windowMs,
+    };
   }
 
   // In-memory fallback

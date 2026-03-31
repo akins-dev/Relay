@@ -23,10 +23,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import {
-  dlpScan, shellInjectionScan, piiScan,
-  checkElicitationUrl, contextLeakScan, indirectInjectionScan,
-} from '@/lib/security';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
@@ -151,7 +147,7 @@ async function handleToolsCall(id: any, params: any, req: NextRequest) {
   const auth = await resolveApiKey(req);
 
   if (name === 'search_tools') {
-    return handleSearchTools(id, args, ip);
+    return handleSearchTools(id, args, ip, auth);
   }
   if (name === 'invoke_tool') {
     return handleInvokeTool(id, args, req, ip, auth);
@@ -160,8 +156,15 @@ async function handleToolsCall(id: any, params: any, req: NextRequest) {
   return mcpError(id, -32601, `Tool not found: ${name}`);
 }
 
-async function handleSearchTools(id: any, args: any, ip: string) {
-  const rl = await rateLimit(`mcp-search:${ip}`, LIMITS.search);
+async function handleSearchTools(
+  id: any,
+  args: any,
+  ip: string,
+  auth?: { userId: string | null }
+) {
+  const rlKey = auth?.userId ? `mcp-search:user:${auth.userId}` : `mcp-search:ip:${ip}`;
+  const rlConfig = auth?.userId ? LIMITS.proxyAuth : LIMITS.search;
+  const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
 
   const intent = String(args?.intent ?? '').trim();
@@ -195,11 +198,13 @@ async function handleSearchTools(id: any, args: any, ip: string) {
     source:       s.source ?? 'direct',
     verified:     s.verified,
     scan_status:  s.scan_status,
-    tools: (s.tools ?? []).map((t: any) => (
-      typeof t === 'string'
-        ? { name: t }
-        : { name: t.name, description: t.description, inputSchema: t.inputSchema }
-    )),
+    tools: (s.tool_schemas?.length ?? 0) > 0
+      ? s.tool_schemas
+      : (s.tools ?? []).map((t: any) => (
+          typeof t === 'string'
+            ? { name: t }
+            : { name: t.name, description: t.description, inputSchema: t.inputSchema }
+        )),
     usage: `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
     credential_note: 'Pass only business data as tool arguments. Never include API keys. The server manages its own credentials.',
     is_new: s.is_new ?? false,
@@ -218,9 +223,9 @@ async function handleSearchTools(id: any, args: any, ip: string) {
 }
 
 async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string, auth?: { userId: string | null }) {
-  // Authenticated users get the proxy limit; anonymous callers get search limit
+  // Authenticated users get the higher proxy-auth limit; anonymous callers use the standard proxy bucket.
   const rlKey    = auth?.userId ? `mcp-invoke:user:${auth.userId}` : `mcp-invoke:ip:${ip}`;
-  const rlConfig = auth?.userId ? LIMITS.proxy : LIMITS.search;
+  const rlConfig = auth?.userId ? LIMITS.proxyAuth : LIMITS.proxy;
   const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
 
@@ -229,105 +234,90 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
     return mcpError(id, -32602, 'server and tool are required');
   }
 
-  const supabase    = createClient();
-  const svc         = createServiceClient();
-  const start       = Date.now();
+  const supabase = createClient();
 
   // Resolve server
   const { data: server } = await supabase
     .from('servers')
-    .select('id, name, endpoint, tools, trust_score')
+    .select('name, tools')
     .eq('name', serverName)
     .eq('status', 'active')
     .single();
 
   if (!server) return mcpError(id, -32602, `Server '${serverName}' not found or not active`);
-
-  const argsStr = JSON.stringify(toolArgs ?? {});
-
-  // S-12: Shell injection scan
-  const shellIssues = shellInjectionScan(argsStr);
-  if (shellIssues.length > 0) {
-    return mcpError(id, -32000, `Blocked: shell injection detected — ${shellIssues[0]}`);
+  if (!server.tools.includes(toolName)) {
+    return mcpError(id, -32602, `Tool '${toolName}' not found on '${serverName}'`);
   }
 
-  // L4: DLP on request
-  const reqDlp = dlpScan(argsStr);
-  if (reqDlp.length > 0) {
-    return mcpError(id, -32000, `Blocked: credential pattern in arguments — ${reqDlp[0]}`);
-  }
+  const origin = new URL(req.url).origin;
+  const proxyHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-OpenMCP-Interface': 'mcp_server',
+  };
+  const authHeader = req.headers.get('authorization');
+  const cookieHeader = req.headers.get('cookie');
+  const confirmHeader = req.headers.get('x-confirm-token');
 
-  // Forward to upstream MCP server
-  let result: any;
+  if (authHeader) proxyHeaders['Authorization'] = authHeader;
+  if (cookieHeader) proxyHeaders['Cookie'] = cookieHeader;
+  if (confirmHeader) proxyHeaders['X-Confirm-Token'] = confirmHeader;
+
+  let upstream: Response;
+  let body: string;
   try {
-    const upstream = await fetch(`${server.endpoint}/tools/call`, {
+    upstream = await fetch(`${origin}/api/proxy/${serverName}/${toolName}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: toolName, arguments: toolArgs ?? {} }),
+      headers: proxyHeaders,
+      body: JSON.stringify(toolArgs ?? {}),
       signal: AbortSignal.timeout(30_000),
     });
-
-    const body = await upstream.text();
-
-    // L4: DLP on response
-    const resDlp      = dlpScan(body);
-    const piiIssues   = piiScan(body);
-    const leakIssues  = contextLeakScan(body);
-    const indirIssues = indirectInjectionScan(body);
-    const allIssues   = [...resDlp, ...piiIssues, ...leakIssues, ...indirIssues];
-
-    // Audit log
-    await svc.from('audit_log').insert({
-      server_id:     server.id,
-      action:        'mcp_server_invoke',
-      tool_name:     toolName,
-      request_size:  argsStr.length,
-      response_size: body.length,
-      latency_ms:    Date.now() - start,
-      status_code:   upstream.status,
-      dlp_triggered: allIssues.length > 0,
-      dlp_issues:    allIssues,
-      ip,
-      user_agent:    req.headers.get('user-agent') || '',
-    }).catch(() => {});
-
-    // Metering event
-    svc.from('metering_events').insert({
-      server_id:      server.id,
-      user_id:        auth?.userId ?? null,
-      tool_name:      toolName,
-      interface:      'mcp_server',
-      request_bytes:  argsStr.length,
-      response_bytes: body.length,
-      latency_ms:     Date.now() - start,
-      status_code:    upstream.status,
-      dlp_triggered:  allIssues.length > 0,
-    }).catch(() => {});
-
-    // Increment call counters
-    svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
-
-    if (!upstream.ok) {
-      return mcpError(id, -32000, `Upstream error ${upstream.status}: ${body.slice(0, 200)}`);
-    }
-
-    result = JSON.parse(body);
+    body = await upstream.text();
   } catch (e: any) {
-    return mcpError(id, -32000, `Upstream connection failed: ${e.message}`);
+    return mcpError(id, -32000, `Proxy connection failed: ${e.message}`);
   }
+
+  const status = upstream.status;
+  const trustScore = Number(upstream.headers.get('x-registry-trust-score') ?? '0') || null;
+  const latencyMs = Number(upstream.headers.get('x-registry-latency') ?? '0') || null;
+  const warningHeader = upstream.headers.get('x-registry-dlp-warning');
+  const warnings = warningHeader ? warningHeader.split('; ').filter(Boolean) : [];
+  const meta = {
+    server: serverName,
+    tool: toolName,
+    trust_score: trustScore,
+    latency_ms: latencyMs,
+    warnings,
+  };
+
+  if (status === 202 || status === 401) {
+    let payload: any = body;
+    try {
+      payload = JSON.parse(body);
+    } catch {}
+
+    return mcpResponse(id, {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({ status, ...meta, response: payload }, null, 2),
+      }],
+    });
+  }
+
+  if (!upstream.ok) {
+    return mcpError(id, -32000, `Proxy error ${status}: ${body.slice(0, 300)}`);
+  }
+
+  let result: any = body;
+  try {
+    result = JSON.parse(body);
+  } catch {}
 
   return mcpResponse(id, {
     content: [{
       type: 'text',
       text: JSON.stringify({
         result,
-        meta: {
-          server:      serverName,
-          tool:        toolName,
-          trust_score: server.trust_score,
-          latency_ms:  Date.now() - start,
-          security:    'DLP + shell injection + PII scanned',
-        },
+        meta,
       }, null, 2),
     }],
   });
@@ -379,7 +369,7 @@ export async function POST(req: NextRequest) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Confirm-Token',
     },
   });
 }
@@ -435,7 +425,7 @@ export async function OPTIONS() {
     headers: {
       'Access-Control-Allow-Origin':  '*',
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Confirm-Token',
     },
   });
 }

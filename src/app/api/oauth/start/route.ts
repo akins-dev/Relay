@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse }         from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { randomBytes }                       from 'crypto';
-import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
+import { rateLimit }                         from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
 
 // Only allow redirects to our own origin — prevents open redirect abuse
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     .eq('status', 'active')
     .single();
 
-  if (!server || server.auth_type !== 'oauth' || !server.oauth_authorization_url) {
+  if (!server || !server.oauth_authorization_url) {
     return NextResponse.json({
       error: 'This server does not support OAuth',
       auth_type: server?.auth_type,

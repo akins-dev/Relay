@@ -114,6 +114,63 @@ Must be true before announcement:
 4. Decide whether `stdio` servers should be indexed before the CLI exists.
 5. Clean up build/config drift so launch confidence matches launch messaging.
 
+## Immediate Fix Checklist
+
+These are the highest-priority implementation fixes identified during the pre-manual-testing review. They should be completed before relying on manual testing results as a launch-readiness signal.
+
+### P0: Fix before serious manual testing
+
+- [x] Make native MCP `invoke_tool` use the same credential injection path as the REST proxy.
+- [x] Make native MCP `invoke_tool` validate tool existence before forwarding.
+- [x] Make native MCP `invoke_tool` validate upstream endpoint safety with `isSafeUrl()`.
+- [x] Add structured auth guidance parity to MCP invocation failures where feasible.
+- [x] Fix REST proxy rate limiting so authenticated/API-key users can actually receive the higher limit.
+- [x] Fix MCP server rate-limit config so authenticated users are not accidentally throttled more than anonymous callers.
+- [x] Fix invalid `Retry-After` handling that currently references a missing `resetAt` field from the rate-limit helper.
+- [x] Make native MCP `search_tools` return full tool schema data, not just names.
+
+### P1: Fix next
+
+- [x] Fix search-result credential guidance so OAuth-backed servers do not get API-key-only setup instructions.
+- [ ] Bring the manual publish flow closer to ingest parity: endpoint safety, transport detection, and schema enrichment.
+- [ ] Review SSE compatibility claims and narrow them if actual client compatibility is not verified.
+- [x] Patch stale domain references such as `registry.the-17.dev` in registry integration snippets.
+- [ ] Tighten SSRF validation patterns, including the IPv6 private-range regex.
+
+### P2: Follow-up hardening
+
+- [x] Consolidate proxy and MCP invocation logic to reduce divergence.
+- [ ] Decide whether the MCP server should return structured warning metadata for response scans instead of only embedding text output.
+- [ ] Add dedicated tests for authenticated vs anonymous rate limiting behavior.
+- [ ] Add dedicated tests for MCP-server invocation of authenticated/private tools.
+- [ ] Add dedicated tests for OAuth-backed search-result setup instructions.
+
+## Verification Snapshot
+
+- `npm test -- --runInBand` passed after the implementation fixes.
+- `npm run build` still fails on the existing external Google Fonts fetch dependency (`fonts.googleapis.com`) in this environment.
+- `npm run build` also still surfaces the pre-existing Next.js config warning for `serverExternalPackages` and Sentry instrumentation/deprecation warnings.
+
+## Manual Test Order
+
+1. Run public search over REST and confirm `tool_schemas` are present.
+2. Run `search_tools` through the native MCP server and confirm the same schema richness is returned.
+3. Invoke a public remote tool through REST and confirm normal success headers and body shape.
+4. Invoke the same public tool through the MCP server and confirm it routes through the proxy path and returns proxy metadata.
+5. Invoke a private API-key-backed server through REST with and without stored credentials and verify the structured setup guidance.
+6. Invoke the same private API-key-backed server through the MCP server and confirm the result matches the REST auth/setup behavior.
+7. Invoke an OAuth-backed server from the registry and verify the search result points to OAuth connect flow rather than vault-only setup.
+8. Start the OAuth flow from the registry page and confirm `/api/oauth/start` works for servers that expose OAuth metadata.
+9. Exercise rate limits both anonymously and with an `sk_mcp_...` API key to verify the higher limit path.
+10. Publish a server manually and compare its invocation/search behavior against an ingested server to identify remaining publish-path gaps.
+
+## Remaining Known Gaps
+
+- Manual publish is still weaker than ingest. It needs endpoint safety checks, transport detection, and schema enrichment parity.
+- SSE compatibility is still not validated against real older MCP clients, so marketing copy should avoid overstating that path.
+- SSRF validation still needs a targeted review, especially the IPv6 private-range regex.
+- The MCP server currently returns warning metadata inside its text payload for scanned responses; it does not yet expose a richer structured warning contract.
+
 ## Decisions Made
 
 - Tracker lives in the repo as markdown.
