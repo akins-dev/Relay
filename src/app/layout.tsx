@@ -1,25 +1,36 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { IBM_Plex_Mono, Instrument_Sans, Newsreader } from 'next/font/google';
 import './globals.css';
 import { Nav }          from '@/components/layout/Nav';
 import { AuthProvider } from '@/components/AuthProvider';
 
 // ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
 // This replaces the @import in globals.css which blocked rendering.
-const inter = Inter({
+const instrumentSans = Instrument_Sans({
   subsets:  ['latin'],
   variable: '--font-inter',
   display:  'swap',
 });
 
-// Lora and JetBrains Mono loaded on demand via CSS — acceptable for headings/code.
-// next/font/google handles caching and self-hosting.
+const newsreader = Newsreader({
+  subsets: ['latin'],
+  variable: '--font-editorial',
+  weight: ['400', '500', '600'],
+  display: 'swap',
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  variable: '--font-ibm-plex-mono',
+  weight: ['400', '500', '600'],
+  display: 'swap',
+});
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 const SITE_URL   = 'https://openmcp.dev';
-const SITE_NAME  = 'openMCP';
-const TITLE      = 'openMCP — The Secure MCP Registry';
-const DESCRIPTION = 'Free, open-source registry for MCP servers. 7,000+ servers scanned across 15 security layers. One line connects any AI agent to every tool it needs.';
+const SITE_NAME  = 'Agentrail';
+const TITLE      = 'Agentrail — Runtime Tool Discovery For AI Agents';
+const DESCRIPTION = 'Agentrail helps AI agents discover the tools they need at runtime and invoke them through a secure trust, policy, and credential layer.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -52,7 +63,7 @@ export const metadata: Metadata = {
       url:    '/og-image.png',
       width:  1200,
       height: 630,
-      alt:    'openMCP — The Secure MCP Registry',
+      alt:    'Agentrail — Runtime Tool Discovery For AI Agents',
     }],
     locale: 'en_US',
   },
@@ -89,7 +100,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor:    '#c2440c',
+  themeColor:    '#2563eb',
   colorScheme:   'light',
   width:         'device-width',
   initialScale:  1,
@@ -98,7 +109,7 @@ export const viewport: Viewport = {
 // ── Root layout ───────────────────────────────────────────────────────────────
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${instrumentSans.variable} ${newsreader.variable} ${ibmPlexMono.variable}`}>
       <body>
         <AuthProvider>
           <Nav />

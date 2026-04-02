@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { cn } from '@/lib/cn';
 import { ServerCard } from '@/components/registry/ServerCard';
 import type { Server } from '@/types';
 
@@ -65,29 +67,31 @@ export default function RegistryPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page pb-24">
       {/* Header */}
-      <div style={{ marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '32px', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '6px' }}>openMCP</h1>
-        <p style={{ color: 'var(--text-2)', fontSize: '14px' }}>
+      <div className="mb-10 mt-6 lg:mt-10">
+        <h1 className="heading-display mb-3 text-[2.5rem] font-medium tracking-tight text-[#0a0a0a]">
+          Registry
+        </h1>
+        <p className="text-[15px] text-[#52525b]">
           {total > 0 ? `${total} server${total !== 1 ? 's' : ''} available` : 'Discover MCP servers'}
           {totalCalls ? ` · ${(totalCalls / 1000).toFixed(0)}K calls today` : ''}
         </p>
       </div>
 
       {/* Search + sort + verified */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <form onSubmit={handleSearch} style={{ flex: 1, minWidth: '260px', display: 'flex', gap: '8px' }}>
-          <input className="input" placeholder="Search by name, capability, or tag..." value={searchInput} onChange={e => setSearchInput(e.target.value)} style={{ flex: 1 }} />
+      <div className="mb-6 flex flex-wrap gap-3">
+        <form onSubmit={handleSearch} className="flex min-w-[260px] flex-1 gap-2">
+          <input className="input !bg-white !shadow-sm" placeholder="Search by name, capability, or tag..." value={searchInput} onChange={e => setSearchInput(e.target.value)} />
           <button type="submit" className="btn btn-primary">Search</button>
         </form>
-        <select className="input" value={sort} onChange={e => set('sort', e.target.value)} style={{ width: 'auto' }}>
+        <select className="input !w-auto !bg-white !shadow-sm" value={sort} onChange={e => set('sort', e.target.value)}>
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        <button onClick={() => set('verified', verified ? '' : 'true')} className={`btn ${verified ? 'btn-primary' : 'btn-ghost'}`}>
+        <button onClick={() => set('verified', verified ? '' : 'true')} className={cn("btn", verified ? 'btn-primary' : 'btn-ghost !bg-white !shadow-sm')}>
           ✓ Verified
         </button>
-        <select className="input" value={source} onChange={e => set('source', e.target.value)} style={{ width: 'auto' }}>
+        <select className="input !w-auto !bg-white !shadow-sm" value={source} onChange={e => set('source', e.target.value)}>
           <option value="">All sources</option>
           <option value="official">⬡ Official</option>
           <option value="github">◆ GitHub</option>
@@ -97,14 +101,12 @@ export default function RegistryPage() {
       </div>
 
       {/* Tag pills */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '28px' }}>
-        <button onClick={() => set('tag', '')} className="btn btn-ghost btn-sm"
-          style={{ borderColor: !tag ? 'var(--green)' : 'transparent', color: !tag ? 'var(--green)' : 'var(--text-3)', background: !tag ? 'var(--green-bg)' : 'transparent' }}>
+      <div className="mb-8 flex flex-wrap gap-2">
+        <button onClick={() => set('tag', '')} className={cn("btn btn-sm rounded-full", !tag ? "bg-black text-white hover:bg-neutral-800" : "btn-ghost !bg-white")} style={{ fontFamily: 'var(--mono)' }}>
           All
         </button>
         {TAGS.map(t => (
-          <button key={t} onClick={() => set('tag', tag === t ? '' : t)} className="btn btn-ghost btn-sm"
-            style={{ fontFamily: 'var(--mono)', borderColor: tag === t ? 'var(--green)' : 'transparent', color: tag === t ? 'var(--green)' : 'var(--text-3)', background: tag === t ? 'var(--green-bg)' : 'transparent' }}>
+          <button key={t} onClick={() => set('tag', tag === t ? '' : t)} className={cn("btn btn-sm rounded-full", tag === t ? "bg-black text-white hover:bg-neutral-800" : "btn-ghost !bg-white")} style={{ fontFamily: 'var(--mono)' }}>
             {t}
           </button>
         ))}
@@ -112,16 +114,16 @@ export default function RegistryPage() {
 
       {/* Active filters */}
       {(q || tag) && (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Filtering:</span>
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-[12px] text-[#a1a1aa] uppercase tracking-widest font-mono">Filtering:</span>
           {q && (
-            <span style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: '4px', padding: '2px 10px', fontSize: '12px', fontFamily: 'var(--mono)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              "{q}" <button onClick={() => { setSearchInput(''); set('q', ''); }} style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}>×</button>
+            <span className="inline-flex items-center gap-2 rounded-md border border-[rgba(0,0,0,0.1)] bg-white px-3 py-1 font-mono text-[12px]">
+              "{q}" <button onClick={() => { setSearchInput(''); set('q', ''); }} className="text-[#a1a1aa] hover:text-black hover:scale-110 transition-transform">✕</button>
             </span>
           )}
           {tag && (
-            <span style={{ background: 'var(--green-bg)', border: '1px solid #166534', borderRadius: '4px', padding: '2px 10px', fontSize: '12px', fontFamily: 'var(--mono)', color: 'var(--green)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              #{tag} <button onClick={() => set('tag', '')} style={{ background: 'none', border: 'none', color: 'var(--green)', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}>×</button>
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-neutral-100 px-3 py-1 font-mono text-[12px] text-neutral-800">
+              #{tag} <button onClick={() => set('tag', '')} className="text-neutral-500 hover:text-black hover:scale-110 transition-transform">✕</button>
             </span>
           )}
         </div>
@@ -131,34 +133,33 @@ export default function RegistryPage() {
       {loading ? (
         <div className="grid-auto">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="card" style={{ padding: '18px 20px', height: '140px' }}>
-              {[['120px','14px'],['90%','12px'],['70%','12px']].map(([w,h],j) => (
-                <div key={j} className="anim-pulse" style={{ height: h, width: w, background: 'var(--bg-3)', borderRadius: '4px', marginBottom: '10px' }} />
-              ))}
+            <div key={i} className="card h-[140px] p-5 shadow-sm">
+              <div className="anim-pulse mb-3 h-[14px] w-[120px] rounded-md bg-[rgba(0,0,0,0.05)]" />
+              <div className="anim-pulse mb-3 h-[12px] w-[90%] rounded-md bg-[rgba(0,0,0,0.03)]" />
+              <div className="anim-pulse h-[12px] w-[70%] rounded-md bg-[rgba(0,0,0,0.03)]" />
             </div>
           ))}
         </div>
       ) : servers.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--text-3)' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⬡</div>
-          <div style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-2)' }}>No servers found</div>
-          <p style={{ fontSize: '14px' }}>Try a different query or <a href="/publish" style={{ color: 'var(--green)', textDecoration: 'none' }}>publish your own</a>.</p>
+        <div className="py-24 text-center">
+          <div className="mb-4 text-5xl text-[#d4d4d8]">⬡</div>
+          <div className="mb-2 text-xl font-medium text-[#0a0a0a]">No servers found</div>
+          <p className="text-sm text-[#52525b]">Try a different query or <Link href="/publish" className="text-black underline">publish your own</Link>.</p>
         </div>
       ) : (
         <>
-          <div style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '14px', fontFamily: 'var(--mono)' }}>{total} result{total !== 1 ? 's' : ''}</div>
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-widest text-[#a1a1aa]">{total} result{total !== 1 ? 's' : ''}</div>
           <div className="grid-auto">
             {servers.map(s => <ServerCard key={s.id} server={s} />)}
           </div>
           {pages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '40px' }}>
-              {page > 1 && <button onClick={() => set('page', String(page - 1))} className="btn btn-ghost btn-sm">← Prev</button>}
+            <div className="mt-12 flex justify-center gap-2">
+              {page > 1 && <button onClick={() => set('page', String(page - 1))} className="btn btn-ghost btn-sm !bg-white">← Prev</button>}
               {[...Array(Math.min(pages, 7))].map((_, i) => (
                 <button key={i} onClick={() => set('page', String(i + 1))}
-                  className={`btn btn-sm ${i + 1 === page ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ minWidth: '36px' }}>{i + 1}</button>
+                  className={cn("btn btn-sm min-w-[36px]", i + 1 === page ? "btn-primary" : "btn-ghost !bg-white")}>{i + 1}</button>
               ))}
-              {page < pages && <button onClick={() => set('page', String(page + 1))} className="btn btn-ghost btn-sm">Next →</button>}
+              {page < pages && <button onClick={() => set('page', String(page + 1))} className="btn btn-ghost btn-sm !bg-white">Next →</button>}
             </div>
           )}
         </>

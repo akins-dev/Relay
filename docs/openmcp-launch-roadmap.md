@@ -98,10 +98,14 @@ Must be true before announcement:
 
 - [x] Create a working brand identity doc for the rename direction.
 - [ ] Confirm the final product name after availability/trademark review.
-- [ ] Translate the chosen brand system into site-wide design tokens.
+- [x] Translate the chosen brand system into site-wide design tokens.
 - [ ] Decide the website information architecture for the rename launch.
 - [ ] Migrate shared UI primitives to Tailwind before page-by-page redesign.
-- [ ] Redesign the homepage under the new brand.
+- [x] Redesign the homepage under the new brand.
+- [x] Push the visual direction toward a more editorial, framed landing page inspired by the reference set.
+- [x] Redesign the connect page under the new brand.
+- [x] Align the docs and skill file copy with the working rename direction.
+- [ ] Finish the remaining authenticated/dashboard surfaces under the new brand.
 
 ## Risks / Claim Gaps
 
@@ -158,6 +162,8 @@ These are the highest-priority implementation fixes identified during the pre-ma
 ## Verification Snapshot
 
 - `npm test -- --runInBand` passed after the implementation fixes.
+- `npx tsc --noEmit` still reports substantial pre-existing repo-wide TypeScript debt, mostly around Supabase typings and older route code outside the new brand pass.
+- Targeted type-check filtering for the files touched in the Agentrail website pass returned no errors.
 - `npm run build` still fails on the existing external Google Fonts fetch dependency (`fonts.googleapis.com`) in this environment.
 - `npm run build` also still surfaces the pre-existing Next.js config warning for `serverExternalPackages` and Sentry instrumentation/deprecation warnings.
 

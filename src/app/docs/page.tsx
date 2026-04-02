@@ -1,9 +1,9 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-
+import { cn } from '@/lib/cn';
 const SECTIONS = [
-  { id: 'what-is-openmcp', label: 'What is openMCP?' },
+  { id: 'what-is-agentrail', label: 'What is Agentrail?' },
   { id: 'how-it-works',    label: 'How it works' },
   { id: 'quickstart',      label: 'Quickstart' },
   { id: 'credentials',     label: 'Credentials & security' },
@@ -16,7 +16,7 @@ const SECTIONS = [
 ];
 
 const CODE = {
-  systemPrompt: `You have access to openMCP — a security-verified registry of MCP servers.
+  systemPrompt: `You have access to Agentrail — a trust layer for remote MCP servers.
 Read https://openmcp.dev/openmcp.md before your first tool call.
 
 Search:  GET https://openmcp.dev/api/servers/search?q={intent}
@@ -24,7 +24,7 @@ Invoke:  POST https://openmcp.dev/api/proxy/{serverName}/{toolName}`,
 
   mcpConfig: `{
   "mcpServers": {
-    "openmcp": {
+    "agentrail": {
       "url": "https://openmcp.dev/api/mcp-server"
     }
   }
@@ -68,10 +68,10 @@ Content-Type: application/json
 }`,
 
   agentSecrets: `# 1. Store your API key once (never in a file)
-# Store once in openMCP Vault at openmcp.dev/dashboard/secrets
+# Store once in Agentrail Vault at openmcp.dev/dashboard/secrets
 
-# 2. Agent calls openMCP proxy
-# 3. Proxy resolves key from openMCP Vault
+# 2. Agent calls Agentrail proxy
+# 3. Proxy resolves key from Agentrail Vault
 # 4. Injects into upstream call
 # 5. Agent gets response — never saw the key`,
 
@@ -85,7 +85,7 @@ Content-Type: application/json
   }
 }
 
-// openMCP returns results with full inputSchema`,
+// Agentrail returns results with full inputSchema`,
 
   mcpServerInvoke: `// Agent calls invoke_tool
 {
@@ -110,25 +110,25 @@ Content-Type: application/json
 function CodeBlock({ code, label }: { code: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="codeblock" style={{ marginBottom: '16px' }}>
+    <div className="codeblock mb-4 h-full">
       {label && (
-        <div className="codeblock-header">
-          <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>{label}</span>
+        <div className="codeblock-header flex justify-between !bg-black !border-b-[rgba(255,255,255,0.1)]">
+          <span className="font-mono text-[11px] text-[#a1a1aa]">{label}</span>
           <button
             onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="btn btn-ghost btn-sm"
+            className="text-[11px] text-[#a1a1aa] hover:text-white transition-colors"
           >{copied ? '✓ Copied' : 'Copy'}</button>
         </div>
       )}
-      <pre style={{ color: '#d6cfc8' }}>{code}</pre>
+      <pre className="!bg-[#0a0a0a] !text-[#ededed]">{code}</pre>
     </div>
   );
 }
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section id={id} style={{ paddingTop: '48px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-      <h2 style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '20px', color: 'var(--text)' }}>
+    <section id={id} className="border-b border-[rgba(0,0,0,0.06)] py-12">
+      <h2 className="mb-5 font-display text-[24px] font-medium tracking-tight text-[#0a0a0a]">
         {title}
       </h2>
       {children}
@@ -137,11 +137,11 @@ function Section({ id, title, children }: { id: string; title: string; children:
 }
 
 const P = ({ children }: { children: React.ReactNode }) => (
-  <p style={{ color: 'var(--text-2)', lineHeight: 1.75, marginBottom: '16px', fontSize: '15px' }}>{children}</p>
+  <p className="mb-4 text-[15px] leading-relaxed text-[#52525b]">{children}</p>
 );
 
-const Callout = ({ children, color = 'var(--accent-bg)', border = 'var(--accent)' }: any) => (
-  <div style={{ padding: '16px 20px', background: color, border: `1px solid ${border}`, borderRadius: '10px', marginBottom: '20px' }}>
+const Callout = ({ children, color = 'bg-[#fafafa]', border = 'border-[rgba(0,0,0,0.08)]' }: any) => (
+  <div className={cn("mb-5 rounded-[12px] border p-4 sm:p-5", color, border)}>
     {children}
   </div>
 );
@@ -162,64 +162,64 @@ const CATEGORIES = [
 ];
 
 export default function DocsPage() {
-  const [active, setActive] = useState('what-is-openmcp');
+  const [active, setActive] = useState('what-is-agentrail');
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: '100vh', maxWidth: '1200px', margin: '0 auto', padding: '40px 40px 80px' }}>
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10 p-6 sm:p-10 lg:flex-row lg:items-start lg:gap-16 lg:py-16">
 
       {/* Sidebar */}
-      <aside style={{ position: 'sticky', top: '80px', height: 'fit-content', paddingRight: '32px' }}>
-        <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-3)', marginBottom: '12px' }}>
+      <aside className="sticky top-24 hidden w-[220px] shrink-0 lg:block">
+        <div className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#a1a1aa]">
           Documentation
         </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <nav className="flex flex-col gap-1.5">
           {SECTIONS.map(s => (
             <a
               key={s.id}
               href={`#${s.id}`}
               onClick={() => setActive(s.id)}
-              style={{
-                padding: '7px 12px', borderRadius: '8px', fontSize: '14px',
-                color: active === s.id ? 'var(--accent)' : 'var(--text-2)',
-                background: active === s.id ? 'var(--accent-bg)' : 'transparent',
-                textDecoration: 'none', transition: 'all .15s', fontWeight: active === s.id ? 600 : 400,
-              }}
+              className={cn(
+                "rounded-lg px-3 py-2 text-[14px] transition-all",
+                active === s.id
+                  ? "bg-black font-medium text-white shadow-sm"
+                  : "font-medium text-[#52525b] hover:bg-neutral-100 hover:text-black"
+              )}
             >{s.label}</a>
           ))}
         </nav>
       </aside>
 
       {/* Content */}
-      <main style={{ minWidth: 0 }}>
-        <div style={{ marginBottom: '48px' }}>
-          <div className="section-label" style={{ color: 'var(--accent)' }}>docs</div>
-          <h1 style={{ fontSize: '36px', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '12px', fontFamily: 'var(--font-serif)' }}>
-            openMCP Documentation
+      <main className="min-w-0 flex-1">
+        <div className="mb-12">
+          <div className="section-label text-[#a1a1aa] mb-4">docs</div>
+          <h1 className="heading-display mb-3 text-[2.25rem] font-medium tracking-tight text-[#0a0a0a] sm:text-[2.75rem]">
+            Agentrail Documentation
           </h1>
-          <p style={{ fontSize: '17px', color: 'var(--text-2)', lineHeight: 1.7 }}>
+          <p className="max-w-3xl text-[17px] leading-relaxed text-[#52525b]">
             Everything you need to connect your AI agents to network-reachable MCP servers today, with local CLI support planned next.
           </p>
         </div>
 
-        {/* What is openMCP */}
-        <Section id="what-is-openmcp" title="What is openMCP?">
+        {/* What is Agentrail */}
+        <Section id="what-is-agentrail" title="What is Agentrail?">
           <P>
-            openMCP is the missing layer between AI agents and remote MCP servers. Today, every agent must have
+            Agentrail is the missing layer between AI agents and remote MCP servers. Today, every agent must have
             MCP servers explicitly configured before deployment. There is no way for an agent to discover
             what tools exist, evaluate their quality, or connect to them autonomously.
           </P>
           <P>
-            openMCP solves this with a single endpoint. Your agent queries it by describing what it needs,
+            Agentrail solves this with a single endpoint. Your agent queries it by describing what it needs,
             gets back verified servers with full tool schemas, and invokes tools through a security proxy —
             at runtime by intent — never pre-loaded, never eating your context window.
           </P>
           <P>
-            Today, openMCP focuses on network-reachable MCP servers with HTTP transports. Local
-            <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', background: 'var(--bg-2)', padding: '1px 6px', borderRadius: '4px', marginLeft: '4px', marginRight: '4px' }}>stdio</code>
-            support is planned for openMCP CLI.
+            Today, Agentrail focuses on network-reachable MCP servers with HTTP transports. Local
+            <code className="mx-1 rounded-md border border-[rgba(0,0,0,0.08)] bg-[#fafafa] px-1.5 py-0.5 font-mono text-[13px] text-black">stdio</code>
+            support is planned for Agentrail CLI.
           </P>
           <Callout>
-            <p style={{ fontSize: '14px', fontStyle: 'italic', color: 'var(--accent)', fontFamily: 'var(--font-serif)', lineHeight: 1.6 }}>
+            <p className="font-serif text-[15px] italic leading-relaxed text-[#0a0a0a]">
               "Agent development will never scale treating every tool integration as a 1:1 integration."
             </p>
           </Callout>
@@ -229,7 +229,7 @@ export default function DocsPage() {
           </P>
           <P>
             <strong>Open source.</strong> MIT licensed. Full source at{' '}
-            <a href="https://github.com/the-17/openmcp" style={{ color: 'var(--accent)' }}>github.com/the-17/openmcp</a>.
+            <a href="https://github.com/the-17/openmcp" className="text-black underline underline-offset-2">github.com/the-17/openmcp</a>.
             The security claims are verifiable, not a promise.
           </P>
         </Section>
@@ -239,21 +239,21 @@ export default function DocsPage() {
           <P>Every agent interaction follows this flow:</P>
           {[
             ['1', 'Agent has a task', 'Needs to send an email, create a PR, charge a card — any capability.'],
-            ['2', 'Queries openMCP by intent', 'GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.'],
+            ['2', 'Queries Agentrail by intent', 'GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.'],
             ['3', 'Reads the inputSchema', 'No guessing. The agent knows exactly what arguments each tool requires before calling.'],
             ['4', 'Invokes through the proxy', 'POST /api/proxy/sendgrid-mail/send_email — every call blocks sensitive request patterns, applies policy, scans responses, and writes an audit trail.'],
             ['5', 'Gets a response', 'The upstream result is returned with trust and warning metadata. If response scans trigger, the agent gets the result plus warning headers for review.'],
           ].map(([num, title, desc]) => (
-            <div key={num} style={{ display: 'flex', gap: '16px', marginBottom: '12px', padding: '16px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-              <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', fontWeight: 700, flexShrink: 0, width: '20px' }}>{num}</span>
+            <div key={num} className="mb-3 flex gap-4 rounded-[12px] border border-[rgba(0,0,0,0.06)] bg-white p-4 shadow-sm">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black font-mono text-[11px] font-bold text-white">{num}</span>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>{title}</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.6 }}>{desc}</div>
+                <div className="mb-1 text-[14px] font-semibold text-[#0a0a0a]">{title}</div>
+                <div className="text-[13px] leading-relaxed text-[#52525b]">{desc}</div>
               </div>
             </div>
           ))}
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Security on every server and every call</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Security on every server and every call</h3>
           <P>
             Every server ingested from official registry, Smithery, Glama, or GitHub is scanned across
             15 layers before listing: static injection analysis, npm CVE scanning, schema pinning,
@@ -265,14 +265,14 @@ export default function DocsPage() {
 
         {/* Quickstart */}
         <Section id="quickstart" title="Quickstart">
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '0 0 12px' }}>Option 1 — System prompt (works everywhere)</h3>
+          <h3 className="mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Option 1 — System prompt (works everywhere)</h3>
           <CodeBlock code={CODE.systemPrompt} label="Add to your system prompt or AGENTS.md" />
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Option 2 — Native MCP server (Claude Desktop, Cursor, Antigravity, etc.)</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Option 2 — Native MCP server (Claude Desktop, Cursor, Antigravity, etc.)</h3>
           <CodeBlock code={CODE.mcpConfig} label="claude_desktop_config.json / .cursor/mcp.json / mcp_config.json" />
-          <P>Restart your IDE. Your agent now has two tools: <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', background: 'var(--bg-2)', padding: '1px 6px', borderRadius: '4px' }}>search_tools</code> and <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', background: 'var(--bg-2)', padding: '1px 6px', borderRadius: '4px' }}>invoke_tool</code>.</P>
+          <P>Restart your IDE. Your agent now has two tools: <code className="mx-1 rounded-md border border-[rgba(0,0,0,0.08)] bg-[#fafafa] px-1.5 py-0.5 font-mono text-[13px] text-black">search_tools</code> and <code className="mx-1 rounded-md border border-[rgba(0,0,0,0.08)] bg-[#fafafa] px-1.5 py-0.5 font-mono text-[13px] text-black">invoke_tool</code>.</P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Option 3 — Fetch the agent skill file</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Option 3 — Fetch the agent skill file</h3>
           <CodeBlock code="curl https://openmcp.dev/openmcp.md" label="Your agent fetches this once — understands everything" />
           <P>
             The skill file is served dynamically with live stats. It teaches any agent how to search,
@@ -289,38 +289,38 @@ export default function DocsPage() {
             rates: free. Stripe, GitHub, Gmail: credentials required.
           </P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>The credential problem</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">The credential problem</h3>
           <P>
             Every MCP tutorial tells you to paste API keys into a config file. Those files get committed
             to git, read by AI assistants, and exfiltrated via prompt injection. Check Point documented
             CVE-2026-21852 — a vulnerability that harvests credentials directly from MCP config files.
           </P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>What openMCP does about it</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">What Agentrail does about it</h3>
           <P>
-            The openMCP proxy runs DLP on every request and response — 11 credential patterns. If a
+            The Agentrail proxy runs DLP on every request and response — 11 credential patterns. If a
             credential pattern appears in a tool argument (the agent accidentally including an API key),
             the call is blocked before it reaches the upstream server. If a credential appears in a
             response, it is flagged in warning headers and audit logs for review.
           </P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>openMCP Vault — the complete solution</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Agentrail Vault — the complete solution</h3>
           <P>
-            Store credentials once in the openMCP Vault. They are encrypted with AES-256-GCM via Supabase
+            Store credentials once in the Agentrail Vault. They are encrypted with AES-256-GCM via Supabase
             pgsodium. The proxy decrypts at call time and injects as an Authorization header. The raw
             value is never stored in plaintext, never returned through the API, and never visible after
             you save it — only the secret name is shown.
           </P>
-          <CodeBlock code={CODE.agentSecrets} label="openMCP Vault flow" />
+          <CodeBlock code={CODE.agentSecrets} label="Agentrail Vault flow" />
           <P>
             Manage secrets:{' '}
-            <a href="https://openmcp.dev/dashboard/secrets" style={{ color: 'var(--accent)' }}>openmcp.dev/dashboard/secrets</a>
+            <a href="https://openmcp.dev/dashboard/secrets" className="text-black underline underline-offset-2">openmcp.dev/dashboard/secrets</a>
             {' '}— store once, then let the proxy inject automatically.
           </P>
 
-          <Callout color="var(--bg-1)">
-            <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.7 }}>
-              <strong>Protecting yourself from sensitive operations:</strong> openMCP's proxy already blocks shell
+          <Callout color="bg-[#fafafa]" border="border-[rgba(0,0,0,0.08)]">
+            <p className="text-[14px] leading-relaxed text-[#52525b]">
+              <strong>Protecting yourself from sensitive operations:</strong> Agentrail's proxy already blocks shell
               injection (18 patterns), credential DLP (11 patterns), and indirect prompt injection (12 patterns)
               on every call. For additional control — limiting which tools an agent can call, blocking specific
               domains, setting per-user rate limits — see the user controls section in your dashboard after
@@ -332,18 +332,18 @@ export default function DocsPage() {
         {/* Native MCP server */}
         <Section id="mcp-server" title="Native MCP server">
           <P>
-            openMCP exposes itself as a standard MCP server. Instead of making custom HTTP calls,
+            Agentrail exposes itself as a standard MCP server. Instead of making custom HTTP calls,
             your agent connects once and gets two native MCP tools.
           </P>
           <P>
             <strong>Transports supported:</strong> StreamableHTTP (POST — primary) and SSE (GET — for
-            older clients). stdio is not supported yet — openMCP is a hosted service today, with a CLI bridge planned next.
+            older clients). stdio is not supported yet — Agentrail is a hosted service today, with a CLI bridge planned next.
           </P>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>search_tools</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">search_tools</h3>
           <CodeBlock code={CODE.mcpServerSearch} label="Find servers by natural language intent" />
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>invoke_tool</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">invoke_tool</h3>
           <CodeBlock code={CODE.mcpServerInvoke} label="Invoke any tool through the security proxy" />
           <P>
             Every invoke_tool call runs through the same remote trust and proxy layer as the REST API.
@@ -353,47 +353,47 @@ export default function DocsPage() {
 
         {/* REST API */}
         <Section id="rest-api" title="REST API reference">
-          {[
-            { method: 'GET',  path: '/openmcp.md',                       desc: 'Agent skill file — markdown, live stats injected' },
-            { method: 'GET',  path: '/api/mcp',                          desc: 'Registry info, security layers, agent prompt template' },
-            { method: 'GET',  path: '/api/servers/search?q={intent}',    desc: 'Semantic search — returns servers with full inputSchema' },
-            { method: 'GET',  path: '/api/servers?sort=trust&source=official', desc: 'Browse with filters: sort, verified, source, tag, page' },
-            { method: 'GET',  path: '/api/servers/:name',                desc: 'Server detail — scan history, CVE issues, tools' },
-            { method: 'POST', path: '/api/proxy/:serverName/:toolName',  desc: 'Remote invocation proxy — request blocking, response scanning, audit' },
-            { method: 'POST', path: '/api/mcp-server',                   desc: 'Native MCP server (StreamableHTTP) — search_tools + invoke_tool' },
-            { method: 'GET',  path: '/api/mcp-server',                   desc: 'Native MCP server (SSE — for older clients)' },
-            { method: 'GET',  path: '/api/servers/:name/analytics',      desc: '30-day call volume, latency, DLP events, tool breakdown' },
-          ].map(row => (
-            <div key={row.path} style={{ display: 'flex', gap: '12px', alignItems: 'baseline', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-              <span style={{
-                fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 700,
-                padding: '2px 8px', borderRadius: '4px', flexShrink: 0,
-                background: row.method === 'GET' ? 'var(--blue-bg)' : 'var(--accent-bg)',
-                color: row.method === 'GET' ? 'var(--blue)' : 'var(--accent)',
-              }}>{row.method}</span>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text)', flex: 1 }}>{row.path}</span>
-              <span style={{ fontSize: '13px', color: 'var(--text-3)', flex: 1 }}>{row.desc}</span>
-            </div>
-          ))}
+          <div className="mb-8 overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.06)] bg-white shadow-sm">
+            {[
+              { method: 'GET',  path: '/openmcp.md',                       desc: 'Agent skill file — markdown, live stats injected' },
+              { method: 'GET',  path: '/api/mcp',                          desc: 'Registry info, security layers, agent prompt template' },
+              { method: 'GET',  path: '/api/servers/search?q={intent}',    desc: 'Semantic search — returns servers with full inputSchema' },
+              { method: 'GET',  path: '/api/servers?sort=trust&source=official', desc: 'Browse with filters: sort, verified, source, tag, page' },
+              { method: 'GET',  path: '/api/servers/:name',                desc: 'Server detail — scan history, CVE issues, tools' },
+              { method: 'POST', path: '/api/proxy/:serverName/:toolName',  desc: 'Remote invocation proxy — request blocking, response scanning, audit' },
+              { method: 'POST', path: '/api/mcp-server',                   desc: 'Native MCP server (StreamableHTTP) — search_tools + invoke_tool' },
+              { method: 'GET',  path: '/api/mcp-server',                   desc: 'Native MCP server (SSE — for older clients)' },
+              { method: 'GET',  path: '/api/servers/:name/analytics',      desc: '30-day call volume, latency, DLP events, tool breakdown' },
+            ].map((row, i) => (
+              <div key={row.path} className={cn("flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-4", i > 0 && "border-t border-[rgba(0,0,0,0.04)]")}>
+                <span className={cn(
+                  "inline-flex shrink-0 items-center rounded pl-[6px] pr-[6px] py-[2px] font-mono text-[11px] font-bold uppercase tracking-wider",
+                  row.method === 'GET' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-700'
+                )}>{row.method}</span>
+                <span className="flex-1 font-mono text-[13px] text-black">{row.path}</span>
+                <span className="flex-1 text-[13px] text-[#52525b]">{row.desc}</span>
+              </div>
+            ))}
+          </div>
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Search example</h3>
+          <h3 className="mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Search example</h3>
           <CodeBlock code={CODE.searchExample} label="GET /api/servers/search?q=send+transactional+email" />
 
-          <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '24px 0 12px' }}>Invoke example</h3>
+          <h3 className="mt-8 mb-3 font-display text-[17px] font-semibold text-[#0a0a0a]">Invoke example</h3>
           <CodeBlock code={CODE.invokeExample} label="POST /api/proxy/sendgrid-mail/send_email" />
 
           <P>
             Response headers on every proxy call:
           </P>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+          <div className="mb-6 flex flex-col gap-2">
             {[
               ['X-Registry-Trust-Score', 'Server trust score at call time (0–100)'],
               ['X-Registry-Latency',     'Upstream latency in ms'],
               ['X-Registry-DLP-Warning', 'Present if DLP rules triggered on response'],
             ].map(([header, desc]) => (
-              <div key={header} style={{ display: 'flex', gap: '12px', padding: '8px 12px', background: 'var(--bg-1)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                <code style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--accent)', flexShrink: 0 }}>{header}</code>
-                <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>{desc}</span>
+              <div key={header} className="flex gap-4 rounded-[10px] border border-[rgba(0,0,0,0.06)] bg-[#fafafa] p-3 shadow-sm">
+                <code className="shrink-0 font-mono text-[12px] font-medium text-black">{header}</code>
+                <span className="text-[13px] text-[#52525b]">{desc}</span>
               </div>
             ))}
           </div>
@@ -405,27 +405,30 @@ export default function DocsPage() {
             Every server has a trust score from 0–100 that is returned alongside every search result.
             It is a composite of five signals:
           </P>
-          {[
-            ['Verified publisher (25 pts)', 'Publisher completed GitHub OIDC or DNS challenge to prove identity.'],
-            ['Scan history (30 pts)',        'Clean static scan, no shell injection patterns, no CVEs in dependencies.'],
-            ['Uptime (20 pts)',              'Measured over the last 30 days by our uptime cron running every 15 minutes.'],
-            ['Schema stability (15 pts)',    'Days since last schema change. Servers that frequently mutate their tools score lower.'],
-            ['Community signals (10 pts)',   'Star count, call volume, abuse reports.'],
-          ].map(([label, desc]) => (
-            <div key={label} style={{ display: 'flex', gap: '12px', marginBottom: '10px', padding: '14px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--accent)', fontWeight: 700, flexShrink: 0, minWidth: '180px' }}>{label}</span>
-              <span style={{ fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.6 }}>{desc}</span>
-            </div>
-          ))}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px', marginTop: '16px' }}>
+          <div className="mb-6 flex flex-col gap-2">
             {[
-              { range: '90–100', label: 'Verified + stable', bg: 'var(--accent-bg)', color: 'var(--accent)' },
-              { range: '80–89',  label: 'Good for production', bg: 'var(--blue-bg)', color: 'var(--blue)' },
-              { range: '< 70',   label: 'Use with caution', bg: 'var(--red-bg)', color: 'var(--red)' },
+              ['Verified publisher (25 pts)', 'Publisher completed GitHub OIDC or DNS challenge to prove identity.'],
+              ['Scan history (30 pts)',        'Clean static scan, no shell injection patterns, no CVEs in dependencies.'],
+              ['Uptime (20 pts)',              'Measured over the last 30 days by our uptime cron running every 15 minutes.'],
+              ['Schema stability (15 pts)',    'Days since last schema change. Servers that frequently mutate their tools score lower.'],
+              ['Community signals (10 pts)',   'Star count, call volume, abuse reports.'],
+            ].map(([label, desc]) => (
+              <div key={label} className="flex flex-col gap-1 rounded-[10px] border border-[rgba(0,0,0,0.06)] bg-[#fafafa] p-4 shadow-sm sm:flex-row sm:gap-4 sm:items-center">
+                <span className="shrink-0 font-display text-[14px] font-semibold text-black sm:min-w-[190px]">{label}</span>
+                <span className="text-[13px] leading-relaxed text-[#52525b]">{desc}</span>
+              </div>
+            ))}
+          </div>
+          
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { range: '90–100', label: 'Verified + stable', bg: 'bg-green-50', color: 'text-green-700', border: 'border-green-200' },
+              { range: '80–89',  label: 'Good for production', bg: 'bg-blue-50', color: 'text-blue-700', border: 'border-blue-200' },
+              { range: '< 70',   label: 'Use with caution', bg: 'bg-red-50', color: 'text-red-700', border: 'border-red-200' },
             ].map(s => (
-              <div key={s.range} style={{ padding: '14px', background: s.bg, border: `1px solid ${s.color}30`, borderRadius: '8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'var(--mono)', color: s.color }}>{s.range}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>{s.label}</div>
+              <div key={s.range} className={cn("rounded-[12px] border p-4 text-center", s.bg, s.border)}>
+                <div className={cn("font-mono text-[22px] font-bold", s.color)}>{s.range}</div>
+                <div className="mt-1 text-[12px] font-medium opacity-80 mix-blend-multiply">{s.label}</div>
               </div>
             ))}
           </div>
@@ -434,17 +437,17 @@ export default function DocsPage() {
         {/* Categories */}
         <Section id="categories" title="MCP categories">
           <P>
-            openMCP indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for openMCP CLI. About 70% of invokable servers require credentials.
+            Agentrail indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for Agentrail CLI. About 70% of invokable servers require credentials.
           </P>
-          <div className="grid-2" style={{ gap: '10px' }}>
+          <div className="grid gap-3 sm:grid-cols-2">
             {CATEGORIES.map(cat => (
-              <div key={cat.name} style={{ padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 600 }}>{cat.icon} {cat.name}</span>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', background: 'var(--accent-bg)', padding: '2px 8px', borderRadius: '4px' }}>{cat.count}</span>
+              <div key={cat.name} className="rounded-[12px] border border-[rgba(0,0,0,0.06)] bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-display text-[15px] font-medium text-black"><span className="mr-2">{cat.icon}</span>{cat.name}</span>
+                  <span className="rounded bg-black px-2 py-0.5 font-mono text-[10px] font-bold text-white tracking-widest">{cat.count}</span>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '6px' }}>{cat.examples}</div>
-                <div style={{ fontSize: '11px', color: cat.creds ? 'var(--orange)' : 'var(--blue)' }}>
+                <div className="mb-3 text-[12px] text-[#52525b] line-clamp-1" title={cat.examples}>{cat.examples}</div>
+                <div className={cn("text-[11px] font-medium", cat.creds ? 'text-orange-600' : 'text-blue-600')}>
                   {cat.creds ? '🔑 Credentials required' : '🌐 Public — no credentials'}
                 </div>
               </div>
@@ -454,70 +457,74 @@ export default function DocsPage() {
 
         {/* FAQ */}
         <Section id="faq" title="FAQ">
-          {[
-            ['Is openMCP really free?',
-             'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.'],
-            ['Do I need to register to use it?',
-             'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
-            ['How do credentials work if my MCP needs an API key?',
-             'API keys are stored in the openMCP Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.'],
-            ['What is the difference between openMCP and Smithery?',
-             'Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. openMCP is designed for agents to use autonomously at runtime. It also scans every server before listing (Smithery does not), and exposes a native MCP server so agents need zero configuration beyond one URL.'],
-            ['Can I use openMCP with Antigravity?',
-             'Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "openmcp": { "url": "https://openmcp.dev/api/mcp-server" } } }'],
-            ['How does openMCP compare to Arcade or Composio?',
-             'Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while openMCP focuses on discovery, trust, and secure invocation of remote MCP servers. openMCP scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.'],
-            ['Does openMCP support stdio or local MCP servers today?',
-             'Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. openMCP CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.'],
-            ['What does the 15-layer security stack actually do?',
-             'See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.'],
-          ].map(([q, a]) => (
-            <div key={q as string} style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--text)' }}>{q as string}</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.75 }}>{a as string}</div>
-            </div>
-          ))}
+          <div className="flex flex-col gap-6">
+            {[
+              ['Is Agentrail really free?',
+               'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.'],
+              ['Do I need to register to use it?',
+               'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
+              ['How do credentials work if my MCP needs an API key?',
+               'API keys are stored in the Agentrail Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.'],
+              ['What is the difference between Agentrail and Smithery?',
+               'Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. Agentrail is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.'],
+              ['Can I use Agentrail with Antigravity?',
+               'Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "agentrail": { "url": "https://openmcp.dev/api/mcp-server" } } }'],
+              ['How does Agentrail compare to Arcade or Composio?',
+               'Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while Agentrail focuses on discovery, trust, and secure invocation of remote MCP servers. Agentrail scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.'],
+              ['Does Agentrail support stdio or local MCP servers today?',
+               'Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. Agentrail CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.'],
+              ['What does the 15-layer security stack actually do?',
+               'See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.'],
+            ].map(([q, a], i) => (
+              <div key={q as string} className={cn("pb-6", i !== 7 && "border-b border-[rgba(0,0,0,0.06)]")}>
+                <div className="mb-2 font-display text-[15px] font-semibold text-[#0a0a0a]">{q as string}</div>
+                <div className="text-[14px] leading-relaxed text-[#52525b]">{a as string}</div>
+              </div>
+            ))}
+          </div>
         </Section>
 
         {/* Known Limitations */}
-        <section id="known-limitations" style={{ paddingTop: '48px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '20px', color: 'var(--text)' }}>
+        <section id="known-limitations" className="py-12">
+          <h2 className="mb-5 font-display text-[24px] font-medium tracking-tight text-[#0a0a0a]">
             What's coming
           </h2>
-          <p style={{ color: 'var(--text-2)', lineHeight: 1.75, marginBottom: '16px', fontSize: '15px' }}>
-            openMCP is in active development. Here is what is shipping next.
-          </p>
-          {[
-            {
-              title: 'openMCP CLI for local stdio servers',
-              status: 'Next launch wave',
-              detail: 'A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from openMCP, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.',
-            },
-            {
-              title: 'Per-user OAuth delegation',
-              status: 'Coming in v0.3',
-              detail: 'Expand OAuth coverage and auto-discovery for servers requiring per-user accounts (GitHub, Gmail, Slack, Stripe connected to your account). The static key vault works for API-key-based servers today.',
-            },
-            {
-              title: 'WASM sandbox pre-listing execution',
-              status: 'Coming in v0.3',
-              detail: 'Sandboxed execution before listing will catch runtime-only payloads and deferred attacks that static analysis misses. Current security coverage is ~70% OWASP MCP Top 10 across 13 live layers. The sandbox brings this to ~85%.',
-            },
-          ].map(item => (
-            <div key={item.title} style={{ marginBottom: '16px', padding: '16px 18px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>{item.title}</div>
-                <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', background: 'var(--accent-bg)', padding: '2px 8px', borderRadius: '4px', flexShrink: 0, marginLeft: '12px' }}>{item.status}</span>
+          <P>
+            Agentrail is in active development. Here is what is shipping next.
+          </P>
+          <div className="flex flex-col gap-4">
+            {[
+              {
+                title: 'Agentrail CLI for local stdio servers',
+                status: 'Next launch wave',
+                detail: 'A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from Agentrail, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.',
+              },
+              {
+                title: 'Per-user OAuth delegation',
+                status: 'Coming in v0.3',
+                detail: 'Expand OAuth coverage and auto-discovery for servers requiring per-user accounts (GitHub, Gmail, Slack, Stripe connected to your account). The static key vault works for API-key-based servers today.',
+              },
+              {
+                title: 'WASM sandbox pre-listing execution',
+                status: 'Coming in v0.3',
+                detail: 'Sandboxed execution before listing will catch runtime-only payloads and deferred attacks that static analysis misses. Current security coverage is ~70% OWASP MCP Top 10 across 13 live layers. The sandbox brings this to ~85%.',
+              },
+            ].map(item => (
+              <div key={item.title} className="rounded-[12px] border border-[rgba(0,0,0,0.06)] bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+                <div className="mb-2 flex items-start justify-between">
+                  <div className="font-display text-[15px] font-semibold text-[#0a0a0a]">{item.title}</div>
+                  <span className="ml-3 shrink-0 rounded bg-neutral-100 px-2 py-0.5 font-mono text-[11px] font-bold text-[#52525b]">{item.status}</span>
+                </div>
+                <div className="text-[13px] leading-relaxed text-[#52525b]">{item.detail}</div>
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.7 }}>{item.detail}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </section>
 
-        <div style={{ paddingTop: '40px', display: 'flex', gap: '12px' }}>
-          <Link href="/connect" className="btn btn-primary">Connect your agent</Link>
-          <Link href="/registry" className="btn btn-ghost">Browse registry</Link>
-          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener" className="btn btn-ghost">GitHub</a>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link href="/connect" className="btn btn-primary px-6">Connect your agent</Link>
+          <Link href="/registry" className="btn btn-ghost px-6 !bg-white">Browse registry</Link>
+          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener" className="btn btn-ghost px-6 !bg-white">GitHub</a>
         </div>
       </main>
     </div>

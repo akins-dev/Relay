@@ -4,13 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * GET /openmcp.md
  *
- * Machine-readable skill file for AI agents.
- * Agents fetch this once and understand how to use the entire platform.
- * Pattern: same as Smithery's skill.md — but for remote-first,
- * zero-human-intervention agent workflows.
- *
- * Usage in system prompt:
- *   Read https://openmcp.dev/openmcp.md before your first tool call.
+ * Legacy route path, current Agentrail skill file.
+ * Agents fetch this once and understand how to use the hosted platform.
  */
 export async function GET() {
   // Fetch live stats to inject into the skill file
@@ -22,18 +17,18 @@ export async function GET() {
   const verifiedServers = s.verified_servers ?? '0';
   const callsToday      = s.calls_today      ?? '0';
 
-  const md = `# openMCP
+  const md = `# Agentrail
 
-The secure, open-source discovery and invocation layer for remote MCP servers. ${activeServers} verified servers. Zero configuration.
+The trust layer for runtime discovery and secure invocation of remote MCP servers. ${activeServers} active servers. Zero local setup.
 
-> "Every agent framework is hitting the same wall: 30 pre-loaded tools, shrinking context windows, humans configuring servers before the agent runs. openMCP removes that wall."
+> "Every agent framework is hitting the same wall: too many pre-loaded tools, shrinking context windows, and brittle integrations wired before the agent runs. Agentrail removes that wall."
 >
-> Agents describe what they need. openMCP finds it, verifies it, and invokes it — at runtime. The context window cost is always exactly two tools.
+> Agents describe what they need. Agentrail finds it, verifies it, and invokes it at runtime. The context window cost stays focused on just two tools: search and invoke.
 
 ## What you can do
 
 - Discover invokable remote MCP servers by describing what you need
-- Note: only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned today — stdio-only local servers are excluded until openMCP CLI ships
+- Only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned today — stdio-only local servers are excluded until Agentrail CLI ships
 - Invoke tools through a security proxy — request DLP blocking, response scanning, audit trail on every call
 - Trust every result — each server scanned across 15 security layers before listing
 
@@ -50,7 +45,7 @@ The secure, open-source discovery and invocation layer for remote MCP servers. $
 
 Most MCP servers require authentication. You NEVER pass credentials as tool arguments.
 
-### The openMCP Vault
+### The Agentrail Vault
 
 Store your API key once at https://openmcp.dev/dashboard/secrets.
 The proxy decrypts and injects it at call time. You can view the secret name but never the value after saving. Your agent never sees the raw key at any point.
@@ -139,13 +134,13 @@ Every call is:
 
 ## Connecting as a native MCP server (recommended)
 
-If your framework supports MCP, connect to openMCP once and get
+If your framework supports MCP, connect to Agentrail once and get
 \`search_tools\` and \`invoke_tool\` as native MCP tools:
 
 \`\`\`json
 {
   "mcpServers": {
-    "openmcp": {
+    "agentrail": {
       "url": "https://openmcp.dev/api/mcp-server"
     }
   }
@@ -207,22 +202,22 @@ Returns full endpoint map, all security layers, and this prompt template.
 
 ## Works with CLI-first frameworks
 
-If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): openMCP integrates with one config line today for remote MCP discovery and invocation. A dedicated local CLI bridge for stdio servers is planned next.
+If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): Agentrail integrates with one config line today for remote MCP discovery and invocation. A dedicated local CLI bridge for stdio servers is planned next.
 
-```json
-{ "mcpServers": { "openmcp": { "url": "https://openmcp.dev/api/mcp-server" } } }
-```
+\`\`\`json
+{ "mcpServers": { "agentrail": { "url": "https://openmcp.dev/api/mcp-server" } } }
+\`\`\`
 
 ## Coming soon
 
-- **openMCP CLI:** Use the same discovery layer for local stdio MCP servers. The bridge will route remote servers through openMCP cloud and local servers through a local process runner.
+- **Agentrail CLI:** Use the same discovery layer for local stdio MCP servers. The bridge will route remote servers through Agentrail Cloud and local servers through a local process runner.
 - **AgentSecrets-backed local credentials:** The CLI will use AgentSecrets as the credential substrate so local MCP servers can run without exposing secret values to agent context.
 - **Expanded OAuth coverage:** Broader per-user OAuth support, provider auto-discovery, and improved connected-account UX. Static key vault works today for API-key-based servers.
 - **WASM sandbox execution:** Pre-listing sandboxed execution to catch runtime-only payloads. Brings OWASP MCP Top 10 coverage from ~70% to ~85%.
 
 ---
 
-*openMCP — MIT licensed — built by The-17*
+*Agentrail — MIT licensed — built by The-17*
 *https://github.com/the-17/openmcp*
 `;
 

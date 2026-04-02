@@ -20,19 +20,19 @@ export function Nav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-border bg-[rgba(253,252,251,0.95)] backdrop-blur-xl">
-      <div className="mx-auto flex h-15 max-w-[1200px] items-center justify-between px-6 sm:px-8">
+    <nav className="sticky top-0 z-50 border-b border-[rgba(0,0,0,0.06)] bg-[rgba(255,255,255,0.85)] backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6 sm:px-8">
 
         {/* Logo */}
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 no-underline">
-          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-gradient-to-br from-[#e8673a] to-[#c9552e] text-sm font-black text-white shadow-[0_0_16px_rgba(232,103,58,0.25)]">
-            ⬡
+        <Link href="/" className="flex shrink-0 items-center gap-3 no-underline">
+          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[rgba(0,0,0,0.1)] bg-white text-[11px] font-black text-black shadow-sm">
+            ⇢
           </div>
-          <span className="text-[15px] font-bold tracking-tight text-foreground">
-            open<span className="text-brand">MCP</span>
+          <span className="font-display text-[22px] font-semibold tracking-tight text-foreground">
+            Agentrail
           </span>
-          <span className="hidden rounded-full border border-brand/20 bg-brand-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand sm:inline">
-            v0.1
+          <span className="hidden rounded-full border border-transparent bg-[rgba(0,0,0,0.05)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-muted-foreground sm:inline">
+            remote beta
           </span>
         </Link>
 
@@ -43,9 +43,9 @@ export function Nav() {
               key={l.href}
               href={l.href}
               className={cn(
-                'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                'rounded-full px-3.5 py-1.5 text-[13px] transition-colors',
                 isActive(l.href)
-                  ? 'bg-muted font-semibold text-foreground'
+                  ? 'bg-[rgba(0,0,0,0.05)] font-medium text-foreground'
                   : 'font-normal text-muted-foreground hover:text-foreground'
               )}
             >
@@ -70,7 +70,7 @@ export function Nav() {
               <Link href="/login" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
                 Sign in
               </Link>
-              <Link href="/login?mode=register" className="rounded-lg bg-brand px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-dim">
+              <Link href="/login?mode=register" className="rounded-full bg-black px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800">
                 Get started
               </Link>
             </>
@@ -80,7 +80,7 @@ export function Nav() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setOpen(v => !v)}
-          className="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
+          className="flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
           aria-label="Toggle menu"
         >
           {open ? <X size={20} /> : <Menu size={20} />}

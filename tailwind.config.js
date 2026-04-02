@@ -22,7 +22,21 @@ module.exports = {
         border:      'hsl(var(--border))',
         input:       'hsl(var(--input))',
         ring:        'hsl(var(--ring))',
-        brand:       { DEFAULT: '#c2440c', dim: '#a33509', bg: '#fef3ee' },
+        brand: {
+          DEFAULT: '#2563eb',
+          ink: '#0f172a',
+          rail: '#2563eb',
+          signal: '#06b6d4',
+          mist: '#e2e8f0',
+          steel: '#64748b',
+          white: '#f8fafc',
+          trust: '#16a34a',
+          warn: '#d97706',
+          danger: '#dc2626',
+          dim: '#1d4ed8',
+          bg: '#eff6ff',
+          panel: '#f8fbff',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -31,8 +45,8 @@ module.exports = {
       },
       fontFamily: {
         sans:  ['var(--font-inter)', 'sans-serif'],
-        serif: ['Lora', 'Georgia', 'serif'],
-        mono:  ['JetBrains Mono', 'monospace'],
+        display: ['var(--font-editorial)', 'serif'],
+        mono:  ['var(--font-ibm-plex-mono)', 'monospace'],
       },
       keyframes: {
         'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },

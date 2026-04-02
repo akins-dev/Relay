@@ -16,7 +16,7 @@ interface ServerCardProps {
     uptime_pct:   number;
     scan_status:  string;
     tags:         string[];
-    source:       string;
+    source?:      string;
     is_new?:      boolean;
     profiles?:    { username: string; avatar_url?: string } | null;
   };
