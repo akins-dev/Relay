@@ -23,19 +23,19 @@ module.exports = {
         input:       'hsl(var(--input))',
         ring:        'hsl(var(--ring))',
         brand: {
-          DEFAULT: '#2563eb',
-          ink: '#0f172a',
-          rail: '#2563eb',
-          signal: '#06b6d4',
-          mist: '#e2e8f0',
-          steel: '#64748b',
-          white: '#f8fafc',
-          trust: '#16a34a',
-          warn: '#d97706',
-          danger: '#dc2626',
-          dim: '#1d4ed8',
-          bg: '#eff6ff',
-          panel: '#f8fbff',
+          DEFAULT: '#4f46e5', // electric indigo
+          ink: '#030712',     // pure dark background
+          rail: '#4f46e5',
+          signal: '#06b6d4',  // cyan glow
+          mist: '#1f2937',    // dark slate border
+          steel: '#9ca3af',   // soft text
+          white: '#f9fafb',
+          trust: '#10b981',   // emerald success
+          warn: '#f59e0b',
+          danger: '#ef4444',
+          dim: '#3730a3',
+          bg: '#000000',
+          panel: '#0a0a0a',
         },
       },
       borderRadius: {

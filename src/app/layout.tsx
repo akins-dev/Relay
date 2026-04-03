@@ -1,27 +1,26 @@
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono, Instrument_Sans, Newsreader } from 'next/font/google';
+import { Space_Grotesk, Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Nav }          from '@/components/layout/Nav';
 import { AuthProvider } from '@/components/AuthProvider';
 
 // ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
-// This replaces the @import in globals.css which blocked rendering.
-const instrumentSans = Instrument_Sans({
+const spaceGrotesk = Space_Grotesk({
   subsets:  ['latin'],
-  variable: '--font-inter',
+  variable: '--font-inter', // mapped to original css variable for ease
   display:  'swap',
 });
 
-const newsreader = Newsreader({
+const outfit = Outfit({
   subsets: ['latin'],
-  variable: '--font-editorial',
-  weight: ['400', '500', '600'],
+  variable: '--font-editorial', // mapped to original display variable
+  weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  variable: '--font-ibm-plex-mono',
+  variable: '--font-ibm-plex-mono', // mapped to original mono variable
   weight: ['400', '500', '600'],
   display: 'swap',
 });
@@ -29,8 +28,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 // ── Metadata ──────────────────────────────────────────────────────────────────
 const SITE_URL   = 'https://openmcp.dev';
 const SITE_NAME  = 'Agentrail';
-const TITLE      = 'Agentrail — Runtime Tool Discovery For AI Agents';
-const DESCRIPTION = 'Agentrail helps AI agents discover the tools they need at runtime and invoke them through a secure trust, policy, and credential layer.';
+const TITLE      = 'Agentrail — The Intelligence Layer for Agent Tools';
+const DESCRIPTION = 'Give your agents the power to dynamically discover and securely invoke remote capabilities. Secure by default. Network native.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -63,7 +62,7 @@ export const metadata: Metadata = {
       url:    '/og-image.png',
       width:  1200,
       height: 630,
-      alt:    'Agentrail — Runtime Tool Discovery For AI Agents',
+      alt:    'Agentrail — The Intelligence Layer for Agent Tools',
     }],
     locale: 'en_US',
   },
@@ -100,8 +99,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor:    '#2563eb',
-  colorScheme:   'light',
+  themeColor:    '#050505',
+  colorScheme:   'dark',
   width:         'device-width',
   initialScale:  1,
 };
@@ -109,8 +108,8 @@ export const viewport: Viewport = {
 // ── Root layout ───────────────────────────────────────────────────────────────
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${instrumentSans.variable} ${newsreader.variable} ${ibmPlexMono.variable}`}>
-      <body>
+    <html lang="en" className={`${spaceGrotesk.variable} ${outfit.variable} ${jetbrainsMono.variable} dark`}>
+      <body className="bg-black text-white antialiased">
         <AuthProvider>
           <Nav />
           <main>{children}</main>
