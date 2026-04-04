@@ -78,7 +78,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           </h1>
           
           <p className="mt-8 max-w-2xl text-lg leading-8 text-brand-steel anim-fadeup" style={{ animationDelay: '200ms' }}>
-            Give your agents the power to dynamically discover, verify, and safely invoke remote capabilities at runtime—no hardcoded menus required.
+            Give your agents the power to dynamically discover, verify, and safely invoke remote MCP tools at runtime—no hardcoded menus required.
           </p>
 
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row justify-center anim-fadeup md:w-auto w-full" style={{ animationDelay: '300ms' }}>
