@@ -11,7 +11,7 @@ import {
   Command,
   Terminal,
 } from 'lucide-react';
-import { ChatAgentSimulation } from '@/components/ChatAgentSimulation';
+import { HeroOrbital } from '@/components/HeroOrbital';
 import { SecurityTimelineSimulation } from '@/components/SecurityTimelineSimulation';
 import { ServerCard } from '@/components/registry/ServerCard';
 import type { GlobalStats, Server } from '@/types';
@@ -67,14 +67,10 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
   const avgTrust = stats.avg_trust_score ? stats.avg_trust_score.toFixed(1) : '0.0';
 
   return (
-    <div className="overflow-x-hidden pt-12 sm:pt-20 lg:pt-28 pb-16">
+    <div className="overflow-x-hidden pt-24 sm:pt-32 pb-16">
       {/* ── 1. Hero ── */}
-      <section className="page text-center relative z-10">
+      <section className="page text-center relative z-10 w-full">
         <div className="mx-auto max-w-4xl flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-brand-signal shadow-[0_0_15px_rgba(6,182,212,0.15)] anim-fadeup backdrop-blur-md" style={{ animationDelay: '0ms' }}>
-            <Sparkles className="h-3.5 w-3.5" />
-            Agentrail Cloud is Live
-          </div>
           
           <h1 className="heading-display mt-8 max-w-4xl text-[3.5rem] font-medium leading-[0.95] text-white sm:text-[4.5rem] lg:text-[6rem] anim-fadeup drop-shadow-2xl" style={{ animationDelay: '100ms' }}>
             Seamless Intent.<br />
@@ -96,14 +92,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           </div>
         </div>
 
-        {/* Dual-Pane Simulation */}
-        <div className="mt-20 anim-fadeup relative" style={{ animationDelay: '400ms' }}>
-           {/* Glow behind simulation */}
-           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl h-full bg-brand-DEFAULT opacity-5 blur-[120px] rounded-[100%] pointer-events-none z-[-1]" />
-           <ChatAgentSimulation />
-        </div>
+        
 
-        <LogoCloud />
+        {/* <LogoCloud /> */}
       </section>
 
       {/* ── Stats Section ── */}
@@ -114,6 +105,43 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           <Metric label="Calls today" value={callsToday} />
           <Metric label="Avg trust" value={avgTrust} />
         </div>
+      </section>
+
+      <section className="page py-16 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
+        
+        {/* Section Heading Label */}
+        <div className="inline-flex items-center gap-2.5 mb-16 px-4 py-1.5 rounded-full border border-white/10 bg-[rgba(15,23,42,0.5)] backdrop-blur-md shadow-lg anim-fadeup">
+           <div className="w-1.5 h-1.5 rounded-full bg-brand-signal animate-[pulse_2s_infinite]" />
+           <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-steel">The Agentrail Flow</span>
+        </div>
+
+        {/* Text / Code Block */}
+        <div className="w-full max-w-5xl rounded-[24px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] p-6 sm:p-10 lg:flex lg:items-center lg:justify-between lg:gap-10 backdrop-blur-md relative overflow-hidden mb-16 anim-fadeup" style={{ animationDelay: '100ms' }}>
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-DEFAULT opacity-10 blur-[100px] pointer-events-none" />
+          <div className="lg:w-1/2 relative z-10">
+            <h2 className="heading-display text-3xl font-medium leading-tight text-white sm:text-4xl">
+              From intent to safe execution.
+            </h2>
+            <p className="mt-4 text-lg leading-8 text-brand-steel">
+              The agent stays focused on business intent. Agentrail natively handles the search surface, the trust checks, the secret injection, and the audit trail.
+            </p>
+          </div>
+          <div className="mt-8 lg:mt-0 lg:w-1/2 relative z-10">
+            <pre className="whitespace-pre-wrap font-mono text-[13px] leading-8 text-brand-steel bg-[#030712] p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-[inset_0_2px_20px_rgba(0,0,0,0.5)]">
+              <span className="text-brand-white">1.</span> search_tools("create issue")<br/>
+              <span className="text-brand-white">2.</span> Registry returns matching schemas<br/>
+              <span className="text-brand-white">3.</span> invoke_tool({`{ server, tool, args }`})<br/>
+              <span className="text-brand-white">4.</span> Policy, auth, and DLP proxy runs<br/>
+              <span className="text-brand-white">5.</span> Result returned to agent safely
+            </pre>
+          </div>
+        </div>
+
+        {/* Central Orb Simulation */}
+        <div className="w-full relative flex justify-center anim-fadeup" style={{ animationDelay: '200ms' }}>
+           <HeroOrbital />
+        </div>
+
       </section>
 
       {/* ── 2. Security Timeline Section ── */}
@@ -162,24 +190,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           </div>
         </div>
 
-        <div className="mt-16 rounded-[24px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.03)] p-6 sm:p-10 lg:flex lg:items-center lg:justify-between lg:gap-10 backdrop-blur-md relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-DEFAULT opacity-10 blur-[100px] pointer-events-none" />
-          <div className="lg:w-1/2 relative z-10">
-            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand-signal">The Agentrail Flow</div>
-            <p className="mt-4 text-lg leading-8 text-brand-white">
-              The agent stays focused on business intent. Agentrail handles the search surface, the trust checks, the secret injection, and the audit trail.
-            </p>
-          </div>
-          <div className="mt-8 lg:mt-0 lg:w-1/2 relative z-10">
-            <pre className="whitespace-pre-wrap font-mono text-[13px] leading-8 text-brand-steel bg-[#030712] p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-inner">
-              <span className="text-brand-white">1.</span> search_tools("create Linear issue")<br/>
-              <span className="text-brand-white">2.</span> Agentrail returns candidates + schemas<br/>
-              <span className="text-brand-white">3.</span> invoke_tool({`{ server, tool, args }`})<br/>
-              <span className="text-brand-white">4.</span> Policy, auth, proxy, and audit run<br/>
-              <span className="text-brand-white">5.</span> Result comes back with trust metadata
-            </pre>
-          </div>
-        </div>
+        
       </section>
 
       {/* Featured Registry Section */}

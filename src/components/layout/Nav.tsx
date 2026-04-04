@@ -20,18 +20,18 @@ export function Nav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-[rgba(0,0,0,0.06)] bg-[rgba(255,255,255,0.85)] backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 border-b border-[rgba(255,255,255,0.05)] bg-[rgba(15,23,42,0.6)] backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6 sm:px-8">
 
         {/* Logo */}
         <Link href="/" className="flex shrink-0 items-center gap-3 no-underline">
-          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[rgba(0,0,0,0.1)] bg-white text-[11px] font-black text-black shadow-sm">
+          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[rgba(255,255,255,0.2)] bg-transparent text-[11px] font-black text-white shadow-sm">
             ⇢
           </div>
-          <span className="font-display text-[22px] font-semibold tracking-tight text-foreground">
+          <span className="font-display text-[22px] font-semibold tracking-tight text-white">
             Agentrail
           </span>
-          <span className="hidden rounded-full border border-transparent bg-[rgba(0,0,0,0.05)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-muted-foreground sm:inline">
+          <span className="hidden rounded-full border border-transparent bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8] sm:inline">
             remote beta
           </span>
         </Link>
@@ -45,8 +45,8 @@ export function Nav() {
               className={cn(
                 'rounded-full px-3.5 py-1.5 text-[13px] transition-colors',
                 isActive(l.href)
-                  ? 'bg-[rgba(0,0,0,0.05)] font-medium text-foreground'
-                  : 'font-normal text-muted-foreground hover:text-foreground'
+                  ? 'bg-[rgba(255,255,255,0.08)] font-medium text-white'
+                  : 'font-normal text-[#94a3b8] hover:text-white hover:bg-[rgba(255,255,255,0.03)]'
               )}
             >
               {l.label}
@@ -70,7 +70,7 @@ export function Nav() {
               <Link href="/login" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
                 Sign in
               </Link>
-              <Link href="/login?mode=register" className="rounded-full bg-black px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800">
+              <Link href="/login?mode=register" className="rounded-full bg-white px-4 py-1.5 text-[13px] font-medium text-[#0F172A] transition-colors hover:bg-neutral-200">
                 Get started
               </Link>
             </>

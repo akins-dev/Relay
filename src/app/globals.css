@@ -28,23 +28,23 @@
   --ring: 212.7 26.8% 83.9%;
   --radius: 12px;
 
-  --bg: #030712;
-  --bg-1: #0f172a;
-  --bg-2: #1e293b;
-  --bg-3: #334155;
+  --bg: #0F172A;
+  --bg-1: #1e293b;
+  --bg-2: #334155;
+  --bg-3: #475569;
   --surface: #0a0a0a;
   --surface-2: rgba(15, 23, 42, 0.6);
-  --border-1: #1e293b;
-  --border-2: #334155;
-  --border-3: #475569;
+  --border-1: rgba(255, 255, 255, 0.1);
+  --border-2: rgba(255, 255, 255, 0.15);
+  --border-3: rgba(255, 255, 255, 0.2);
 
-  --text: #f8fafc;
+  --text: #F8FAFC;
   --text-2: #94a3b8;
-  --text-3: #64748b;
+  --text-3: #64748B;
 
-  --accent-brand: #4f46e5;
-  --accent-glow: rgba(79, 70, 229, 0.15);
-  --accent-glow2: rgba(79, 70, 229, 0.08);
+  --accent-brand: #2563EB;
+  --accent-glow: rgba(37, 99, 235, 0.15);
+  --accent-glow2: rgba(37, 99, 235, 0.08);
 
   --font: var(--font-inter), sans-serif;
   --font-display: var(--font-editorial), sans-serif;
@@ -119,12 +119,21 @@ a {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes flowLine {
+  from { stroke-dashoffset: 550; }
+  to { stroke-dashoffset: 0; }
+}
+
 .anim-fadeup { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
 .anim-fadein { animation: fadeIn .35s ease both; }
 .anim-pulse { animation: pulse 2s ease-in-out infinite; }
 .anim-spin { animation: spin 1s linear infinite; }
 .anim-float { animation: float 5s ease-in-out infinite; }
 .anim-slideup { animation: slideUp .6s cubic-bezier(.22,1,.36,1) both; }
+.anim-flow {
+  stroke-dasharray: 25 525;
+  animation: flowLine 2.5s linear infinite;
+}
 
 .btn {
   display: inline-flex;
