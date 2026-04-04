@@ -67,14 +67,14 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
   const avgTrust = stats.avg_trust_score ? stats.avg_trust_score.toFixed(1) : '0.0';
 
   return (
-    <div className="overflow-x-hidden pt-24 sm:pt-32 pb-16">
+    <div className="overflow-x-hidden pb-16">
       {/* ── 1. Hero ── */}
-      <section className="page text-center relative z-10 w-full">
+      <section className="page text-center relative z-10 w-full h-screen flex items-center justify-center">
         <div className="mx-auto max-w-4xl flex flex-col items-center">
           
-          <h1 className="heading-display mt-8 max-w-4xl text-[3.5rem] font-medium leading-[0.95] text-white sm:text-[4.5rem] lg:text-[6rem] anim-fadeup drop-shadow-2xl" style={{ animationDelay: '100ms' }}>
+          <h1 className="heading-display max-w-4xl text-[3.5rem] font-medium leading-[0.95] text-white sm:text-[4.5rem] lg:text-[6rem] anim-fadeup drop-shadow-2xl" style={{ animationDelay: '100ms' }}>
             Seamless Intent.<br />
-            <span className="bg-gradient-to-r from-brand-DEFAULT to-brand-signal bg-clip-text text-transparent">Instant Execution.</span>
+            <span className="text-white">Instant Execution.</span>
           </h1>
           
           <p className="mt-8 max-w-2xl text-lg leading-8 text-brand-steel anim-fadeup" style={{ animationDelay: '200ms' }}>
@@ -110,9 +110,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
       <section className="page py-16 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
         
         {/* Section Heading Label */}
-        <div className="inline-flex items-center gap-2.5 mb-16 px-4 py-1.5 rounded-full border border-white/10 bg-[rgba(15,23,42,0.5)] backdrop-blur-md shadow-lg anim-fadeup">
+        <div className="inline-flex items-center gap-2.5 mb-16 px-3 py-1 rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.1)] shadow-[0_0_20px_rgba(6,182,212,0.4)] anim-fadeup">
            <div className="w-1.5 h-1.5 rounded-full bg-brand-signal animate-[pulse_2s_infinite]" />
-           <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-steel">The Agentrail Flow</span>
+           <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-signal">The Agentrail Flow</span>
         </div>
 
         {/* Text / Code Block */}
