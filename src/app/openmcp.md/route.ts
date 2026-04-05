@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { SITE_URL } from '@/lib/site';
 
 /**
  * GET /openmcp.md
@@ -47,12 +48,12 @@ Most MCP servers require authentication. You NEVER pass credentials as tool argu
 
 ### The Agentrail Vault
 
-Store your API key once at https://openmcp.dev/dashboard/secrets.
+Store your API key once at ${SITE_URL}/dashboard/secrets.
 The proxy decrypts and injects it at call time. You can view the secret name but never the value after saving. Your agent never sees the raw key at any point.
 
 **Setup flow (one time per service):**
 1. Get your API key from the service's dashboard
-2. Go to https://openmcp.dev/dashboard/secrets
+2. Go to ${SITE_URL}/dashboard/secrets
 3. Set Server: the server name, Name: the suggested name from the 401 response, Value: your key
 4. Tell your agent to proceed — works automatically forever after
 
@@ -70,7 +71,7 @@ The proxy decrypts and injects it at call time. You can view the secret name but
 ## Finding tools
 
 \`\`\`
-GET https://openmcp.dev/api/servers/search?q={your intent}&limit=5
+GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 \`\`\`
 
 **Response fields you need:**
@@ -113,7 +114,7 @@ GET /api/servers/search?q=send transactional email&limit=3
 ## Invoking tools
 
 \`\`\`
-POST https://openmcp.dev/api/proxy/{serverName}/{toolName}
+POST ${SITE_URL}/api/proxy/{serverName}/{toolName}
 Content-Type: application/json
 
 { ...tool arguments from inputSchema }
@@ -141,7 +142,7 @@ If your framework supports MCP, connect to Agentrail once and get
 {
   "mcpServers": {
     "agentrail": {
-      "url": "https://openmcp.dev/api/mcp-server"
+      "url": "${SITE_URL}/api/mcp-server"
     }
   }
 }
@@ -193,7 +194,7 @@ POST /api/proxy/github-tools/create_pull_request
 ## Registry info
 
 \`\`\`
-GET https://openmcp.dev/api/mcp
+GET ${SITE_URL}/api/mcp
 \`\`\`
 
 Returns full endpoint map, all security layers, and this prompt template.
@@ -205,7 +206,7 @@ Returns full endpoint map, all security layers, and this prompt template.
 If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): Agentrail integrates with one config line today for remote MCP discovery and invocation. A dedicated local CLI bridge for stdio servers is planned next.
 
 \`\`\`json
-{ "mcpServers": { "agentrail": { "url": "https://openmcp.dev/api/mcp-server" } } }
+{ "mcpServers": { "agentrail": { "url": "${SITE_URL}/api/mcp-server" } } }
 \`\`\`
 
 ## Coming soon

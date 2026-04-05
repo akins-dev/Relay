@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { Server } from '@/types';
+import { SITE_URL } from '@/lib/site';
 
 export default function ServerDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -93,7 +94,7 @@ Available tools: ${server.tools.join(', ')}
 
 Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
 
-  const curlSnippet = `curl -X POST https://openmcp.dev/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
+  const curlSnippet = `curl -X POST ${SITE_URL}/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
   -H "Content-Type: application/json" \\
   -d '{"param": "value"}'`;
 

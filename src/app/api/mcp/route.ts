@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { SITE_URL } from '@/lib/site';
 
 export async function GET() {
   const supabase = createClient();
@@ -67,7 +68,7 @@ export async function GET() {
       system_prompt: [
         'You have access to openMCP — a security-verified registry of thousands of MCP servers.',
         'Every server is scanned across 15 layers before listing. Every proxy call is inspected.',
-        'Read https://openmcp.dev/openmcp.md for full documentation before your first tool call.',
+        `Read ${SITE_URL}/openmcp.md for full documentation before your first tool call.`,
         'Search: GET /api/servers/search?q={your intent}&limit=5',
         'Invoke: POST /api/proxy/{serverName}/{toolName}',
         'If a tool call returns 401: the server needs a credential. The response includes setup_url pointing to your dashboard.',

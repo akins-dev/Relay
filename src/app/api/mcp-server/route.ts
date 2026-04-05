@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { SITE_URL } from '@/lib/site';
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 // API key is optional for search_tools (public) but logged for invoke_tool.
@@ -128,7 +129,7 @@ async function handleInitialize(id: any) {
       name:    SERVER_NAME,
       version: SERVER_VERSION,
     },
-    instructions: 'openMCP gives you access to 7,000+ verified MCP servers. Call search_tools first, then invoke_tool. Read https://openmcp.dev/openmcp.md for full documentation.',
+    instructions: `openMCP gives you access to 7,000+ verified MCP servers. Call search_tools first, then invoke_tool. Read ${SITE_URL}/openmcp.md for full documentation.`,
   });
 }
 

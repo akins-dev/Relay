@@ -14,6 +14,7 @@ import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
 import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
 import { createHash }                        from 'crypto';
+import { SITE_URL }                          from '@/lib/site';
 import {
   dlpScan, samplingDlpScan, piiScan,
   checkElicitationUrl, contextLeakScan,
@@ -163,7 +164,7 @@ export async function POST(
       fix: {
         wrong:   '{ "api_key": "sk_live_...", "amount": 4900 }',
         correct: '{ "amount": 4900, "currency": "usd" }',
-        vault:   'Store your key once at https://openmcp.dev/dashboard/secrets',
+        vault:   `Store your key once at ${SITE_URL}/dashboard/secrets`,
       },
     }, { status: 400 });
   }
@@ -252,9 +253,9 @@ export async function POST(
           server:       serverName,
           tool:         toolName,
           message:      `${serverName} requires you to connect your account via OAuth before calling tools.`,
-          connect_url:  `https://openmcp.dev/registry/${serverName}?connect=1`,
+          connect_url:  `${SITE_URL}/registry/${serverName}?connect=1`,
           instructions: [
-            `1. Visit: https://openmcp.dev/registry/${serverName}`,
+            `1. Visit: ${SITE_URL}/registry/${serverName}`,
             '2. Click "Connect your account"',
             '3. Complete the sign-in flow on the service',
             '4. Return here — this call will work automatically',
@@ -270,10 +271,10 @@ export async function POST(
         tool:           toolName,
         message:        `${serverName} requires an API key. Store it once — the proxy injects it on every call automatically.`,
         suggested_name: keyName,
-        setup_url:      `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${keyName}`,
+        setup_url:      `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${keyName}`,
         instructions:   [
           `1. Get your API key for ${serverName} from its dashboard`,
-          `2. Go to: https://openmcp.dev/dashboard/secrets`,
+          `2. Go to: ${SITE_URL}/dashboard/secrets`,
           `3. Name: ${keyName}   Value: your key`,
           '4. Re-run this call — it works automatically from now on',
         ],

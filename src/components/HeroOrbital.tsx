@@ -57,15 +57,27 @@ export function HeroOrbital() {
              <div className="flex-1 text-[13px] sm:text-[14px] text-white/90 font-medium tracking-wide">
                <span className="opacity-50 mr-1 sm:mr-2">Ask:</span> What is the current weather in San Francisco?
              </div>
-             <button 
-               onClick={startSimulation}
-               className={cn(
-                 "h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white flex shrink-0 items-center justify-center transition-all mr-1",
-                 step > 0 && step < 5 ? "opacity-50 scale-95" : "hover:scale-105 hover:bg-brand-mist"
-               )}
-             >
-               <ArrowRight className="w-4 h-4 text-brand-ink" />
-             </button>
+             <div className="relative mr-1 shrink-0 flex items-center justify-center">
+                {/* Outer glow ring - only when idle */}
+                {(step === 0 || step >= 5) && (
+                  <>
+                    <span className="absolute inset-0 rounded-full bg-white/30 animate-ping" style={{ animationDuration: '1.8s' }} />
+                    <span className="absolute -inset-1 rounded-full border border-white/20 animate-[pulse_2s_ease-in-out_infinite]" />
+                  </>
+                )}
+                <button
+                  onClick={startSimulation}
+                  title="Click to simulate"
+                  className={cn(
+                    "relative h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white flex items-center justify-center transition-all duration-300",
+                    step > 0 && step < 5
+                      ? "opacity-40 scale-95 cursor-not-allowed"
+                      : "hover:scale-110 hover:shadow-[0_0_20px_rgba(255,255,255,0.6)] hover:bg-brand-mist cursor-pointer"
+                  )}
+                >
+                  <ArrowRight className="w-4 h-4 text-brand-ink" />
+                </button>
+              </div>
           </div>
         </div>
       </div>

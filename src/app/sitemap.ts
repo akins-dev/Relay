@@ -1,8 +1,9 @@
 import type { MetadataRoute } from 'next';
 import { createClient } from '@/lib/supabase/server';
+import { SITE_URL } from '@/lib/site';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = 'https://openmcp.dev';
+  const base = SITE_URL;
 
   // Static pages
   const staticPages: MetadataRoute.Sitemap = [

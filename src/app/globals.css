@@ -54,9 +54,8 @@
   --radius-xl: 24px;
 }
 
-html {
-  scroll-behavior: smooth;
-}
+/* scroll-behavior is handled by Lenis — native smooth scroll removed */
+
 
 body {
   min-height: 100vh;

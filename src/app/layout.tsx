@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Space_Grotesk, Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { Nav }          from '@/components/layout/Nav';
-import { AuthProvider } from '@/components/AuthProvider';
+import { Nav }           from '@/components/layout/Nav';
+import { AuthProvider }  from '@/components/AuthProvider';
+import { LenisProvider } from '@/components/LenisProvider';
+import { SITE_URL }      from '@/lib/site';
 
 // ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
 const spaceGrotesk = Space_Grotesk({
@@ -26,7 +28,6 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
-const SITE_URL   = 'https://openmcp.dev';
 const SITE_NAME  = 'Agentrail';
 const TITLE      = 'Agentrail — The Intelligence Layer for Agent Tools';
 const DESCRIPTION = 'Give your agents the power to dynamically discover and securely invoke remote capabilities. Secure by default. Network native.';
@@ -110,10 +111,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${outfit.variable} ${jetbrainsMono.variable} dark`}>
       <body className="bg-black text-white antialiased">
-        <AuthProvider>
-          <Nav />
-          <main>{children}</main>
-        </AuthProvider>
+        <LenisProvider>
+          <AuthProvider>
+            <Nav />
+            <main>{children}</main>
+          </AuthProvider>
+        </LenisProvider>
       </body>
     </html>
   );

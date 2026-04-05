@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
+import { SITE_URL } from '@/lib/site';
 
 const PublishSchema = z.object({
   name:             z.string().min(3).max(64).regex(/^[a-z0-9-]+$/),
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const rlCheck = await rateLimit(`publish:${user.id}`, LIMITS.publish);
-  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: 'Create a free API key at openmcp.dev for higher limits (200 calls/min)' }, { status: 429 });
+  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: `Create a free API key at ${SITE_URL} for higher limits (200 calls/min)` }, { status: 429 });
 
   try {
     const body = PublishSchema.parse(await req.json());

@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 import { createHash } from 'crypto';
+import { SITE_URL } from '@/lib/site';
 
 // ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
@@ -29,12 +30,12 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
       setup: {
         description: `${serverName} uses OAuth. Connect your account once and openMCP will use the access token automatically on future calls.`,
         steps: [
-          `1. Open: ${connectUrl ?? `https://openmcp.dev/registry/${serverName}?connect=1`}`,
+          `1. Open: ${connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`}`,
           '2. Click "Connect your account"',
           '3. Complete the provider sign-in and consent flow',
           '4. Re-run the tool call — openMCP will inject the OAuth token automatically',
         ],
-        connect_url: connectUrl ?? `https://openmcp.dev/registry/${serverName}?connect=1`,
+        connect_url: connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`,
       },
       flow: 'Agent calls tool -> openMCP proxy -> retrieves your OAuth token -> injects Authorization header -> upstream API -> response. Raw token never appears in agent arguments.',
     };
@@ -82,11 +83,11 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
       description: `${serverName} requires an API key. Store it once in the openMCP Vault — the proxy injects it on every future call automatically. You can view the secret name but not the value after saving.`,
       steps: [
         `1. Get your API key from the ${serverName} service dashboard`,
-        `2. Open: https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+        `2. Open: ${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
         `3. Paste your key in the "Value" field and click "Store securely"`,
         `4. Tell your agent to proceed — this call will work automatically from now on`,
       ],
-      dashboard_url: `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+      dashboard_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
     },
 
     // What happens after setup
@@ -179,7 +180,7 @@ export async function GET(req: NextRequest) {
 
     const rows = (enriched ?? results).map((s: any) => {
       const authType = s.oauth_authorization_url ? 'oauth' : (s.auth_type ?? 'managed');
-      const connectUrl = s.oauth_authorization_url ? `https://openmcp.dev/registry/${s.name}?connect=1` : null;
+      const connectUrl = s.oauth_authorization_url ? `${SITE_URL}/registry/${s.name}?connect=1` : null;
       const secretsTutorial = buildCredentialSetup(s.name, authType, connectUrl);
 
       return {
