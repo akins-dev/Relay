@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// openMCP — Security Layers
+// Security Layers
 //
 // L1  Publish-time static scan          → scanServer()
 // L4  Proxy DLP — credential patterns   → dlpScan()

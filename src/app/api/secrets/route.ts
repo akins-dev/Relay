@@ -1,5 +1,5 @@
 /**
- * openMCP — User Secrets API
+ * User Secrets API
  *
  * ⚠️  BEFORE USING THIS API IN PRODUCTION:
  * Ensure your Supabase project does not log data statements with SQL values.

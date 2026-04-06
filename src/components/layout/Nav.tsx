@@ -6,6 +6,7 @@ import { useRouter }   from 'next/navigation';
 import { useAuth }     from '@/components/AuthProvider';
 import { cn }          from '@/lib/cn';
 import { Menu, X }     from 'lucide-react';
+import { BRAND }       from '@/lib/brand';
 
 const navLinks = [
   { href: '/registry', label: 'Registry' },
@@ -37,7 +38,7 @@ export function Nav() {
             ⇢
           </div>
           <span className="font-display text-[22px] font-semibold tracking-tight text-white">
-            Agentrail
+            {BRAND.name}
           </span>
           <span className="hidden rounded-full border border-transparent bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8] sm:inline">
             remote beta

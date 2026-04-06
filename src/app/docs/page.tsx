@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Search, X, ChevronUp, Menu } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { SITE_URL } from '@/lib/site';
+import { BRAND } from '@/lib/brand';
 
 // ─── Section data ──────────────────────────────────────────────────────────────
 
@@ -24,8 +25,8 @@ const SECTIONS = [
 // ─── Code snippets ────────────────────────────────────────────────────────────
 
 const CODE = {
-  systemPrompt: `You have access to Agentrail — a trust layer for remote MCP servers.
-Read ${SITE_URL}/openmcp.md before your first tool call.
+  systemPrompt: `You have access to ${BRAND.name} — a trust layer for remote MCP servers.
+Read ${SITE_URL}${BRAND.agentMdRoute} before your first tool call.
 
 Search:  GET ${SITE_URL}/api/servers/search?q={intent}
 Invoke:  POST ${SITE_URL}/api/proxy/{serverName}/{toolName}`,
@@ -395,8 +396,8 @@ export default function DocsPage() {
             </P>
             <P>
               <strong className="text-white">Open source.</strong> MIT licensed. Full source at{' '}
-              <a href="https://github.com/the-17/openmcp" className="text-brand-signal underline underline-offset-2 hover:text-white transition-colors">
-                github.com/the-17/openmcp
+              <a href={BRAND.githubUrl} className="text-brand-signal underline underline-offset-2 hover:text-white transition-colors">
+                {BRAND.githubUrl.replace('https://', '')}
               </a>.
               The security claims are verifiable, not a promise.
             </P>
@@ -438,7 +439,7 @@ export default function DocsPage() {
             <P>Restart your IDE. Your agent now has two tools: <InlineCode>search_tools</InlineCode> and <InlineCode>invoke_tool</InlineCode>.</P>
 
             <H3>Option 3 — Fetch the agent skill file</H3>
-            <CodeBlock code={`curl ${SITE_URL}/openmcp.md`} label="Your agent fetches this once — understands everything" />
+            <CodeBlock code={`curl ${SITE_URL}${BRAND.agentMdRoute}`} label="Your agent fetches this once — understands everything" />
             <P>
               The skill file is served dynamically with live stats. It teaches any agent how to search,
               how to read inputSchemas, how to invoke, and what trust scores mean. No documentation
@@ -513,7 +514,7 @@ export default function DocsPage() {
           <Section id="rest-api" title="REST API reference">
             <div className="mb-8 overflow-hidden rounded-xl border border-white/8 bg-white/[0.02]">
               {[
-                { method: 'GET',  path: '/openmcp.md',                            desc: 'Agent skill file — markdown, live stats injected' },
+                { method: 'GET',  path: BRAND.agentMdRoute,                             desc: 'Agent skill file — markdown, live stats injected' },
                 { method: 'GET',  path: '/api/mcp',                               desc: 'Registry info, security layers, agent prompt template' },
                 { method: 'GET',  path: '/api/servers/search?q={intent}',         desc: 'Semantic search — returns servers with full inputSchema' },
                 { method: 'GET',  path: '/api/servers?sort=trust&source=official', desc: 'Browse with filters: sort, verified, source, tag, page' },
@@ -660,7 +661,7 @@ export default function DocsPage() {
             <div className="flex flex-wrap gap-3">
               <Link href="/connect" className="btn btn-primary px-6">Connect your agent</Link>
               <Link href="/registry" className="btn btn-ghost px-6">Browse registry</Link>
-              <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener" className="btn btn-ghost px-6">GitHub</a>
+              <a href={BRAND.githubUrl} target="_blank" rel="noopener" className="btn btn-ghost px-6">GitHub</a>
             </div>
           </section>
         </main>

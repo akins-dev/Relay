@@ -4,6 +4,7 @@ import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
+import { BRAND } from '@/lib/brand';
 
 // ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
@@ -13,7 +14,7 @@ import { SITE_URL } from '@/lib/site';
  * Returned in every search result — gives agents everything needed to
  * guide the user through vault configuration.
  *
- * The openMCP Vault is the only credential storage mechanism.
+ * The ${BRAND.vault} is the only credential storage mechanism.
  * Users store their key once. The proxy injects it on every call.
  * The user can view the secret name but never the value after storage.
  */
@@ -28,16 +29,16 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
       requires_credential: true,
       auth_type: 'oauth',
       setup: {
-        description: `${serverName} uses OAuth. Connect your account once and openMCP will use the access token automatically on future calls.`,
+        description: `${serverName} uses OAuth. Connect your account once and ${BRAND.name} will use the access token automatically on future calls.`,
         steps: [
           `1. Open: ${connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`}`,
           '2. Click "Connect your account"',
           '3. Complete the provider sign-in and consent flow',
-          '4. Re-run the tool call — openMCP will inject the OAuth token automatically',
+          `4. Re-run the tool call — ${BRAND.name} will inject the OAuth token automatically`,
         ],
         connect_url: connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`,
       },
-      flow: 'Agent calls tool -> openMCP proxy -> retrieves your OAuth token -> injects Authorization header -> upstream API -> response. Raw token never appears in agent arguments.',
+      flow: `Agent calls tool -> ${BRAND.name} proxy -> retrieves your OAuth token -> injects Authorization header -> upstream API -> response. Raw token never appears in agent arguments.`,
     };
   }
 
@@ -49,11 +50,11 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
         description: `${serverName} is designed for AgentSecrets-managed credentials. Use the local CLI/bridge flow when that launches.`,
         steps: [
           '1. Save this server for later if you need local stdio execution',
-          '2. Watch for openMCP CLI launch updates',
+          `2. Watch for ${BRAND.cli} launch updates`,
           '3. Use AgentSecrets-backed setup from the CLI when available',
         ],
       },
-      flow: 'Credential injection for this server is planned through the openMCP CLI and AgentSecrets, not direct vault entry.',
+      flow: `Credential injection for this server is planned through the ${BRAND.cli} and AgentSecrets, not direct vault entry.`,
     };
   }
 
@@ -69,7 +70,7 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
           '3. Re-run the call after setup completes',
         ],
       },
-      flow: 'openMCP will return structured auth guidance if the upstream server requires extra setup.',
+      flow: `${BRAND.name} will return structured auth guidance if the upstream server requires extra setup.`,
     };
   }
 
@@ -80,7 +81,7 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
 
     // Complete setup instructions — agent presents these to the user
     setup: {
-      description: `${serverName} requires an API key. Store it once in the openMCP Vault — the proxy injects it on every future call automatically. You can view the secret name but not the value after saving.`,
+      description: `${serverName} requires an API key. Store it once in the ${BRAND.vault} — the proxy injects it on every future call automatically. You can view the secret name but not the value after saving.`,
       steps: [
         `1. Get your API key from the ${serverName} service dashboard`,
         `2. Open: ${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
@@ -91,7 +92,7 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
     },
 
     // What happens after setup
-    flow: `Agent calls tool → openMCP proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory or request arguments.`,
+    flow: `Agent calls tool → ${BRAND.name} proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory or request arguments.`,
   };
 }
 
@@ -136,7 +137,7 @@ export async function GET(req: NextRequest) {
   const rl  = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', hint: 'Create a free API key at openmcp.dev for higher limits' },
+      { error: 'Rate limit exceeded', hint: `Create a free API key at ${BRAND.domain} for higher limits` },
       {
         status: 429,
         headers: {
@@ -213,8 +214,8 @@ export async function GET(req: NextRequest) {
         credential_note: authType === 'none'
           ? 'This server is public — no credentials required.'
           : authType === 'oauth'
-            ? 'Pass only business data as arguments. If needed, connect your account once and openMCP will inject the OAuth token automatically.'
-            : 'Pass only business data as arguments. Never include API keys in tool arguments. openMCP handles credential injection outside the request body.',
+            ? `Pass only business data as arguments. If needed, connect your account once and ${BRAND.name} will inject the OAuth token automatically.`
+            : `Pass only business data as arguments. Never include API keys in tool arguments. ${BRAND.name} handles credential injection outside the request body.`,
 
         // Credential setup — vault-based, presented to agent for user guidance
         credential_setup: secretsTutorial,

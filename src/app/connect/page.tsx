@@ -7,6 +7,7 @@ import { ArrowRight, Bot, Cloud, LockKeyhole, TerminalSquare, Workflow, Copy, Ch
 import { cn } from '@/lib/cn';
 import { AnimatedHeading, AnimatedParagraph, AnimatedLabel, AnimatedSection } from '@/components/AnimatedText';
 import { SITE_URL } from '@/lib/site';
+import { BRAND } from '@/lib/brand';
 
 const SNIPPETS = {
   'claude-desktop': {
@@ -39,8 +40,8 @@ const SNIPPETS = {
     file:  'Any agent framework',
     code: `## Tool Discovery
 
-You have access to Agentrail, the trust layer for remote MCP tools.
-Read ${SITE_URL}/openmcp.md once before your first tool call.
+You have access to ${BRAND.name}, the trust layer for remote MCP tools.
+Read ${SITE_URL}${BRAND.agentMdRoute} once before your first tool call.
 
 Search:  GET ${SITE_URL}/api/servers/search?q={intent}
 Invoke:  POST ${SITE_URL}/api/proxy/{serverName}/{toolName}
@@ -83,7 +84,7 @@ curl -X POST "${SITE_URL}/api/proxy/sendgrid-mail/send_email" \\
   -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
 
 # 3. Fetch the agent skill file
-curl ${SITE_URL}/openmcp.md`,
+curl ${SITE_URL}${BRAND.agentMdRoute}`,
   },
 } as const;
 
@@ -308,7 +309,7 @@ export default function ConnectPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
-            <a href="/openmcp.md" target="_blank" rel="noopener" className="btn btn-ghost btn-lg">
+            <a href={BRAND.agentMdRoute} target="_blank" rel="noopener" className="btn btn-ghost btn-lg">
               Read the skill file
             </a>
             <Link href="/registry" className="btn btn-primary btn-lg gap-2">

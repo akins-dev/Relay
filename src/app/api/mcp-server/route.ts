@@ -14,8 +14,8 @@
  * Config for Claude Desktop / Cursor / any MCP client:
  * {
  *   "mcpServers": {
- *     "agentrail": {
- *       "url": "https://agentrail.dev/api/mcp-server"
+ *     "<your-brand-slug>": {
+ *       "url": "https://<your-domain>/api/mcp-server"
  *     }
  *   }
  * }
@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { SITE_URL } from '@/lib/site';
+import { BRAND } from '@/lib/brand';
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 // API key is optional for search_tools (public) but logged for invoke_tool.
@@ -69,7 +70,7 @@ const TOOLS = [
   {
     name: 'search_tools',
     description: [
-      'Search the Agentrail registry for MCP servers by natural language intent.',
+      `Search the ${BRAND.name} registry for MCP servers by natural language intent.`,
       'Returns verified servers with trust scores and full tool schemas.',
       'Always call this before invoke_tool — use the inputSchema from results to construct arguments.',
       'Prefer servers with trust_score > 80 for production use.',
@@ -93,7 +94,7 @@ const TOOLS = [
   {
     name: 'invoke_tool',
     description: [
-      'Invoke a tool on a verified MCP server through the Agentrail security proxy.',
+      `Invoke a tool on a verified MCP server through the ${BRAND.name} security proxy.`,
       'Every call is DLP-scanned, shell-injection checked, PII-scanned, and audited.',
       'Use the inputSchema from search_tools results to construct args correctly.',
       'Never put API keys or secrets in args — credentials are injected automatically.',
@@ -129,7 +130,7 @@ async function handleInitialize(id: any) {
       name:    SERVER_NAME,
       version: SERVER_VERSION,
     },
-    instructions: `Agentrail gives you access to thousands of verified MCP servers. Call search_tools first, then invoke_tool. Read ${SITE_URL}/openmcp.md for full documentation.`,
+    instructions: `${BRAND.name} gives you access to thousands of verified MCP servers. Call search_tools first, then invoke_tool. Read ${SITE_URL}${BRAND.agentMdRoute} for full documentation.`,
   });
 }
 
@@ -388,7 +389,7 @@ export async function GET(req: NextRequest) {
         params: {
           serverInfo:  { name: SERVER_NAME, version: SERVER_VERSION },
           tools:       TOOLS,
-          instructions: 'Agentrail — search_tools then invoke_tool. Read /openmcp.md for full docs.',
+          instructions: `${BRAND.name} — search_tools then invoke_tool. Read ${BRAND.agentMdRoute} for full docs.`,
         },
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(capabilities)}\n\n`));

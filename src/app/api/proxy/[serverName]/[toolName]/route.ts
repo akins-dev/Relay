@@ -1,5 +1,5 @@
 /**
- * openMCP — Security Proxy
+ * Security Proxy
  *
  * All MCP tool calls route through here. Security layers in order:
  *   Rate limit → Server lookup + SSRF guard → Body size limit →
@@ -15,6 +15,7 @@ import { extractIp }                         from '@/lib/api';
 import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
 import { createHash }                        from 'crypto';
 import { SITE_URL }                          from '@/lib/site';
+import { BRAND }                             from '@/lib/brand';
 import {
   dlpScan, samplingDlpScan, piiScan,
   checkElicitationUrl, contextLeakScan,
@@ -201,7 +202,7 @@ export async function POST(
   // ── Vault: try all secret name variants ─────────────────────────────────────
   const upstreamHeaders: Record<string, string> = {
     'Content-Type':     'application/json',
-    'X-Registry-Proxy': 'openmcp',
+    'X-Registry-Proxy': BRAND.slug,
     'X-Request-Id':     crypto.randomUUID(),
   };
 

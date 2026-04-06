@@ -1,6 +1,7 @@
 import { isSafeUrl } from '@/lib/utils';
+import { BRAND } from '@/lib/brand';
 /**
- * openMCP — Registry Ingest Pipeline
+ * Registry Ingest Pipeline
  *
  * Pulls servers from three upstream sources:
  *   1. Official MCP Registry (registry.modelcontextprotocol.io)
@@ -106,7 +107,7 @@ export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[
 
     if (!isSafeUrl(rawUrl)) return [];
     const res = await fetch(rawUrl, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1` },
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return [];
@@ -172,7 +173,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       : 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
 
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1` },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) break;
@@ -224,7 +225,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'User-Agent': 'openMCP-ingest/0.1',
+          'User-Agent': `${BRAND.slug}-ingest/0.1`,
         },
         signal: AbortSignal.timeout(15_000),
       }
@@ -310,7 +311,7 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
       const res = await fetch(
         `https://glama.ai/api/mcp/v1/servers?page=${page}&perPage=${pageSize}`,
         {
-          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
+          headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1`, 'Accept': 'application/json' },
           signal: AbortSignal.timeout(15_000),
         }
       );
@@ -366,7 +367,7 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
       const res = await fetch(
         `https://www.pulsemcp.com/api/servers?page=${page}&limit=${pageSize}`,
         {
-          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
+          headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1`, 'Accept': 'application/json' },
           signal: AbortSignal.timeout(15_000),
         }
       );
@@ -411,7 +412,7 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
 
 /**
  * Detect MCP server transport type from endpoint URL.
- * This determines whether the server is invokable through the openMCP proxy.
+ * This determines whether the server is invokable through the proxy.
  *
  * stdio: local process — cannot be reached over HTTP, excluded from agent search
  * sse | streamable_http: public HTTP endpoint — invokable through proxy
@@ -481,7 +482,7 @@ export async function upsertServers(
         continue;
       }
 
-      // Skip stdio-only servers — they cannot be invoked through the openMCP proxy
+      // Skip stdio-only servers — they cannot be invoked through the proxy
       // stdio servers run as local processes on the developer's machine, not as HTTP endpoints
       // They should be listed on Smithery or run locally — not in a proxy-based registry
       const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);

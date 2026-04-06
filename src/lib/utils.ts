@@ -1,5 +1,5 @@
 /**
- * openMCP — Shared utilities
+ * Shared utilities
  * Timing-safe comparison, HMAC signing, response size guards
  */
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -31,7 +31,7 @@ const TOKEN_SECRET = (() => {
   const s = process.env.TOKEN_SECRET ?? process.env.CRON_SECRET;
   if (!s && process.env.NODE_ENV === 'production') {
     // Throw at startup — better a crash than silent HMAC weakness
-    throw new Error('[openMCP] TOKEN_SECRET or CRON_SECRET must be set in production');
+    throw new Error('[registry] TOKEN_SECRET or CRON_SECRET must be set in production');
   }
   return s ?? 'dev-only-fallback-never-use-in-production';
 })();

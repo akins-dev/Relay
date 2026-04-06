@@ -21,6 +21,7 @@ import {
   AnimatedLabel,
 } from '@/components/AnimatedText';
 import type { GlobalStats, Server } from '@/types';
+import { BRAND } from '@/lib/brand';
 
 // ─── animation helpers ───────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ const PRINCIPLES = [
   {
     title: 'Intelligent Discovery',
     description:
-      'Agents describe the capability they need by intent. Agentrail instantly returns matching remote MCP tools with complete schema mapping and trust context.',
+      'Agents describe the capability they need by intent. {BRAND.name} instantly returns matching remote MCP tools with complete schema mapping and trust context.',
     icon: Compass,
   },
   {
@@ -152,13 +153,13 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         </div>
       </AnimatedSection>
 
-      {/* ── Agentrail Flow Section ── */}
+      {/* ── {BRAND.name} Flow Section ── */}
       <section className="page py-14 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
 
         <AnimatedLabel className="inline-flex items-center gap-2.5 mb-10 sm:mb-16 px-3 py-1 rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.1)] shadow-[0_0_20px_rgba(6,182,212,0.4)]">
           <div className="w-1.5 h-1.5 rounded-full bg-brand-signal animate-[pulse_2s_infinite]" />
           <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-signal">
-            The Agentrail Flow
+            The {BRAND.name} Flow
           </span>
         </AnimatedLabel>
 
@@ -176,7 +177,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               className="mt-4 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel"
               delay={0.15}
             >
-              The agent stays focused on business intent. Agentrail natively handles the search
+              The agent stays focused on business intent. {BRAND.name} natively handles the search
               surface, the trust checks, the secret injection, and the audit trail.
             </AnimatedParagraph>
           </div>
@@ -216,7 +217,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             className="mt-6 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel"
             delay={0.2}
           >
-            Discovery is only useful if invocation is safe. Agentrail injects a unified trust
+            Discovery is only useful if invocation is safe. {BRAND.name} injects a unified trust
             layer between your agent and remote MCP tools—handling zero-knowledge credentials,
             policy validation, and DLP scanning in milliseconds.
           </AnimatedParagraph>
@@ -277,7 +278,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 delay={0.15}
               >
                 A first look at the governed capabilities your agents can discover through
-                Agentrail Cloud today.
+                {BRAND.name} Cloud today.
               </AnimatedParagraph>
             </div>
             <Link href="/registry" className="btn btn-ghost">
@@ -307,7 +308,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             as="h2"
             className="heading-display text-[1.9rem] sm:text-[2.5rem] font-medium leading-[1.05] text-white relative z-10 sm:text-[3.5rem]"
           >
-            Agentrail CLI is coming soon.
+            {BRAND.name} CLI is coming soon.
           </AnimatedHeading>
 
           <AnimatedParagraph
@@ -315,7 +316,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             delay={0.2}
           >
             <>
-              Agentrail Cloud brings governed invocation to the network. The upcoming CLI brings
+              {BRAND.name} Cloud brings governed invocation to the network. The upcoming CLI brings
               that exact same trust fabric to local{' '}
               <code className="text-[#e2e8f0] bg-[rgba(255,255,255,0.1)] px-2 py-1 rounded font-mono text-sm mx-1">
                 stdio
@@ -335,7 +336,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             as="h2"
             className="heading-display mt-4 text-[2.75rem] font-medium leading-[1.05] text-white sm:text-[5rem] drop-shadow-md"
           >
-            {'Start building\nwith Agentrail.'}
+            {'Start building\nwith {BRAND.name}.'}
           </AnimatedHeading>
 
           <motion.div
@@ -350,7 +351,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               <ArrowRight className="h-4 w-4" />
             </Link>
             <a
-              href="https://github.com/the-17/openmcp"
+              href={BRAND.githubUrl}
               target="_blank"
               rel="noopener"
               className="btn btn-ghost btn-lg w-full sm:w-auto"
@@ -367,7 +368,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             </div>
             <div>
               <div className="font-display text-xl font-medium tracking-tight text-white">
-                Agentrail
+                {BRAND.name}
               </div>
               <div className="font-mono text-[10px] uppercase tracking-[0.18em]">
                 by TheSeventeen
@@ -386,7 +387,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               Publish
             </Link>
             <a
-              href="https://github.com/the-17/openmcp"
+              href={BRAND.githubUrl}
               target="_blank"
               rel="noopener"
               className="hover:text-white transition-colors"

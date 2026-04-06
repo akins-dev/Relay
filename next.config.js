@@ -45,7 +45,7 @@ const nextConfig = {
         { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
         { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
       ]},
-      { source: '/openmcp.md', headers: [
+      { source: '/agents.md', headers: [
         { key: 'Access-Control-Allow-Origin', value: '*' },
         { key: 'Cache-Control',               value: 'public, max-age=300, stale-while-revalidate=60' },
       ]},
@@ -55,7 +55,9 @@ const nextConfig = {
     ];
   },
   async redirects() {
-    return [{ source: '/home', destination: '/', permanent: true }];
+    return [
+      { source: '/home', destination: '/', permanent: true },
+    ];
   },
   serverExternalPackages: ['@upstash/redis', '@upstash/ratelimit'],
   logging: { fetches: { fullUrl: isDev } },

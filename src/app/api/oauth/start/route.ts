@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
   if (!server.oauth_client_id) {
     return NextResponse.json({
       error: 'OAuth not configured for this server yet',
-      hint:  'openMCP needs a registered OAuth client for this service. Contact support.',
+      hint:  'A registered OAuth client is required for this service. Contact support.',
     }, { status: 501 });
   }
 

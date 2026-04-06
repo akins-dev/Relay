@@ -5,6 +5,7 @@ import { Nav }           from '@/components/layout/Nav';
 import { AuthProvider }  from '@/components/AuthProvider';
 import { LenisProvider } from '@/components/LenisProvider';
 import { SITE_URL }      from '@/lib/site';
+import { BRAND }         from '@/lib/brand';
 
 // ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
 const spaceGrotesk = Space_Grotesk({
@@ -28,9 +29,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
-const SITE_NAME  = 'Agentrail';
-const TITLE      = 'Agentrail — The Intelligence Layer for Agent Tools';
-const DESCRIPTION = 'Give your agents the power to dynamically discover and securely invoke remote capabilities. Secure by default. Network native.';
+const SITE_NAME   = BRAND.name;
+const TITLE       = `${BRAND.name} — The Intelligence Layer for Agent Tools`;
+const DESCRIPTION = BRAND.description;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -45,8 +46,8 @@ export const metadata: Metadata = {
     'MCP', 'Model Context Protocol', 'AI agents', 'tool discovery',
     'MCP registry', 'MCP security', 'open source', 'agent infrastructure',
   ],
-  authors:  [{ name: 'The-17', url: 'https://github.com/the-17' }],
-  creator:  'The-17',
+  authors:  [{ name: BRAND.org, url: BRAND.githubUrl }],
+  creator:  BRAND.org,
   publisher: SITE_NAME,
 
   // ── Canonical ─────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ export const metadata: Metadata = {
       url:    '/og-image.png',
       width:  1200,
       height: 630,
-      alt:    'Agentrail — The Intelligence Layer for Agent Tools',
+      alt:    `${BRAND.name} — The Intelligence Layer for Agent Tools`,
     }],
     locale: 'en_US',
   },
@@ -74,7 +75,7 @@ export const metadata: Metadata = {
     title:        TITLE,
     description:  DESCRIPTION,
     images:      ['/og-image.png'],
-    creator:     '@the17dev',
+    creator:     BRAND.twitterHandle,
   },
 
   // ── Robots ────────────────────────────────────────────────────────────────

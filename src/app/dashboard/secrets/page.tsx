@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { BRAND } from '@/lib/brand';
 
 // ── ⚠️  CRITICAL REMINDER ─────────────────────────────────────────────────────
 // Before this page can store secrets safely, your Supabase project must not
@@ -118,7 +119,7 @@ export default function SecretsPage() {
             Stored Credentials
           </h1>
           <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, maxWidth: '480px' }}>
-            Store API keys and tokens once. The openMCP proxy injects them automatically
+            Store API keys and tokens once. The {BRAND.name} proxy injects them automatically
             on every call — your agent never sees the raw value.
           </p>
         </div>
@@ -135,7 +136,7 @@ export default function SecretsPage() {
       }}>
         {[
           { step: '1', text: 'You store your API key here, encrypted in Supabase Vault' },
-          { step: '2', text: 'Agent calls a tool through the openMCP proxy' },
+          { step: '2', text: `Agent calls a tool through the ${BRAND.name} proxy` },
           { step: '3', text: 'Proxy resolves your key and injects it — agent never sees it' },
         ].map(s => (
           <div key={s.step} style={{ padding: '14px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>

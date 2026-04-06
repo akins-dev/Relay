@@ -1,5 +1,5 @@
 {
-  "name": "openmcp",
+  "name": "app",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -24,6 +24,8 @@
     "@upstash/redis": "^1.34.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.0",
+    "framer-motion": "^12.38.0",
+    "lenis": "^1.3.21",
     "lucide-react": "^1.7.0",
     "next": "14.2.25",
     "react": "^18",

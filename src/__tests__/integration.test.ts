@@ -1,5 +1,5 @@
 /**
- * openMCP — Integration Tests
+ * Integration Tests
  *
  * Tests the HTTP layer: input validation, auth guards, rate limiting,
  * and correct error shapes — without needing a live Supabase instance.
@@ -46,7 +46,8 @@ jest.mock('@/lib/ratelimit', () => ({
   LIMITS: { proxy: { limit: 30, windowMs: 60000 }, search: { limit: 60, windowMs: 60000 } },
 }));
 
-import { NextRequest } from 'next/server';
+import { NextRequest, type NextRequest as NR } from 'next/server';
+type NRInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ function makeRequest(
   body?:   object,
   headers: Record<string, string> = {}
 ): NextRequest {
-  const init: RequestInit = {
+  const init: NRInit = {
     method,
     headers: {
       'Content-Type': 'application/json',

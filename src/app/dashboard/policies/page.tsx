@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { BRAND } from '@/lib/brand';
 
 const PERMISSION_GROUPS = [
   {
@@ -163,7 +164,7 @@ export default function PoliciesPage() {
           Agent Permissions
         </h1>
         <p style={{ color: 'var(--text-2)', fontSize: '15px', lineHeight: 1.7, maxWidth: '520px' }}>
-          Control what operations your agents can perform through openMCP.
+          Control what operations your agents can perform through {BRAND.name}.
           These apply globally across all MCP servers.
         </p>
       </div>
@@ -235,7 +236,7 @@ export default function PoliciesPage() {
 
       {/* Note */}
       <div style={{ marginTop: '24px', padding: '14px 18px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.7 }}>
-        Policies apply to authenticated API key calls only. openMCP's built-in security
+        Policies apply to authenticated API key calls only. {BRAND.name}&apos;s built-in security
         stack (shell injection detection, DLP, schema pinning) always runs regardless of
         these settings. The defaults shown are the recommended starting point — safe for
         most agent workflows.

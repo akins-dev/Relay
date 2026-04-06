@@ -1,5 +1,7 @@
+import { BRAND } from '@/lib/brand';
+
 /**
- * openMCP — Rate Limiting
+ * Rate Limiting
  *
  * Uses Upstash Redis when UPSTASH_REDIS_REST_URL is set (production).
  * Falls back to in-memory store for local development.
@@ -79,7 +81,7 @@ export async function rateLimit(
       limiterCache.set(cacheKey, new Ratelimit({
         redis,
         limiter: Ratelimit.slidingWindow(config.limit, `${config.windowMs}ms`),
-        prefix:  'openmcp',
+        prefix:  BRAND.slug,
       }));
     }
     const limiter = limiterCache.get(cacheKey);
