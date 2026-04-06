@@ -307,7 +307,7 @@ export async function POST(
   const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
   svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).catch(() => {});
   svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
-  const callInterface = (req.headers.get('x-agentrail-interface') ?? req.headers.get('x-openmcp-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
+  const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-openmcp-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
   svc.from('metering_events').insert({
     server_id: server.id, user_id: callerUserId ?? null, tool_name: toolName,
     interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length,

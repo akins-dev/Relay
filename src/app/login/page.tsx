@@ -7,6 +7,7 @@ import { motion }                            from "framer-motion";
 import { createClient }                      from "@/lib/supabase/client";
 import { useAuth }                           from "@/components/AuthProvider";
 import { cn }                                from "@/lib/cn";
+import { BRAND } from "@/lib/brand";
 
 // ─── Inner component needs useSearchParams → put inside <Suspense> ────────────
 function LoginForm() {
@@ -148,7 +149,7 @@ function LoginForm() {
               ⇢
             </div>
             <span className="font-display text-[20px] font-semibold tracking-tight text-white">
-              Agentrail
+              {BRAND.name}
             </span>
           </Link>
         </div>

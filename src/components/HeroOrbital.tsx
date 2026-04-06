@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/cn';
 import { Sparkles, Terminal, Network, Shield, Webhook, ArrowRight, BrainCircuit } from 'lucide-react';
+import { BRAND } from '@/lib/brand';
 
 export function HeroOrbital() {
   const [mounted, setMounted] = useState(false);
@@ -13,7 +14,7 @@ export function HeroOrbital() {
 
   const THOUGHTS = [
     { text: "Waiting for intent...", activeCards: [] },
-    { text: "I need a weather API. Searching Agentrail registry...", activeCards: ['discovery'] },
+    { text: `I need a weather API. Searching ${BRAND.name} registry...`, activeCards: ['discovery'] },
     { text: "Found 'weather-mcp' (Trust Score: 92). Verifying policy...", activeCards: ['discovery', 'policy'] },
     { text: "Invoking 'get_weather' through secure proxy...", activeCards: ['discovery', 'policy', 'proxy'] },
     { text: "Proxy passed. Execution complete. Weather is 68°F and sunny.", activeCards: ['discovery', 'policy', 'proxy', 'execution'] }

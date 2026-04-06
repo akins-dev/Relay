@@ -308,7 +308,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             as="h2"
             className="heading-display text-[1.9rem] sm:text-[2.5rem] font-medium leading-[1.05] text-white relative z-10 sm:text-[3.5rem]"
           >
-            {BRAND.name} CLI is coming soon.
+            {`${BRAND.name} CLI is coming soon.`}
           </AnimatedHeading>
 
           <AnimatedParagraph
@@ -336,7 +336,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             as="h2"
             className="heading-display mt-4 text-[2.75rem] font-medium leading-[1.05] text-white sm:text-[5rem] drop-shadow-md"
           >
-            {'Start building\nwith {BRAND.name}.'}
+            {`Start building\nwith ${BRAND.name}.`}
           </AnimatedHeading>
 
           <motion.div

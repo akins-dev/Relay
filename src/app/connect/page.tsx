@@ -16,7 +16,7 @@ const SNIPPETS = {
     file:  '~/Library/Application Support/Claude/claude_desktop_config.json',
     code: `{
   "mcpServers": {
-    "agentrail": {
+    "${BRAND.name}": {
       "url": "${SITE_URL}/api/mcp-server"
     }
   }
@@ -28,7 +28,7 @@ const SNIPPETS = {
     file:  '~/.cursor/mcp.json',
     code: `{
   "mcpServers": {
-    "agentrail": {
+    "${BRAND.name}": {
       "url": "${SITE_URL}/api/mcp-server"
     }
   }
@@ -55,7 +55,7 @@ Always use the returned inputSchema before invoking a tool.`,
     file:  'Any Python agent',
     code: `import httpx
 
-async def search_agentrail(intent: str):
+async def search_${BRAND.name}(intent: str):
     async with httpx.AsyncClient() as client:
         response = await client.get(
             "${SITE_URL}/api/servers/search",
@@ -63,7 +63,7 @@ async def search_agentrail(intent: str):
         )
         return response.json()
 
-async def invoke_agentrail(server: str, tool: str, args: dict):
+async def invoke_${BRAND.name}(server: str, tool: str, args: dict):
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"${SITE_URL}/api/proxy/{server}/{tool}",
@@ -89,9 +89,9 @@ curl ${SITE_URL}${BRAND.agentMdRoute}`,
 } as const;
 
 const STEPS = [
-  { num: '01', title: 'Connect once',       desc: 'Add a single hosted MCP endpoint to your agent runtime. Agentrail Cloud becomes the search and invoke surface for remote servers.',                                    icon: Cloud },
+  { num: '01', title: 'Connect once',       desc: `Add a single hosted MCP endpoint to your agent runtime. ${BRAND.name} Cloud becomes the search and invoke surface for remote servers.`,                                    icon: Cloud },
   { num: '02', title: 'Search by intent',   desc: 'Your agent asks for a capability such as "create a Linear issue" instead of relying on a prewired list of integrations.',                                            icon: Bot },
-  { num: '03', title: 'Read the schema',    desc: 'Agentrail returns matching remote servers with trust metadata and full tool schemas so the agent knows what to pass.',                                                 icon: Workflow },
+  { num: '03', title: 'Read the schema',    desc: `${BRAND.name} returns matching remote servers with trust metadata and full tool schemas so the agent knows what to pass.`,                                                 icon: Workflow },
   { num: '04', title: 'Invoke safely',      desc: 'Calls route through the proxy for policy checks, credential injection, response scanning, and audit logging.',                                                        icon: LockKeyhole },
 ] as const;
 
@@ -129,7 +129,7 @@ export default function ConnectPage() {
             </AnimatedHeading>
 
             <AnimatedParagraph className="mt-6 text-base sm:text-lg leading-8 text-brand-steel" delay={0.2}>
-              Agentrail Cloud gives your agent one hosted MCP connection for remote discovery and
+              {BRAND.name} Cloud gives your agent one hosted MCP connection for remote discovery and
               secure invocation. The local CLI comes next, but the remote trust layer is ready now.
             </AnimatedParagraph>
 
@@ -154,9 +154,9 @@ export default function ConnectPage() {
             >
               <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand-steel mb-2">Remote-first launch</div>
               <p className="text-sm leading-7 text-brand-steel">
-                Agentrail currently focuses on network-reachable MCP servers over HTTP. Local{' '}
+                {BRAND.name} currently focuses on network-reachable MCP servers over HTTP. Local{' '}
                 <code className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[12px] text-white">stdio</code>{' '}
-                support will ship through Agentrail CLI later.
+                support will ship through ${BRAND.name} CLI later.
               </p>
             </AnimatedSection>
           </div>
@@ -201,7 +201,7 @@ export default function ConnectPage() {
             <div className="codeblock">
               <div className="codeblock-header">
                 <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand-steel">{snippet.lang}</span>
-                <span className="font-mono text-[11px] text-brand-signal">agentrail config</span>
+                <span className="font-mono text-[11px] text-brand-signal">${BRAND.name} config</span>
               </div>
               <pre className="text-[13px]">{snippet.code}</pre>
             </div>
@@ -258,9 +258,9 @@ export default function ConnectPage() {
             </div>
             <pre>{`1. Agent needs a capability
 2. search_tools("send transactional email")
-3. Agentrail returns matching remote tools + schemas
+3. ${BRAND.name} returns matching remote tools + schemas
 4. invoke_tool({ server, tool, args })
-5. Agentrail handles policy, credentials, proxying, and audit`}</pre>
+5. ${BRAND.name} handles policy, credentials, proxying, and audit`}</pre>
           </div>
 
           <AnimatedSection className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
@@ -294,7 +294,7 @@ export default function ConnectPage() {
             as="h2"
             className="heading-display text-[2rem] sm:text-[3rem] font-medium text-white"
           >
-            {'Agentrail Cloud now.\nAgentrail CLI after.'}
+            {`${BRAND.name} Cloud now.\n${BRAND.name} CLI later.`}
           </AnimatedHeading>
           <AnimatedParagraph className="mt-5 max-w-2xl mx-auto text-base leading-8 text-brand-steel" delay={0.15}>
             The hosted remote layer launches first because it solves runtime discovery and secure

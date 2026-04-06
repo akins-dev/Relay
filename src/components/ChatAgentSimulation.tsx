@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Bot, User, Zap } from 'lucide-react';
+import { BRAND } from '@/lib/brand';
 
 const STORY = [
   // ── Phase 1: User Prompt ──
   { time: 0,    target: 'chat', type: 'user', text: 'Transcribe the latest TikTok about Agentic AI.' },
   { time: 800,  target: 'chat', type: 'agent_thought', text: 'I need to find a tool to read and transcribe TikTok videos.' },
-  { time: 1600, target: 'chat', type: 'agent_thought', text: 'Checking agents.md... Found Agentrail discovery endpoint.' },
+  { time: 1600, target: 'chat', type: 'agent_thought', text: `Checking agents.md... Found ${BRAND.name} discovery endpoint.` },
   
   // ── Phase 2: Search Tool ──
   { time: 2100, target: 'term', type: 'query', text: '→ search("tiktok transcribe")' },
@@ -19,7 +20,7 @@ const STORY = [
   { time: 3900, target: 'term', type: 'scan', text: '  L3 schema pinning    ✓ hash matches published' },
   { time: 4100, target: 'term', type: 'gap', text: '' },
 
-  { time: 4400, target: 'chat', type: 'agent_thought', text: 'Found `transcribe_tiktok` tool. Invoking via Agentrail...' },
+  { time: 4400, target: 'chat', type: 'agent_thought', text: `Found "transcribe_tiktok" tool. Invoking via ${BRAND.name}...` },
 
   // ── Phase 3: Invoke Tool ──
   { time: 4800, target: 'term', type: 'result', text: '← inputSchema for transcribe_tiktok: [topic]' },
@@ -157,7 +158,7 @@ export function ChatAgentSimulation() {
         </div>
       </div>
 
-      {/* ── Right Pane: Agentrail Terminal ── */}
+      {/* ── Right Pane: {BRAND.name} Terminal ── */}
       <div className="flex flex-col overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[#0a0a0a] font-mono shadow-[0_40px_100px_rgba(0,0,0,0.15)] h-[440px]">
         {/* Terminal Chrome */}
         <div className="flex justify-between items-center border-b border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)] px-5 py-3.5">
@@ -167,7 +168,7 @@ export function ChatAgentSimulation() {
                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
              </div>
-             <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b] uppercase">agentrail · runtime proxy</span>
+             <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b] uppercase">{BRAND.name} · runtime proxy</span>
           </div>
           <div className="flex items-center gap-2">
              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4ade80]" />

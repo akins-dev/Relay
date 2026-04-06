@@ -10,7 +10,7 @@ import { BRAND } from '@/lib/brand';
 // ─── Section data ──────────────────────────────────────────────────────────────
 
 const SECTIONS = [
-  { id: 'what-is-agentrail', label: 'What is Agentrail?' },
+  { id: `what-is-${BRAND.name}`, label: `What is ${BRAND.name}?` },
   { id: 'how-it-works',      label: 'How it works' },
   { id: 'quickstart',        label: 'Quickstart' },
   { id: 'credentials',       label: 'Credentials & security' },
@@ -33,7 +33,7 @@ Invoke:  POST ${SITE_URL}/api/proxy/{serverName}/{toolName}`,
 
   mcpConfig: `{
   "mcpServers": {
-    "agentrail": {
+    "${BRAND.name}": {
       "url": "${SITE_URL}/api/mcp-server"
     }
   }
@@ -77,10 +77,10 @@ Content-Type: application/json
 }`,
 
   agentSecrets: `# 1. Store your API key once (never in a file)
-# Store once in Agentrail Vault at ${SITE_URL}/dashboard/secrets
+# Store once in ${BRAND.name} Vault at ${SITE_URL}/dashboard/secrets
 
-# 2. Agent calls Agentrail proxy
-# 3. Proxy resolves key from Agentrail Vault
+# 2. Agent calls ${BRAND.name} proxy
+# 3. Proxy resolves key from ${BRAND.name} Vault
 # 4. Injects into upstream call
 # 5. Agent gets response — never saw the key`,
 
@@ -94,7 +94,7 @@ Content-Type: application/json
   }
 }
 
-// Agentrail returns results with full inputSchema`,
+// ${BRAND.name} returns results with full inputSchema`,
 
   mcpServerInvoke: `// Agent calls invoke_tool
 {
@@ -119,16 +119,16 @@ Content-Type: application/json
 // ─── Searchable content index ─────────────────────────────────────────────────
 
 const SEARCH_INDEX = [
-  { section: 'what-is-agentrail', label: 'What is Agentrail?', text: 'agentrail missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source mit license' },
-  { section: 'how-it-works',      label: 'How it works',       text: 'agent task send email create pr charge card capability queries agentrail intent search servers inputSchema arguments invokes proxy blocks sensitive policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp' },
+  { section: `what-is-${BRAND.name}`, label: `What is ${BRAND.name}?`, text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source mit license` },
+  { section: 'how-it-works',      label: 'How it works',       text: `${BRAND.name} agent task send email create pr charge card capability queries ${BRAND.name} intent search servers inputSchema arguments invokes proxy blocks sensitive policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp` },
   { section: 'quickstart',        label: 'Quickstart',         text: 'quickstart system prompt agents.md add native mcp server claude desktop cursor antigravity config json restart ide search_tools invoke_tool skill file curl openmcp.md live stats teaches agent trust scores how to search read inputschemasad' },
-  { section: 'credentials',       label: 'Credentials & security', text: 'credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest agentrail proxy dlp request response blocked aes-256-gcm vault encrypted plaintext secret name authorization header' },
+  { section: 'credentials',       label: 'Credentials & security', text: 'credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest ${BRAND.name} proxy dlp request response blocked aes-256-gcm vault encrypted plaintext secret name authorization header' },
   { section: 'mcp-server',        label: 'Native MCP server',  text: 'native mcp server standard mcp server connect one hosted mcp connection two tools search_tools invoke_tool transports streamablehttp post primary sse get older clients stdio not supported hosted service cli bridge planned' },
   { section: 'rest-api',          label: 'REST API reference',  text: 'rest api reference get openmcp.md skill file markdown live stats servers search semantic intent inputSchema browse filters sort verified source tag page server detail scan history cve issues tools post proxy serverName toolName invocation security audit mcp-server streamablehttp sse analytics latency dlp events' },
   { section: 'trust-scores',      label: 'Trust scores',        text: 'trust scores 0 100 composite five signals verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change frequently mutate lower community signals star count call volume abuse reports 90 100 verified stable 80 89 good production less than 70 use with caution' },
   { section: 'categories',        label: 'MCP categories',      text: 'mcp categories developer tools github gitlab jira linear sentry vercel databases postgresql mysql mongodb supabase redis payments stripe paypal paddle lemon squeezy communication slack discord gmail outlook telegram ai ml openai replicate huggingface elevenlabs cloud infra aws gcp cloudflare fly.io crm salesforce hubspot notion airtable public data weather exchange rates wikipedia news search brave tavily exa perplexity design figma canva adobe file storage google drive dropbox s3 analytics posthog mixpanel segment ga credentials required public' },
   { section: 'faq',               label: 'FAQ',                  text: 'faq frequently asked questions free no credit card freemium transparent limits publisher analytics enterprise private registries register search proxy publish mcp server api keys rate limits credentials api key vault aes-256-gcm proxy inject authorization header 401 variable name dashboard smithery arcade composio gateway oauth credential management discovery trust secure invocation scans scores agentsecrets cli local bridge stdio not yet network reachable http transports 15-layer security stack l1 prompt injection l3 hash tool schemas l4 credentials requests s-12 os command injection s-13 instruction-like language response owasp' },
-  { section: 'known-limitations', label: "What's coming",       text: "what's coming agentrail cli local stdio servers next launch wave discovery layer run local mcp servers agentsecrets credential injection per-user oauth delegation v0.3 github gmail slack stripe connected account static key vault api-key wasm sandbox pre-listing execution v0.3 sandboxed execution runtime-only payloads deferred attacks static analysis misses owasp mcp top 10 13 live layers 85%" },
+  { section: 'known-limitations', label: "What's coming",       text: `what's coming ${BRAND.name} cli local stdio servers next launch wave discovery layer run local mcp servers agentsecrets credential injection per-user oauth delegation v0.3 github gmail slack stripe connected account static key vault api-key wasm sandbox pre-listing execution v0.3 sandboxed execution runtime-only payloads deferred attacks static analysis misses owasp mcp top 10 13 live layers 85%` },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ const CATEGORIES = [
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DocsPage() {
-  const [active, setActive] = useState('what-is-agentrail');
+  const [active, setActive] = useState(`what-is-${BRAND.name}`);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<typeof SEARCH_INDEX>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -329,7 +329,7 @@ export default function DocsPage() {
           <div className="mb-10 pb-10 border-b border-white/5">
             <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand-signal mb-3">— docs</div>
             <h1 className="heading-display mb-4 text-[2.25rem] sm:text-[3rem] font-medium tracking-tight text-white">
-              Agentrail Documentation
+              {BRAND.name} Documentation
             </h1>
             <p className="max-w-3xl text-[17px] leading-relaxed text-brand-steel">
               Everything you need to connect your AI agents to network-reachable MCP servers today,
@@ -370,20 +370,20 @@ export default function DocsPage() {
 
           {/* ── Sections ── */}
 
-          <Section id="what-is-agentrail" title="What is Agentrail?">
+          <Section id={`what-is-${BRAND.name}`} title={`What is ${BRAND.name}?`}>
             <P>
-              Agentrail is the missing layer between AI agents and remote MCP servers. Today, every agent must have
+              {BRAND.name} is the missing layer between AI agents and remote MCP servers. Today, every agent must have
               MCP servers explicitly configured before deployment. There is no way for an agent to discover
               what tools exist, evaluate their quality, or connect to them autonomously.
             </P>
             <P>
-              Agentrail solves this with a single endpoint. Your agent queries it by describing what it needs,
+              {BRAND.name} solves this with a single endpoint. Your agent queries it by describing what it needs,
               gets back verified servers with full tool schemas, and invokes tools through a security proxy —
               at runtime by intent — never pre-loaded, never eating your context window.
             </P>
             <P>
-              Today, Agentrail focuses on network-reachable MCP servers with HTTP transports. Local
-              <InlineCode>stdio</InlineCode> support is planned for Agentrail CLI.
+              Today, {BRAND.name} focuses on network-reachable MCP servers with HTTP transports. Local
+              <InlineCode>stdio</InlineCode> support is planned for {BRAND.name} CLI.
             </P>
             <Callout>
               <p className="font-serif text-[15px] italic leading-relaxed text-white/80">
@@ -407,7 +407,7 @@ export default function DocsPage() {
             <P>Every agent interaction follows this flow:</P>
             {[
               ['1', 'Agent has a task', 'Needs to send an email, create a PR, charge a card — any capability.'],
-              ['2', 'Queries Agentrail by intent', 'GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.'],
+              ['2', `Queries ${BRAND.name} by intent`, `GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.`],
               ['3', 'Reads the inputSchema', 'No guessing. The agent knows exactly what arguments each tool requires before calling.'],
               ['4', 'Invokes through the proxy', 'POST /api/proxy/sendgrid-mail/send_email — every call blocks sensitive request patterns, applies policy, scans responses, and writes an audit trail.'],
               ['5', 'Gets a response', 'The upstream result is returned with trust and warning metadata. If response scans trigger, the agent gets the result plus warning headers for review.'],
@@ -459,21 +459,21 @@ export default function DocsPage() {
               to git, read by AI assistants, and exfiltrated via prompt injection. Check Point documented
               CVE-2026-21852 — a vulnerability that harvests credentials directly from MCP config files.
             </P>
-            <H3>What Agentrail does about it</H3>
+            <H3>What {BRAND.name} does about it</H3>
             <P>
-              The Agentrail proxy runs DLP on every request and response — 11 credential patterns. If a
+              The {BRAND.name} proxy runs DLP on every request and response — 11 credential patterns. If a
               credential pattern appears in a tool argument (the agent accidentally including an API key),
               the call is blocked before it reaches the upstream server. If a credential appears in a
               response, it is flagged in warning headers and audit logs for review.
             </P>
-            <H3>Agentrail Vault — the complete solution</H3>
+            <H3>{BRAND.name} Vault — the complete solution</H3>
             <P>
-              Store credentials once in the Agentrail Vault. They are encrypted with AES-256-GCM via Supabase
+              Store credentials once in the {BRAND.name} Vault. They are encrypted with AES-256-GCM via Supabase
               pgsodium. The proxy decrypts at call time and injects as an Authorization header. The raw
               value is never stored in plaintext, never returned through the API, and never visible after
               you save it — only the secret name is shown.
             </P>
-            <CodeBlock code={CODE.agentSecrets} label="Agentrail Vault flow" />
+            <CodeBlock code={CODE.agentSecrets} label={`${BRAND.name} Vault flow`} />
             <P>
               Manage secrets:{' '}
               <a href={`${SITE_URL}/dashboard/secrets`} className="text-brand-signal underline underline-offset-2 hover:text-white transition-colors">
@@ -483,7 +483,7 @@ export default function DocsPage() {
             </P>
             <Callout>
               <p className="text-[14px] leading-relaxed text-brand-steel">
-                <strong className="text-white">Protecting yourself from sensitive operations:</strong> Agentrail's proxy already blocks shell
+                <strong className="text-white">Protecting yourself from sensitive operations:</strong> {BRAND.name}'s proxy already blocks shell
                 injection (18 patterns), credential DLP (11 patterns), and indirect prompt injection (12 patterns)
                 on every call. For additional control — limiting which tools an agent can call, blocking specific
                 domains, setting per-user rate limits — see the user controls section in your dashboard after
@@ -494,12 +494,12 @@ export default function DocsPage() {
 
           <Section id="mcp-server" title="Native MCP server">
             <P>
-              Agentrail exposes itself as a standard MCP server. Instead of making custom HTTP calls,
+              {BRAND.name} exposes itself as a standard MCP server. Instead of making custom HTTP calls,
               your agent connects once and gets two native MCP tools.
             </P>
             <P>
               <strong className="text-white">Transports supported:</strong> StreamableHTTP (POST — primary) and SSE (GET — for
-              older clients). stdio is not supported yet — Agentrail is a hosted service today, with a CLI bridge planned next.
+              older clients). stdio is not supported yet — {BRAND.name} is a hosted service today, with a CLI bridge planned next.
             </P>
             <H3>search_tools</H3>
             <CodeBlock code={CODE.mcpServerSearch} label="Find servers by natural language intent" />
@@ -585,7 +585,7 @@ export default function DocsPage() {
 
           <Section id="categories" title="MCP categories">
             <P>
-              Agentrail indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for Agentrail CLI. About 70% of invokable servers require credentials.
+              {BRAND.name} indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for {BRAND.name} CLI. About 70% of invokable servers require credentials.
             </P>
             <div className="grid gap-3 sm:grid-cols-2">
               {CATEGORIES.map(cat => (
@@ -608,14 +608,14 @@ export default function DocsPage() {
           <Section id="faq" title="FAQ">
             <div className="flex flex-col gap-6">
               {[
-                ['Is Agentrail really free?', 'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.'],
+                [`Is ${BRAND.name} really free?', 'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.`],
                 ['Do I need to register to use it?', 'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
-                ['How do credentials work if my MCP needs an API key?', 'API keys are stored in the Agentrail Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.'],
-                ['What is the difference between Agentrail and Smithery?', 'Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. Agentrail is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.'],
-                ['Can I use Agentrail with Antigravity?', `Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "agentrail": { "url": "${SITE_URL}/api/mcp-server" } } }`],
-                ['How does Agentrail compare to Arcade or Composio?', 'Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while Agentrail focuses on discovery, trust, and secure invocation of remote MCP servers. Agentrail scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.'],
-                ['Does Agentrail support stdio or local MCP servers today?', 'Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. Agentrail CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.'],
-                ['What does the 15-layer security stack actually do?', 'See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.'],
+                [`How do credentials work if my MCP needs an API key?`, `API keys are stored in the ${BRAND.name} Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.`],
+                [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. ${BRAND.name} is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.`],
+                [`Can I use ${BRAND.name} with Antigravity?`, `Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "${BRAND.name}": { "url": "${SITE_URL}/api/mcp-server" } } }`],
+                [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while ${BRAND.name} focuses on discovery, trust, and secure invocation of remote MCP servers. ${BRAND.name} scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.`],
+                [`Does ${BRAND.name} support stdio or local MCP servers today?`, `Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. ${BRAND.name} CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.`],
+                [`What does the 15-layer security stack actually do?`, `See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.`],
               ].map(([q, a], i) => (
                 <div key={q as string} className={cn('pb-6', i !== 7 && 'border-b border-white/5')}>
                   <div className="mb-2 font-display text-[15px] font-semibold text-white">{q as string}</div>
@@ -629,13 +629,13 @@ export default function DocsPage() {
             <h2 className="mb-6 font-display text-[1.6rem] sm:text-[2rem] font-medium tracking-tight text-white">
               What's coming
             </h2>
-            <P>Agentrail is in active development. Here is what is shipping next.</P>
+            <P>{BRAND.name} is in active development. Here is what is shipping next.</P>
             <div className="flex flex-col gap-4 mb-12">
               {[
                 {
-                  title:  'Agentrail CLI for local stdio servers',
+                  title:  `${BRAND.name} CLI for local stdio servers`,
                   status: 'Next launch wave',
-                  detail: 'A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from Agentrail, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.',
+                  detail: `A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from ${BRAND.name}, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.`,
                 },
                 {
                   title:  'Per-user OAuth delegation',

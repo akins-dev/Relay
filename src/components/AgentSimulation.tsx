@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { BRAND } from '@/lib/brand';
 
 // ── Single continuous story ───────────────────────────────────────────────────
 // No tabs. No user interaction required. Plays on loop.
@@ -7,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const STORY = [
   { type: 'comment',  text: '// AGENTS.md — your runtime tool connection',            delay: 0    },
-  { type: 'comment',  text: 'You have access to Agentrail. Query before assuming.',   delay: 500  },
+  { type: 'comment',  text: `You have access to ${BRAND.name}. Query before assuming.`,   delay: 500  },
   { type: 'comment',  text: 'GET /api/servers/search?q={intent}',                   delay: 300  },
   { type: 'gap',      text: '',                                                       delay: 500  },
 
@@ -109,7 +110,7 @@ export function AgentSimulation() {
           <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
           <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
         </div>
-        <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b]">agent-runtime · agentrail · live</span>
+        <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b]">agent-runtime · {BRAND.name} · live</span>
         <div className="ml-auto flex items-center gap-2">
           <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4ade80]" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">connected</span>

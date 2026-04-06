@@ -1,7 +1,7 @@
 /**
- * Agentrail — Native MCP Server
+ * {BRAND.name} — Native MCP Server
  *
- * Exposes Agentrail itself as a standard MCP server.
+ * Exposes {BRAND.name} itself as a standard MCP server.
  * Agents add ONE connection and get access to every verified server.
  *
  * Transport: StreamableHTTP (primary) + SSE (compatibility)
@@ -62,10 +62,10 @@ async function resolveApiKey(req: NextRequest): Promise<{ userId: string | null;
 
 // ── MCP Protocol constants ────────────────────────────────────────────────────
 const MCP_VERSION     = '2024-11-05';
-const SERVER_NAME     = 'Agentrail';
+const SERVER_NAME     = BRAND.name;
 const SERVER_VERSION  = '0.1.0';
 
-// ── Tool definitions — the entire Agentrail API surface ──────────────────────
+// ── Tool definitions — the entire {BRAND.name} API surface ──────────────────────
 const TOOLS = [
   {
     name: 'search_tools',
@@ -254,7 +254,7 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
   const origin = new URL(req.url).origin;
   const proxyHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Agentrail-Interface': 'mcp_server',
+    [`X-${BRAND.name}-Interface`]: 'mcp_server',
   };
   const authHeader = req.headers.get('authorization');
   const cookieHeader = req.headers.get('cookie');
