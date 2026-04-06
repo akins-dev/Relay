@@ -1,10 +1,11 @@
 'use client';
-import { useState }        from 'react';
-import Link                from 'next/link';
-import { usePathname }     from 'next/navigation';
-import { useAuth }         from '@/components/AuthProvider';
-import { cn }              from '@/lib/cn';
-import { Menu, X }         from 'lucide-react';
+import { useState }    from 'react';
+import Link            from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useRouter }   from 'next/navigation';
+import { useAuth }     from '@/components/AuthProvider';
+import { cn }          from '@/lib/cn';
+import { Menu, X }     from 'lucide-react';
 
 const navLinks = [
   { href: '/registry', label: 'Registry' },
@@ -15,9 +16,16 @@ const navLinks = [
 
 export function Nav() {
   const { user, loading, logout } = useAuth();
-  const path = usePathname();
+  const path   = usePathname();
+  const router = useRouter();
   const isActive = (href: string) => path.startsWith(href);
   const [open, setOpen] = useState(false);
+
+  async function handleLogout() {
+    await logout();
+    setOpen(false);
+    router.push('/');
+  }
 
   return (
     <nav className="sticky top-0 z-50 border-b border-[rgba(255,255,255,0.05)] bg-[rgba(15,23,42,0.6)] backdrop-blur-xl">
@@ -55,22 +63,45 @@ export function Nav() {
         </div>
 
         {/* Desktop auth */}
-        <div className="hidden items-center gap-2 sm:flex">
-          {loading ? null : user ? (
+        <div className="hidden items-center gap-2 sm:flex min-w-[160px] justify-end">
+          {loading ? (
+            // Skeleton prevents layout shift while session resolves
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-20 animate-pulse rounded-lg bg-white/5" />
+              <div className="h-7 w-24 animate-pulse rounded-full bg-white/5" />
+            </div>
+          ) : user ? (
             <>
-              <Link href="/dashboard" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+              <Link
+                href="/dashboard"
+                className={cn(
+                  'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                  isActive('/dashboard')
+                    ? 'text-white font-medium'
+                    : 'text-[#94a3b8] hover:text-white'
+                )}
+              >
                 Dashboard
               </Link>
-              <button onClick={logout} className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+              <button
+                onClick={handleLogout}
+                className="rounded-full border border-white/10 px-4 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-colors hover:border-white/20 hover:text-white"
+              >
                 Sign out
               </button>
             </>
           ) : (
             <>
-              <Link href="/login" className="rounded-lg px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+              <Link
+                href="/login"
+                className="rounded-lg px-3.5 py-1.5 text-[13px] text-[#94a3b8] transition-colors hover:text-white"
+              >
                 Sign in
               </Link>
-              <Link href="/login?mode=register" className="rounded-full bg-white px-4 py-1.5 text-[13px] font-medium text-[#0F172A] transition-colors hover:bg-neutral-200">
+              <Link
+                href="/login?mode=register"
+                className="rounded-full bg-white px-4 py-1.5 text-[13px] font-medium text-[#0F172A] transition-colors hover:bg-neutral-200"
+              >
                 Get started
               </Link>
             </>
@@ -80,7 +111,7 @@ export function Nav() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setOpen(v => !v)}
-          className="flex items-center justify-center rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
+          className="flex items-center justify-center rounded-full p-2 text-[#94a3b8] transition-colors hover:bg-white/5 hover:text-white sm:hidden"
           aria-label="Toggle menu"
         >
           {open ? <X size={20} /> : <Menu size={20} />}
@@ -89,7 +120,7 @@ export function Nav() {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="border-t border-border bg-background px-6 py-4 sm:hidden">
+        <div className="border-t border-white/5 bg-[rgba(15,23,42,0.95)] px-6 py-4 sm:hidden">
           <div className="flex flex-col gap-1">
             {navLinks.map(l => (
               <Link
@@ -99,25 +130,57 @@ export function Nav() {
                 className={cn(
                   'rounded-lg px-3 py-2.5 text-sm transition-colors',
                   isActive(l.href)
-                    ? 'bg-muted font-semibold text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-white/5 font-semibold text-white'
+                    : 'text-[#94a3b8] hover:text-white'
                 )}
               >
                 {l.label}
               </Link>
             ))}
-            <div className="my-2 h-px bg-border" />
-            {!loading && (user ? (
+            <div className="my-2 h-px bg-white/5" />
+            {loading ? (
+              // Skeleton for mobile too
+              <div className="flex flex-col gap-1">
+                <div className="h-9 w-full animate-pulse rounded-lg bg-white/5" />
+                <div className="h-9 w-full animate-pulse rounded-lg bg-white/5" />
+              </div>
+            ) : user ? (
               <>
-                <Link href="/dashboard" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground">Dashboard</Link>
-                <button onClick={() => { logout(); setOpen(false); }} className="rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground">Sign out</button>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                    isActive('/dashboard') ? 'text-white font-semibold' : 'text-[#94a3b8]'
+                  )}
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg px-3 py-2.5 text-left text-sm text-[#94a3b8] transition-colors hover:text-white"
+                >
+                  Sign out
+                </button>
               </>
             ) : (
               <>
-                <Link href="/login" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground">Sign in</Link>
-                <Link href="/login?mode=register" onClick={() => setOpen(false)} className="rounded-lg bg-brand px-3 py-2.5 text-sm font-medium text-white">Get started</Link>
+                <Link
+                  href="/login"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-3 py-2.5 text-sm text-[#94a3b8]"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/login?mode=register"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg bg-white px-3 py-2.5 text-center text-sm font-medium text-[#0F172A]"
+                >
+                  Get started
+                </Link>
               </>
-            ))}
+            )}
           </div>
         </div>
       )}

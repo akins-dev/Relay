@@ -8,7 +8,7 @@ export async function GET() {
   const s = (stats as any) ?? {};
 
   return NextResponse.json({
-    name:        'openMCP',
+    name:        'Agentrail',
     version:     '0.1.0',
     description: [
       'Open-source discovery, trust, and invocation layer for the MCP ecosystem.',
@@ -47,7 +47,7 @@ export async function GET() {
         'npm CVE scan — package.json scanned against npm audit API for supply chain attacks',
       ],
       runtime_proxy: [
-        'L4: DLP — 11 credential patterns blocked on requests. Response matches are surfaced via warning headers and audit logs. Credentials auto-injected from openMCP Vault — agents never handle raw keys.',
+        'L4: DLP — 11 credential patterns blocked on requests. Response matches are surfaced via warning headers and audit logs. Credentials auto-injected from Agentrail Vault — agents never handle raw keys.',
         'L9: Sampling inspection — injection patterns in MCP server-initiated sampling requests',
         'L10: PII detection — email, phone, SSN, card numbers scanned in responses',
         'L11: URL elicitation safety — javascript:, data:, file://, localhost, SSRF blocked',
@@ -60,13 +60,13 @@ export async function GET() {
       ],
       coming_soon: [
         'L2: WASM sandbox — pre-listing sandboxed execution for runtime-only payloads (~85% OWASP coverage)',
-        'openMCP CLI — local bridge for stdio MCP servers with AgentSecrets-backed credentials',
+        'Agentrail CLI — local bridge for stdio MCP servers with AgentSecrets-backed credentials',
         'Expanded OAuth coverage and auto-discovery for connected-account servers',
       ],
     },
     agent_usage: {
       system_prompt: [
-        'You have access to openMCP — a security-verified registry of thousands of MCP servers.',
+        'You have access to Agentrail — a security-verified registry of thousands of MCP servers.',
         'Every server is scanned across 15 layers before listing. Every proxy call is inspected.',
         `Read ${SITE_URL}/openmcp.md for full documentation before your first tool call.`,
         'Search: GET /api/servers/search?q={your intent}&limit=5',
@@ -77,6 +77,6 @@ export async function GET() {
       ].join('\n'),
       trust_score_guide: 'Score 90-100: verified, stable, high uptime. 70-89: good signal. Below 70: use with caution.',
     },
-    open_source: 'https://github.com/the-17/openmcp — MIT license',
+    open_source: 'https://github.com/the-17/agentrail — MIT license',
   });
 }

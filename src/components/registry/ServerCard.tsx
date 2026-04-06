@@ -1,6 +1,7 @@
 import Link            from 'next/link';
 import { cn }          from '@/lib/cn';
 import { Badge }       from '@/components/ui/badge';
+import { highlight }   from '@/lib/highlight';
 import { Shield, Star, Zap, Clock } from 'lucide-react';
 
 interface ServerCardProps {
@@ -20,6 +21,8 @@ interface ServerCardProps {
     is_new?:      boolean;
     profiles?:    { username: string; avatar_url?: string } | null;
   };
+  /** Active search query — passed down to highlight matched text */
+  query?: string;
 }
 
 function TrustBar({ score }: { score: number }) {
@@ -36,7 +39,7 @@ function TrustBar({ score }: { score: number }) {
   );
 }
 
-export function ServerCard({ server: s }: ServerCardProps) {
+export function ServerCard({ server: s, query = '' }: ServerCardProps) {
   return (
     <Link href={`/registry/${s.name}`} className="group block no-underline">
       <div className="h-full rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:border-brand/30 hover:shadow-md">
@@ -46,7 +49,7 @@ export function ServerCard({ server: s }: ServerCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="truncate font-mono text-[13px] font-semibold text-brand">
-                {s.name}
+                {highlight(s.name, query)}
               </span>
               {s.verified && (
                 <Shield size={12} className="shrink-0 text-green-600" />
@@ -55,7 +58,9 @@ export function ServerCard({ server: s }: ServerCardProps) {
                 <Badge variant="new" className="text-[10px]">NEW</Badge>
               )}
             </div>
-            <p className="mt-0.5 text-sm font-medium text-foreground">{s.display_name}</p>
+            <p className="mt-0.5 text-sm font-medium text-foreground">
+              {highlight(s.display_name, query)}
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
             <Star size={12} />
@@ -65,7 +70,7 @@ export function ServerCard({ server: s }: ServerCardProps) {
 
         {/* Description */}
         <p className="mb-4 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
-          {s.description}
+          {highlight(s.description, query)}
         </p>
 
         {/* Trust bar */}
@@ -90,14 +95,25 @@ export function ServerCard({ server: s }: ServerCardProps) {
           )}
         </div>
 
-        {/* Tags */}
+        {/* Tags — also highlighted when query matches */}
         {s.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">
-            {s.tags.slice(0, 4).map(tag => (
-              <span key={tag} className="rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                {tag}
-              </span>
-            ))}
+            {s.tags.slice(0, 4).map(tag => {
+              const isMatch = query && tag.toLowerCase().includes(query.toLowerCase());
+              return (
+                <span
+                  key={tag}
+                  className={cn(
+                    'rounded-md px-2 py-0.5 text-[11px] transition-colors',
+                    isMatch
+                      ? 'bg-[#22d3ee]/10 text-[#22d3ee] font-medium'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {highlight(tag, query)}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

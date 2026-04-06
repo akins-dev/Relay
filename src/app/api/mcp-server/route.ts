@@ -1,7 +1,7 @@
 /**
- * openMCP — Native MCP Server
+ * Agentrail — Native MCP Server
  *
- * Exposes openMCP itself as a standard MCP server.
+ * Exposes Agentrail itself as a standard MCP server.
  * Agents add ONE connection and get access to every verified server.
  *
  * Transport: StreamableHTTP (primary) + SSE (compatibility)
@@ -14,8 +14,8 @@
  * Config for Claude Desktop / Cursor / any MCP client:
  * {
  *   "mcpServers": {
- *     "openmcp": {
- *       "url": "https://openmcp.dev/api/mcp-server"
+ *     "agentrail": {
+ *       "url": "https://agentrail.dev/api/mcp-server"
  *     }
  *   }
  * }
@@ -61,15 +61,15 @@ async function resolveApiKey(req: NextRequest): Promise<{ userId: string | null;
 
 // ── MCP Protocol constants ────────────────────────────────────────────────────
 const MCP_VERSION     = '2024-11-05';
-const SERVER_NAME     = 'openMCP';
+const SERVER_NAME     = 'Agentrail';
 const SERVER_VERSION  = '0.1.0';
 
-// ── Tool definitions — the entire openMCP API surface ─────────────────────────
+// ── Tool definitions — the entire Agentrail API surface ──────────────────────
 const TOOLS = [
   {
     name: 'search_tools',
     description: [
-      'Search the openMCP registry for MCP servers by natural language intent.',
+      'Search the Agentrail registry for MCP servers by natural language intent.',
       'Returns verified servers with trust scores and full tool schemas.',
       'Always call this before invoke_tool — use the inputSchema from results to construct arguments.',
       'Prefer servers with trust_score > 80 for production use.',
@@ -93,7 +93,7 @@ const TOOLS = [
   {
     name: 'invoke_tool',
     description: [
-      'Invoke a tool on a verified MCP server through the openMCP security proxy.',
+      'Invoke a tool on a verified MCP server through the Agentrail security proxy.',
       'Every call is DLP-scanned, shell-injection checked, PII-scanned, and audited.',
       'Use the inputSchema from search_tools results to construct args correctly.',
       'Never put API keys or secrets in args — credentials are injected automatically.',
@@ -129,7 +129,7 @@ async function handleInitialize(id: any) {
       name:    SERVER_NAME,
       version: SERVER_VERSION,
     },
-    instructions: `openMCP gives you access to 7,000+ verified MCP servers. Call search_tools first, then invoke_tool. Read ${SITE_URL}/openmcp.md for full documentation.`,
+    instructions: `Agentrail gives you access to thousands of verified MCP servers. Call search_tools first, then invoke_tool. Read ${SITE_URL}/openmcp.md for full documentation.`,
   });
 }
 
@@ -253,7 +253,7 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
   const origin = new URL(req.url).origin;
   const proxyHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-OpenMCP-Interface': 'mcp_server',
+    'X-Agentrail-Interface': 'mcp_server',
   };
   const authHeader = req.headers.get('authorization');
   const cookieHeader = req.headers.get('cookie');
@@ -388,7 +388,7 @@ export async function GET(req: NextRequest) {
         params: {
           serverInfo:  { name: SERVER_NAME, version: SERVER_VERSION },
           tools:       TOOLS,
-          instructions: 'openMCP — search_tools then invoke_tool. Read /openmcp.md for full docs.',
+          instructions: 'Agentrail — search_tools then invoke_tool. Read /openmcp.md for full docs.',
         },
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(capabilities)}\n\n`));

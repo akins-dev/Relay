@@ -219,7 +219,7 @@ If you are running in a CLI-first agent framework (OpenClaw, shell-based agents)
 ---
 
 *Agentrail — MIT licensed — built by The-17*
-*https://github.com/the-17/openmcp*
+*https://github.com/the-17/agentrail*
 `;
 
   return new NextResponse(md, {

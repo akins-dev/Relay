@@ -2,17 +2,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Search, SlidersHorizontal, ShieldCheck, Star, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ServerCard } from '@/components/registry/ServerCard';
+import { SearchSpotlight } from '@/components/registry/SearchSpotlight';
 import type { Server } from '@/types';
 
 const TAGS = ['payments','security','database','git','email','browser','automation','devops','messaging','storage','ai','scraping'];
 const SORTS = [
-  { value: 'stars',   label: 'Stars' },
-  { value: 'trust',   label: 'Trust' },
-  { value: 'calls',   label: 'Usage' },
-  { value: 'recent',  label: 'Recent' },
+  { value: 'stars',   label: 'Stars'   },
+  { value: 'trust',   label: 'Trust'   },
+  { value: 'calls',   label: 'Usage'   },
+  { value: 'recent',  label: 'Recent'  },
   { value: 'latency', label: 'Fastest' },
 ];
 
@@ -20,20 +21,20 @@ export default function RegistryPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const q        = sp.get('q') || '';
-  const tag      = sp.get('tag') || '';
+  const q        = sp.get('q')    || '';
+  const tag      = sp.get('tag')  || '';
   const sort     = sp.get('sort') || 'stars';
   const verified = sp.get('verified') || '';
-  const source   = sp.get('source') || '';
+  const source   = sp.get('source')   || '';
   const page     = parseInt(sp.get('page') || '1');
 
-  const [searchInput, setSearchInput] = useState(q);
-  const [servers, setServers] = useState<Server[]>([]);
-  const [total, setTotal]   = useState(0);
-  const [pages, setPages]   = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [servers,    setServers]    = useState<Server[]>([]);
+  const [total,      setTotal]      = useState(0);
+  const [pages,      setPages]      = useState(1);
+  const [loading,    setLoading]    = useState(true);
   const [totalCalls, setTotalCalls] = useState<number | null>(null);
 
+  // Push a single filter key/value to the URL (clears page)
   function set(key: string, val: string) {
     const p = new URLSearchParams(sp.toString());
     if (val) p.set(key, val); else p.delete(key);
@@ -44,27 +45,24 @@ export default function RegistryPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const p: Record<string, string> = { sort, page: String(page), limit: '12' };
-    if (q) p.q = q;
-    if (tag) p.tag = tag;
+    if (q)        p.q        = q;
+    if (tag)      p.tag      = tag;
     if (verified) p.verified = verified;
     if (source)   p.source   = source;
-    const qs = new URLSearchParams(p).toString();
-    const res = await fetch(`/api/servers?${qs}`).then(r => r.json());
+    const res = await fetch(`/api/servers?${new URLSearchParams(p)}`).then(r => r.json());
     setServers(res.servers || []);
-    setTotal(res.total || 0);
-    setPages(res.pages || 1);
+    setTotal(res.total   || 0);
+    setPages(res.pages   || 1);
     setLoading(false);
-  }, [q, tag, sort, verified, page]);
+  }, [q, tag, sort, verified, source, page]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetch('/api/servers/stats').then(r => r.json()).then(d => setTotalCalls(d.calls_today)).catch(() => {});
+    fetch('/api/servers/stats')
+      .then(r => r.json())
+      .then(d => setTotalCalls(d.calls_today))
+      .catch(() => {});
   }, []);
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    set('q', searchInput);
-  }
 
   return (
     <div className="overflow-x-hidden pb-24">
@@ -90,21 +88,15 @@ export default function RegistryPage() {
       </div>
 
       <div className="page pt-8">
-        {/* ── Search + Controls ── */}
-        <form onSubmit={handleSearch} className="flex gap-2 mb-5">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-steel pointer-events-none" />
-            <input
-              className="input pl-10 w-full"
-              placeholder="Search by name, capability, or tag…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary px-5">Search</button>
-        </form>
+        {/* ── Search spotlight (replaces plain form) ── */}
+        <div className="mb-5">
+          <SearchSpotlight
+            defaultValue={q}
+            onSearch={(val) => set('q', val)}
+          />
+        </div>
 
-        {/* Filters row */}
+        {/* ── Filters row ── */}
         <div className="flex flex-wrap gap-2 mb-5">
           <select
             className="input !w-auto text-sm"
@@ -134,7 +126,7 @@ export default function RegistryPage() {
           </select>
         </div>
 
-        {/* Tag pills */}
+        {/* ── Tag pills ── */}
         <div className="flex flex-wrap gap-2 mb-8">
           <button
             onClick={() => set('tag', '')}
@@ -153,14 +145,14 @@ export default function RegistryPage() {
           ))}
         </div>
 
-        {/* Active filters */}
+        {/* ── Active filters chips ── */}
         {(q || tag) && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-brand-steel uppercase tracking-widest font-mono">Filtering:</span>
             {q && (
               <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 font-mono text-[12px] text-white">
                 "{q}"
-                <button onClick={() => { setSearchInput(''); set('q', ''); }} className="text-brand-steel hover:text-white transition-colors">✕</button>
+                <button onClick={() => set('q', '')} className="text-brand-steel hover:text-white transition-colors">✕</button>
               </span>
             )}
             {tag && (
@@ -172,7 +164,7 @@ export default function RegistryPage() {
           </div>
         )}
 
-        {/* Results */}
+        {/* ── Results ── */}
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
@@ -200,7 +192,7 @@ export default function RegistryPage() {
               {total} result{total !== 1 ? 's' : ''}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {servers.map(s => <ServerCard key={s.id} server={s} />)}
+              {servers.map(s => <ServerCard key={s.id} server={s} query={q} />)}
             </div>
             {pages > 1 && (
               <div className="mt-12 flex justify-center items-center gap-2">
