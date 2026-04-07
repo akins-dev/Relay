@@ -682,7 +682,7 @@ export default function DocsPage() {
               />
             </div>
             <nav className="grid grid-cols-2 gap-1 pb-2">
-              {(results.length > 0 ? results : SECTIONS.map(s => ({ ...s, section: s.id }))).map(s => {
+              {(results.length > 0 ? results : SECTIONS).map(s => {
                 const id = 'section' in s ? s.section : s.id;
                 const label = s.label;
                 return (
