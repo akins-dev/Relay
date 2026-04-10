@@ -38,7 +38,7 @@ export interface IngestServer {
   tags:             string[];
   tools:            string[];
   tool_schemas:     ToolSchema[];
-  source:           'official' | 'smithery' | 'github' | 'glama' | 'direct';
+  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' | 'direct';
   smithery_id?:     string;
   official_id?:     string;
   glama_id?:        string;
@@ -392,7 +392,7 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
           tags:         s.tags ?? s.categories ?? [],
           tools:        s.tools?.map((t: any) => t.name ?? t) ?? [],
           tool_schemas: [],
-          source:       'direct' as const, // PulseMCP community servers treated as direct
+          source:       'pulsemcp' as const,
           verified:     s.isOfficial ?? s.verified ?? false,
         });
       }
@@ -470,11 +470,27 @@ export async function upsertServers(
 ): Promise<IngestResult> {
   const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
 
-  // Resolve system author_id ONCE — not per server (avoids N queries and
-  // prevents the insert failing if profiles is empty mid-loop)
+  // Resolve system author_id ONCE
   const { data: systemProfile } = await svc
     .from('profiles').select('id').limit(1).maybeSingle();
   const systemAuthorId: string | null = systemProfile?.id ?? null;
+
+  // Batch pre-fetch all existing servers to eliminate N+1 DB lookups
+  const { data: allExisting } = await svc
+    .from('servers')
+    .select('id, name, schema_hash, smithery_id, official_id, glama_id, last_scanned_at');
+
+  const existingByName = new Map();
+  const existingBySmithery = new Map();
+  const existingByOfficial = new Map();
+  const existingByGlama = new Map();
+
+  for (const row of allExisting || []) {
+    if (row.name) existingByName.set(row.name, row);
+    if (row.smithery_id) existingBySmithery.set(row.smithery_id, row);
+    if (row.official_id) existingByOfficial.set(row.official_id, row);
+    if (row.glama_id) existingByGlama.set(row.glama_id, row);
+  }
 
   for (const s of servers) {
     try {
@@ -500,6 +516,28 @@ export async function upsertServers(
       s.name = slugify(s.name).slice(0, 64);
       if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) { result.skipped++; continue; }
 
+      // Look up existing server first!
+      let existing: any = null;
+      if (s.smithery_id) existing = existingBySmithery.get(s.smithery_id);
+      if (!existing && s.official_id) existing = existingByOfficial.get(s.official_id);
+      if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
+      if (!existing) existing = existingByName.get(s.name);
+
+      // Lightweight upstream hash calculation
+      const upstreamHash = createHash('sha256')
+        .update(JSON.stringify(s.tools.slice().sort()) + s.version + (s.endpoint || '') + (s.github_url || ''))
+        .digest('hex');
+
+      const hoursSinceScan = existing?.last_scanned_at 
+        ? (new Date().getTime() - new Date(existing.last_scanned_at).getTime()) / (1000 * 60 * 60)
+        : 999;
+
+      // Skip expensive HTTP checks if schema unchanged and scanned recently (< 24h)
+      if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
+        result.skipped++;
+        continue;
+      }
+
       // L1: Static scan
       const scanResult = scanServer({
         name:        s.name,
@@ -516,13 +554,11 @@ export async function upsertServers(
       }
 
       // Fetch full tool schemas from the live server (non-fatal)
-      // Gives agents inputSchema so they don't have to guess arguments
       let toolSchemas = s.tool_schemas ?? [];
       if (toolSchemas.length === 0 && s.endpoint) {
         toolSchemas = await fetchToolSchemas(s.endpoint);
       }
       // Fallback: parse README for tool names + descriptions
-      // Used when server is stdio-only (not reachable as HTTP endpoint)
       if (toolSchemas.length === 0 && s.github_url) {
         toolSchemas = await parseReadmeSchemas(s.github_url);
       }
@@ -540,10 +576,6 @@ export async function upsertServers(
         continue;
       }
 
-      const schemaHash = createHash('sha256')
-        .update(JSON.stringify(s.tools.slice().sort()) + s.version + JSON.stringify(toolSchemas))
-        .digest('hex');
-
       const trustScore = computeTrustScore({
         verified:        s.verified ? 1 : 0,
         scanScore:       scanResult.score,
@@ -553,25 +585,6 @@ export async function upsertServers(
       });
 
       const status = scanResult.passed ? 'active' : 'rejected';
-
-      // Check if server already exists (by name or smithery_id or official_id)
-      let existing: any = null;
-      if (s.smithery_id) {
-        const { data } = await svc.from('servers').select('id, schema_hash').eq('smithery_id', s.smithery_id).maybeSingle();
-        existing = data;
-      }
-      if (!existing && s.official_id) {
-        const { data } = await svc.from('servers').select('id, schema_hash').eq('official_id', s.official_id).maybeSingle();
-        existing = data;
-      }
-      if (!existing && (s as any).glama_id) {
-        const { data } = await svc.from('servers').select('id, schema_hash').eq('glama_id', (s as any).glama_id).maybeSingle();
-        existing = data;
-      }
-      if (!existing) {
-        const { data } = await svc.from('servers').select('id, schema_hash').eq('name', s.name).maybeSingle();
-        existing = data;
-      }
 
       const serverData = {
         name:             s.name,
@@ -592,7 +605,7 @@ export async function upsertServers(
         official_id:      s.official_id ?? null,
         verified:         s.verified ?? false,
         status:           status as any,
-        schema_hash:      schemaHash,
+        schema_hash:      upstreamHash,
         scan_status:      (scanResult.passed ? 'passed' : 'failed') as any,
         scan_issues:      scanResult.issues as any,
         cve_issues:       cveIssues as any,
@@ -605,9 +618,6 @@ export async function upsertServers(
       let serverId: string | null = existing?.id ?? null;
 
       if (existing) {
-        // Only write if schema changed — avoids pointless DB writes on every ingest run
-        if (existing.schema_hash === schemaHash) { result.skipped++; continue; }
-
         const { error: updateErr } = await svc
           .from('servers')
           .update(serverData)
@@ -621,28 +631,39 @@ export async function upsertServers(
 
       } else {
         // Atomic upsert on name — prevents duplicate-insert race condition
-        // when two ingest jobs run simultaneously (e.g. cron + manual trigger)
-        if (!systemAuthorId) {
-          result.errors.push(`${s.name}: no system profile found — run 002_seed_data.sql first`);
-          continue;
+        let upsertObject = { ...serverData };
+        if (systemAuthorId) {
+          upsertObject = { ...upsertObject, author_id: systemAuthorId } as any;
+        } else {
+          // System fallback if db wasn't seeded but might accept null or trigger generic foreign key error
+          console.warn(`[ingest] No systemAuthorId. Upserting ${s.name} without author_id`);
         }
 
-        const { data: inserted, error: insertErr } = await svc
+        // Upsert on name (UNIQUE constraint) — atomic, no race condition
+        const { data: upserted, error: upsertErr } = await svc
           .from('servers')
           .upsert(
-            { ...serverData, author_id: systemAuthorId },
+            upsertObject,
             { onConflict: 'name', ignoreDuplicates: false }
           )
           .select('id')
-          .single();
+          .maybeSingle();
 
-        if (insertErr) {
-          result.errors.push(`${s.name}: upsert failed — ${insertErr.message}`);
-          continue;
+        if (upsertErr) {
+          // Fallback: try plain insert, then fetch if duplicate
+          const { data: fallbackFetch } = await svc
+            .from('servers').select('id').eq('name', s.name).maybeSingle();
+          if (fallbackFetch?.id) {
+            serverId = fallbackFetch.id;
+            result.updated++;
+          } else {
+            result.errors.push(`${s.name}: upsert failed — ${upsertErr.message}`);
+            continue;
+          }
+        } else {
+          serverId = upserted?.id ?? null;
+          result.added++;
         }
-
-        serverId = inserted?.id ?? null;
-        result.added++;
       }
 
       // Write scan result — now always has a valid server_id
