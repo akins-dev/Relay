@@ -92,7 +92,7 @@ export default function DashboardPage() {
 
       {/* Servers */}
       {tab === 'servers' && (
-        data.servers?.length === 0
+        !data.servers || data.servers.length === 0
           ? <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-3)' }}>
               <div style={{ fontSize: '40px', marginBottom: '16px' }}>⬡</div>
               <p style={{ marginBottom: '16px', fontSize: '14px' }}>No servers yet.</p>
@@ -135,9 +135,9 @@ export default function DashboardPage() {
             <button onClick={createKey} className="btn btn-primary">Create Key</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {data.apiKeys?.length === 0
+            {!data.apiKeys || data.apiKeys.length === 0
               ? <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-3)', fontSize: '14px' }}>No API keys yet.</div>
-              : data.apiKeys?.map((key: any) => (
+              : data.apiKeys.map((key: any) => (
                   <div key={key.id} className="card" style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>{key.name}</div>

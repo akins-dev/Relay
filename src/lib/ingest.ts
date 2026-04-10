@@ -1,7 +1,6 @@
 import { isSafeUrl } from '@/lib/utils';
-import { BRAND } from '@/lib/brand';
 /**
- * Registry Ingest Pipeline
+ * openMCP — Registry Ingest Pipeline
  *
  * Pulls servers from three upstream sources:
  *   1. Official MCP Registry (registry.modelcontextprotocol.io)
@@ -107,7 +106,7 @@ export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[
 
     if (!isSafeUrl(rawUrl)) return [];
     const res = await fetch(rawUrl, {
-      headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1` },
+      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return [];
@@ -173,7 +172,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       : 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
 
     const res = await fetch(url, {
-      headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1` },
+      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) break;
@@ -225,7 +224,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'User-Agent': `${BRAND.slug}-ingest/0.1`,
+          'User-Agent': 'openMCP-ingest/0.1',
         },
         signal: AbortSignal.timeout(15_000),
       }
@@ -311,7 +310,7 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
       const res = await fetch(
         `https://glama.ai/api/mcp/v1/servers?page=${page}&perPage=${pageSize}`,
         {
-          headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1`, 'Accept': 'application/json' },
+          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
           signal: AbortSignal.timeout(15_000),
         }
       );
@@ -367,7 +366,7 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
       const res = await fetch(
         `https://www.pulsemcp.com/api/servers?page=${page}&limit=${pageSize}`,
         {
-          headers: { 'User-Agent': `${BRAND.slug}-ingest/0.1`, 'Accept': 'application/json' },
+          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
           signal: AbortSignal.timeout(15_000),
         }
       );
@@ -412,7 +411,7 @@ export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
 
 /**
  * Detect MCP server transport type from endpoint URL.
- * This determines whether the server is invokable through the proxy.
+ * This determines whether the server is invokable through the openMCP proxy.
  *
  * stdio: local process — cannot be reached over HTTP, excluded from agent search
  * sse | streamable_http: public HTTP endpoint — invokable through proxy
@@ -471,6 +470,12 @@ export async function upsertServers(
 ): Promise<IngestResult> {
   const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
 
+  // Resolve system author_id ONCE — not per server (avoids N queries and
+  // prevents the insert failing if profiles is empty mid-loop)
+  const { data: systemProfile } = await svc
+    .from('profiles').select('id').limit(1).maybeSingle();
+  const systemAuthorId: string | null = systemProfile?.id ?? null;
+
   for (const s of servers) {
     try {
       // Skip if name or endpoint missing
@@ -482,7 +487,7 @@ export async function upsertServers(
         continue;
       }
 
-      // Skip stdio-only servers — they cannot be invoked through the proxy
+      // Skip stdio-only servers — they cannot be invoked through the openMCP proxy
       // stdio servers run as local processes on the developer's machine, not as HTTP endpoints
       // They should be listed on Smithery or run locally — not in a proxy-based registry
       const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
@@ -597,28 +602,60 @@ export async function upsertServers(
         last_scanned_at:  new Date().toISOString(),
       };
 
+      let serverId: string | null = existing?.id ?? null;
+
       if (existing) {
-        // Only update if schema changed (avoid pointless writes)
+        // Only write if schema changed — avoids pointless DB writes on every ingest run
         if (existing.schema_hash === schemaHash) { result.skipped++; continue; }
-        await svc.from('servers').update(serverData).eq('id', existing.id);
+
+        const { error: updateErr } = await svc
+          .from('servers')
+          .update(serverData)
+          .eq('id', existing.id);
+
+        if (updateErr) {
+          result.errors.push(`${s.name}: update failed — ${updateErr.message}`);
+          continue;
+        }
         result.updated++;
+
       } else {
-        // Need an author_id for insert — use system profile
-        const { data: system } = await svc.from('profiles').select('id').limit(1).single();
-        if (!system) { result.errors.push(`No system profile for ${s.name}`); continue; }
-        await svc.from('servers').insert({ ...serverData, author_id: system.id });
+        // Atomic upsert on name — prevents duplicate-insert race condition
+        // when two ingest jobs run simultaneously (e.g. cron + manual trigger)
+        if (!systemAuthorId) {
+          result.errors.push(`${s.name}: no system profile found — run 002_seed_data.sql first`);
+          continue;
+        }
+
+        const { data: inserted, error: insertErr } = await svc
+          .from('servers')
+          .upsert(
+            { ...serverData, author_id: systemAuthorId },
+            { onConflict: 'name', ignoreDuplicates: false }
+          )
+          .select('id')
+          .single();
+
+        if (insertErr) {
+          result.errors.push(`${s.name}: upsert failed — ${insertErr.message}`);
+          continue;
+        }
+
+        serverId = inserted?.id ?? null;
         result.added++;
       }
 
-      // Write scan result
-      await svc.from('scan_results').insert({
-        server_id: existing?.id, // will be null for new — handled by trigger
-        scan_type: 'ingest',
-        passed:    scanResult.passed,
-        score:     scanResult.score,
-        issues:    [...scanResult.issues, ...cveIssues] as any,
-        details:   `Ingested from ${s.source}. CVEs found: ${cveIssues.length}.`,
-      }).catch(() => {}); // Non-fatal
+      // Write scan result — now always has a valid server_id
+      if (serverId) {
+        await svc.from('scan_results').insert({
+          server_id: serverId,
+          scan_type: 'ingest',
+          passed:    scanResult.passed,
+          score:     scanResult.score,
+          issues:    [...scanResult.issues, ...cveIssues] as any,
+          details:   `Ingested from ${s.source}. CVEs found: ${cveIssues.length}.`,
+        }).catch(() => {}); // Non-fatal — never block ingest on audit write
+      }
 
     } catch (e: any) {
       result.errors.push(`${s.name}: ${e.message}`);

@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     if (source === 'all' || source === 'official') {
       console.log('[ingest] Fetching official registry...');
       const servers = await fetchOfficialServers();
+      console.log(`[ingest] Official registry returned ${servers.length} servers. Upserting...`);
       results.official = await upsertServers(servers, svc);
       results.official.fetched = servers.length;
     }
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
     if (source === 'all' || source === 'smithery') {
       console.log('[ingest] Fetching Smithery...');
       const servers = await fetchSmitheryServers();
+      console.log(`[ingest] Smithery returned ${servers.length} servers. Upserting...`);
       results.smithery = await upsertServers(servers, svc);
       results.smithery.fetched = servers.length;
     }
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
     if (source === 'all' || source === 'glama') {
       console.log('[ingest] Fetching Glama...');
       const servers = await fetchGlamaServers();
+      console.log(`[ingest] Glama returned ${servers.length} servers. Upserting...`);
       results.glama = await upsertServers(servers, svc);
       results.glama.fetched = servers.length;
     }
@@ -61,6 +64,7 @@ export async function POST(req: NextRequest) {
     if (source === 'all' || source === 'pulsemcp') {
       console.log('[ingest] Fetching PulseMCP...');
       const servers = await fetchPulseMCPServers();
+      console.log(`[ingest] PulseMCP returned ${servers.length} servers. Upserting...`);
       results.pulsemcp = await upsertServers(servers, svc);
       results.pulsemcp.fetched = servers.length;
     }
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
     if (source === 'all' || source === 'github') {
       console.log('[ingest] Fetching GitHub servers...');
       const servers = await fetchGitHubServers();
+      console.log(`[ingest] GitHub returned ${servers.length} servers. Upserting...`);
       results.github = await upsertServers(servers, svc);
       results.github.fetched = servers.length;
     }
