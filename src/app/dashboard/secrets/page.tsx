@@ -55,7 +55,12 @@ export default function SecretsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/secrets').then(r => r.json());
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      const res = await fetch('/api/secrets', { headers }).then(r => r.json());
       setSecrets(res.secrets ?? []);
     } finally {
       setLoading(false);
@@ -77,9 +82,14 @@ export default function SecretsPage() {
     if (!value) { setError('Secret value is required'); return; }
     setSaving(true); setError('');
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
       const res = await fetch('/api/secrets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           server_name:  serverName.trim() || null,
           secret_name:  name.toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
@@ -107,7 +117,12 @@ export default function SecretsPage() {
     if (!confirm(`Delete "${name}"? Calls requiring this credential will return 401 immediately.`)) return;
     setDeleting(id);
     try {
-      await fetch(`/api/secrets?id=${id}`, { method: 'DELETE' });
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      await fetch(`/api/secrets?id=${id}`, { method: 'DELETE', headers });
       setSecrets(s => s.filter(x => x.id !== id));
     } finally {
       setDeleting(null);

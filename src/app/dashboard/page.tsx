@@ -150,9 +150,14 @@ function DashboardContent() {
     setKeyLoading(true);
     setKeyError('');
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
       const res = await fetch('/api/auth/api-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name }),
       });
       const json = await res.json();
@@ -170,7 +175,12 @@ function DashboardContent() {
   async function deleteKey(id: string, name: string) {
     if (!confirm(`Delete API key "${name}"? Any agent using it will immediately lose access.`)) return;
     try {
-      await fetch(`/api/auth/api-keys?id=${id}`, { method: 'DELETE' });
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      await fetch(`/api/auth/api-keys?id=${id}`, { method: 'DELETE', headers });
       load();
     } catch {
       // Non-fatal — reload will show current state
@@ -240,9 +250,6 @@ function DashboardContent() {
               <Plus size={16} /> Publish server
             </Button>
           </Link>
-          <Button variant="ghost" onClick={handleLogout} className="gap-2 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground">
-            <LogOut size={16} /> Sign out
-          </Button>
         </div>
       </div>
 

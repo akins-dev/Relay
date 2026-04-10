@@ -30,7 +30,9 @@ const StoreSchema = z.object({
 // ── POST — store a secret ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   // Rate limit — secrets storage is low-frequency
@@ -79,7 +81,9 @@ export async function POST(req: NextRequest) {
 // ── GET — list secrets (metadata only) ───────────────────────────────────────
 export async function GET(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   const svc = createServiceClient();
@@ -106,7 +110,9 @@ export async function GET(req: NextRequest) {
 // ── DELETE — remove a secret ──────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   const id = new URL(req.url).searchParams.get('id');
