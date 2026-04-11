@@ -105,6 +105,7 @@ export async function POST(
     return NextResponse.json({ error: 'Server endpoint failed safety validation' }, { status: 400 });
   }
 
+  // Tool existence check — validates against stored tool list
   if (!server.tools.includes(toolName)) {
     return NextResponse.json(
       { error: `Tool '${toolName}' not found on '${serverName}'`, available_tools: server.tools },
@@ -261,13 +262,39 @@ export async function POST(
 
   try {
     const upstream = await fetch(targetUrl, {
-      method: 'POST', headers: upstreamHeaders, body: mcpBody,
-      signal: AbortSignal.timeout(30_000),
+      method:   'POST',
+      headers:  upstreamHeaders,
+      body:     mcpBody,
+      redirect: 'manual',           // SSRF guard: never auto-follow redirects
+      signal:   AbortSignal.timeout(30_000),
     });
-    upstreamStatus      = upstream.status;
-    upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
 
-    // ── Structured 401 — OAuth vs API key ────────────────────────────────────
+    // Validate redirect target if server sends a 3xx
+    if (upstream.status >= 300 && upstream.status < 400) {
+      const location = upstream.headers.get('location') ?? '';
+      if (!isSafeUrl(location)) {
+        return NextResponse.json(
+          { error: 'Upstream returned a redirect to a blocked URL (SSRF guard)' },
+          { status: 502 }
+        );
+      }
+      // Allow safe redirects — re-fetch the redirected URL
+      const redirectRes = await fetch(location, {
+        method: 'POST', headers: upstreamHeaders, body: mcpBody,
+        redirect: 'manual', signal: AbortSignal.timeout(20_000),
+      });
+      upstreamStatus      = redirectRes.status;
+      upstreamContentType = redirectRes.headers.get('content-type') ?? 'application/json';
+      const bounded       = await readBoundedResponse(redirectRes);
+      responseBody        = bounded.body;
+      responseTruncated   = bounded.truncated;
+    } else {
+      upstreamStatus      = upstream.status;
+      upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
+      const bounded       = await readBoundedResponse(upstream);
+      responseBody        = bounded.body;
+      responseTruncated   = bounded.truncated;
+    }
     if (upstreamStatus === 401) {
       const isOAuth    = isOAuthServer;
       const base       = serverName.toUpperCase().replace(/-/g, '_');
@@ -308,10 +335,6 @@ export async function POST(
       }, { status: 401 });
     }
 
-    // ── Bounded response read — 10 MB max ────────────────────────────────────
-    const bounded      = await readBoundedResponse(upstream);
-    responseBody       = bounded.body;
-    responseTruncated  = bounded.truncated;
 
   } catch (err: any) {
     await audit(svc, { server_id: server.id, action: 'proxy_error', tool_name: toolName,
@@ -350,10 +373,16 @@ export async function POST(
 
   // ── Response ─────────────────────────────────────────────────────────────────
   const resHeaders: Record<string, string> = {
-    'Content-Type':           upstreamContentType,
+    // Sanitize Content-Type — never forward text/html (XSS risk if renderer displays it)
+    // Only allow JSON and plain text content types from upstream
+    'Content-Type':           upstreamContentType.startsWith('application/json') || upstreamContentType.startsWith('text/plain')
+                                ? upstreamContentType
+                                : 'application/json',
     'X-Registry-Latency':     String(latency),
     'X-Registry-Server':      serverName,
     'X-Registry-Trust-Score': String(server.trust_score),
+    // Prevent upstream response from being rendered in a browser (defense-in-depth)
+    'X-Content-Type-Options': 'nosniff',
   };
   if (allIssues.length > 0)  resHeaders['X-Registry-DLP-Warning'] = allIssues.slice(0, 3).join('; ');
   if (responseTruncated)     resHeaders['X-Registry-Truncated']   = 'true';
