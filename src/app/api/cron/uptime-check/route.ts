@@ -18,6 +18,7 @@ import { NextRequest, NextResponse }  from 'next/server';
 import { createServiceClient }        from '@/lib/supabase/server';
 import { safeCompare, isSafeUrl }     from '@/lib/utils';
 import { computeTrustScore }          from '@/lib/security';
+import { probeUptime }                from '@/lib/mcp-probe';
 
 function isAuthorized(req: NextRequest) {
   return safeCompare(
@@ -26,49 +27,8 @@ function isAuthorized(req: NextRequest) {
   );
 }
 
-/** Returns { up, latencyMs } using a tiered probe strategy */
-async function probeServer(endpoint: string): Promise<{ up: boolean; latencyMs: number }> {
-  const start = Date.now();
-
-  // Tier 1: JSON-RPC tools/list — proves it is a functioning MCP server
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Registry-Probe': 'uptime' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (res.ok || res.status === 405 || res.status === 401) {
-      // 405 = method not allowed but server responded (alive)
-      // 401 = server requires auth but is up
-      return { up: true, latencyMs: Date.now() - start };
-    }
-  } catch { /* fall through to tier 2 */ }
-
-  // Tier 2: HEAD on the base endpoint
-  try {
-    const res = await fetch(endpoint, {
-      method: 'HEAD',
-      headers: { 'X-Registry-Probe': 'uptime' },
-      signal: AbortSignal.timeout(6_000),
-    });
-    if (res.ok || res.status === 405 || res.status === 401) {
-      return { up: true, latencyMs: Date.now() - start };
-    }
-  } catch { /* fall through */ }
-
-  // Tier 3: GET /health
-  try {
-    const health = endpoint.replace(/\/$/, '') + '/health';
-    const res = await fetch(health, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (res.ok) return { up: true, latencyMs: Date.now() - start };
-  } catch { /* server is down */ }
-
-  return { up: false, latencyMs: Date.now() - start };
-}
+// probeServer is replaced by probeUptime from mcp-probe.ts which performs
+// the correct MCP initialize handshake before checking server status.
 
 export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
@@ -101,7 +61,7 @@ export async function GET(req: NextRequest) {
         return;
       }
 
-      const { up, latencyMs } = await probeServer(server.endpoint);
+      const { up, latencyMs, mcpCompliant } = await probeUptime(server.endpoint);
 
       // ── EWMA uptime (α=0.01 → ~100 checks = ~25 hours at 15min cadence) ──────
       const prevUptime = Number(server.uptime_pct ?? 100);
@@ -148,8 +108,10 @@ export async function GET(req: NextRequest) {
           scan_type: 'uptime',
           passed:    up,
           score:     up ? 100 : 0,
-          issues:    up ? [] : [{ severity: 'high', type: 'endpoint_down', description: `Unreachable — all probe tiers failed (${latencyMs}ms timeout)` }],
-          details:   up ? `Up — ${latencyMs}ms` : 'Down — all probe tiers failed',
+          issues:    up ? [] : [{ severity: 'high', type: 'endpoint_down', description: `Unreachable — all probe tiers failed (${latencyMs}ms)` }],
+          details:   up
+            ? `Up — ${latencyMs}ms${mcpCompliant ? ' (MCP compliant)' : ' (HTTP only — not MCP compliant)'}`
+            : 'Down — all probe tiers failed',
         });
       } catch { /* non-fatal */ }
 

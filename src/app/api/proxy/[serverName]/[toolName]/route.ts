@@ -226,8 +226,34 @@ export async function POST(
     }
   }
 
-  // ── Forward to upstream ──────────────────────────────────────────────────────
-  const targetUrl = `${server.endpoint}/tools/${toolName}`;
+  // ── Build MCP JSON-RPC tools/call body ─────────────────────────────────────
+  // CRITICAL: MCP has NO /tools/{toolName} URL.
+  // The entire MCP protocol routes through a SINGLE endpoint via JSON-RPC.
+  // method: "tools/call", params: { name, arguments }
+  // Ref: https://modelcontextprotocol.io/specification/2025-03-26/server/tools
+  let toolArguments: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(rawBody);
+    // Accept MCP-style { arguments: {...} } or REST-style flat object
+    toolArguments = parsed?.arguments ?? parsed?.params ?? parsed ?? {};
+    // Strip JSON-RPC meta-fields that are not tool arguments
+    delete toolArguments.jsonrpc;
+    delete toolArguments.method;
+    delete toolArguments.id;
+  } catch {
+    // rawBody is not JSON — wrap in a text key as best-effort
+    toolArguments = rawBody ? { input: rawBody } : {};
+  }
+
+  const mcpBody = JSON.stringify({
+    jsonrpc: '2.0',
+    id:      1,
+    method:  'tools/call',
+    params:  { name: toolName, arguments: toolArguments },
+  });
+
+  // Target is the server's base MCP endpoint — NOT /tools/{toolName}
+  const targetUrl = server.endpoint;
   let responseBody: string;
   let upstreamStatus: number;
   let upstreamContentType: string;
@@ -235,7 +261,7 @@ export async function POST(
 
   try {
     const upstream = await fetch(targetUrl, {
-      method: 'POST', headers: upstreamHeaders, body: rawBody,
+      method: 'POST', headers: upstreamHeaders, body: mcpBody,
       signal: AbortSignal.timeout(30_000),
     });
     upstreamStatus      = upstream.status;

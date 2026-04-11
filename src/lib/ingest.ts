@@ -2,21 +2,23 @@ import { isSafeUrl } from '@/lib/utils';
 /**
  * openMCP — Registry Ingest Pipeline
  *
- * Pulls servers from three upstream sources:
+ * Pulls servers from five upstream sources:
  *   1. Official MCP Registry (registry.modelcontextprotocol.io)
- *   2. Smithery (registry.smithery.ai) — requires SMITHERY_API_KEY
- *   3. Glama (glama.ai/mcp/servers) — 14,274 servers, automated quality checks
- *   4. GitHub MCP servers (github.com/modelcontextprotocol/servers)
+ *   2. Smithery (registry.smithery.ai)
+ *   3. Glama (glama.ai/mcp/servers)
+ *   4. PulseMCP (pulsemcp.com)
+ *   5. GitHub MCP servers (github.com/modelcontextprotocol/servers)
  *
- * Every ingested server is:
- *   - Deduplicated by endpoint URL + GitHub repo
- *   - Run through L1 static scan
- *   - Run through npm CVE scan if GitHub URL present
+ * Every server is:
+ *   - Deduplicated by endpoint URL / source ID
+ *   - Probed with a proper MCP initialize handshake (spec-compliant)
+ *   - Run through L1 static scan + S-14 npm CVE scan
  *   - Trust scored
  *   - Upserted into Supabase
  */
 
 import { scanServer, computeTrustScore, scanNpmDependencies } from '@/lib/security';
+import { probeMCPServer } from '@/lib/mcp-probe';
 import { createHash } from 'crypto';
 
 export interface ToolSchema {
@@ -47,32 +49,66 @@ export interface IngestServer {
 }
 
 /**
- * Fetch full tool schemas from an MCP server's tools/list endpoint.
- * Returns { name, description, inputSchema } per tool.
- * Non-fatal — falls back to empty array on any error.
+ * Fetch MCP primitives (tools, resources, prompts) from a live server.
+ *
+ * IMPORTANT: Uses the proper MCP initialize handshake before listing primitives.
+ * Directly calling tools/list without initialize violates the MCP spec and
+ * will fail on spec-compliant servers.
+ *
+ * Falls back to README parsing if the live probe fails or times out.
+ */
+export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): Promise<{
+  toolSchemas: ToolSchema[];
+  resources:   Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+  prompts:     Array<{ name: string; description?: string }>;
+  protocolVersion: string | null;
+  mcpCompliant: boolean;
+}> {
+  const empty = { toolSchemas: [], resources: [], prompts: [], protocolVersion: null, mcpCompliant: false };
+
+  if (!endpoint || !isSafeUrl(endpoint)) {
+    // Fallback: parse README for tool hints
+    const toolSchemas = githubUrl ? await parseReadmeSchemas(githubUrl) : [];
+    return { ...empty, toolSchemas };
+  }
+
+  const probe = await probeMCPServer(endpoint, 10_000);
+
+  const toolSchemas: ToolSchema[] = probe.tools.map(t => ({
+    name:        t.name,
+    description: t.description ?? '',
+    inputSchema: t.inputSchema ?? undefined,
+  }));
+
+  // If probe returned no tools but server is alive, try README fallback
+  if (toolSchemas.length === 0 && githubUrl) {
+    const readmeTools = await parseReadmeSchemas(githubUrl);
+    return {
+      toolSchemas:     readmeTools,
+      resources:       probe.resources,
+      prompts:         probe.prompts,
+      protocolVersion: probe.protocolVersion,
+      mcpCompliant:    probe.mcpCompliant,
+    };
+  }
+
+  return {
+    toolSchemas,
+    resources:       probe.resources,
+    prompts:         probe.prompts,
+    protocolVersion: probe.protocolVersion,
+    mcpCompliant:    probe.mcpCompliant,
+  };
+}
+
+/**
+ * @deprecated Use fetchMCPPrimitives() instead.
+ * This function calls tools/list WITHOUT the required initialize handshake,
+ * which violates the MCP specification and fails on compliant servers.
  */
 export async function fetchToolSchemas(endpoint: string): Promise<ToolSchema[]> {
-  try {
-    if (!isSafeUrl(endpoint)) return [];
-    const res = await fetch(endpoint, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      signal:  AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const tools = data?.result?.tools ?? data?.tools ?? [];
-    return tools
-      .map((t: any) => ({
-        name:        t.name ?? '',
-        description: t.description ?? '',
-        inputSchema: t.inputSchema ?? t.input_schema ?? null,
-      }))
-      .filter((t: ToolSchema) => t.name);
-  } catch {
-    return [];
-  }
+  const { toolSchemas } = await fetchMCPPrimitives(endpoint);
+  return toolSchemas;
 }
 
 export interface IngestResult {
@@ -167,18 +203,18 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
   let cursor: string | null = null;
 
   do {
-    const url = cursor
+    const pageUrl: string = cursor
       ? `https://registry.modelcontextprotocol.io/v0/servers?limit=100&cursor=${cursor}`
       : 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
 
-    const res = await fetch(url, {
+    const pageRes: Response = await fetch(pageUrl, {
       headers: { 'User-Agent': 'openMCP-ingest/0.1' },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) break;
+    if (!pageRes.ok) break;
 
-    const data = await res.json();
-    const items = data.servers ?? data.items ?? [];
+    const pageData: any = await pageRes.json();
+    const items: any[] = pageData.servers ?? pageData.items ?? [];
 
     for (const s of items) {
       servers.push({
@@ -199,13 +235,14 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       });
     }
 
-    cursor = data.nextCursor ?? data.cursor ?? null;
+    cursor = pageData.nextCursor ?? pageData.cursor ?? null;
   } while (cursor);
 
   return servers;
 }
 
 // ── Smithery ──────────────────────────────────────────────────────────────────
+
 
 export async function fetchSmitheryServers(): Promise<IngestServer[]> {
   const apiKey = process.env.SMITHERY_API_KEY;
@@ -462,6 +499,7 @@ export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' |
 }
 
 
+
 // ── Upsert pipeline ───────────────────────────────────────────────────────────
 
 export async function upsertServers(
@@ -469,109 +507,141 @@ export async function upsertServers(
   svc: any
 ): Promise<IngestResult> {
   const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
+  const tag = '[ingest:upsert]';
 
   // Resolve system author_id ONCE
   const { data: systemProfile } = await svc
     .from('profiles').select('id').limit(1).maybeSingle();
   const systemAuthorId: string | null = systemProfile?.id ?? null;
 
+  if (!systemAuthorId) {
+    console.warn(`${tag} No system profile found — new servers will be inserted without author_id. Run 002_seed_data.sql to fix.`);
+  } else {
+    console.log(`${tag} System author resolved: ${systemAuthorId}`);
+  }
+
   // Batch pre-fetch all existing servers to eliminate N+1 DB lookups
   const { data: allExisting } = await svc
     .from('servers')
     .select('id, name, schema_hash, smithery_id, official_id, glama_id, last_scanned_at');
 
-  const existingByName = new Map();
-  const existingBySmithery = new Map();
-  const existingByOfficial = new Map();
-  const existingByGlama = new Map();
+  const existingByName     = new Map<string, any>();
+  const existingBySmithery = new Map<string, any>();
+  const existingByOfficial = new Map<string, any>();
+  const existingByGlama    = new Map<string, any>();
 
-  for (const row of allExisting || []) {
-    if (row.name) existingByName.set(row.name, row);
+  for (const row of allExisting ?? []) {
+    if (row.name)        existingByName.set(row.name, row);
     if (row.smithery_id) existingBySmithery.set(row.smithery_id, row);
     if (row.official_id) existingByOfficial.set(row.official_id, row);
-    if (row.glama_id) existingByGlama.set(row.glama_id, row);
+    if (row.glama_id)    existingByGlama.set(row.glama_id, row);
   }
+
+  console.log(`${tag} Pre-fetched ${existingByName.size} existing servers. Processing ${servers.length} incoming...`);
 
   for (const s of servers) {
     try {
-      // Skip if name or endpoint missing
-      if (!s.name || !s.endpoint) { result.skipped++; continue; }
+      // Guard: name required
+      if (!s.name) { result.skipped++; continue; }
 
-      // Validate endpoint URL before storing — prevents SSRF via ingest
-      if (s.endpoint && !isSafeUrl(s.endpoint)) {
-        result.skipped++;
-        continue;
-      }
-
-      // Skip stdio-only servers — they cannot be invoked through the openMCP proxy
-      // stdio servers run as local processes on the developer's machine, not as HTTP endpoints
-      // They should be listed on Smithery or run locally — not in a proxy-based registry
-      const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
-      if (transport === 'stdio') {
-        result.skipped++;
-        continue;
-      }
-
-      // Sanitise name to registry format
+      // Normalise name first so logging is readable
       s.name = slugify(s.name).slice(0, 64);
       if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) { result.skipped++; continue; }
 
-      // Look up existing server first!
-      let existing: any = null;
-      if (s.smithery_id) existing = existingBySmithery.get(s.smithery_id);
-      if (!existing && s.official_id) existing = existingByOfficial.get(s.official_id);
-      if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
-      if (!existing) existing = existingByName.get(s.name);
+      // SSRF protection
+      if (s.endpoint && !isSafeUrl(s.endpoint)) {
+        console.warn(`${tag} [SKIP:unsafe-url] ${s.name} endpoint rejected`);
+        result.skipped++;
+        continue;
+      }
 
-      // Lightweight upstream hash calculation
+      // Skip stdio-only (not reachable as HTTP)
+      const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
+      if (transport === 'stdio') { result.skipped++; continue; }
+
+      // Lookup existing record via any matching ID
+      let existing: any = null;
+      if (s.smithery_id)                    existing = existingBySmithery.get(s.smithery_id);
+      if (!existing && s.official_id)       existing = existingByOfficial.get(s.official_id);
+      if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
+      if (!existing)                        existing = existingByName.get(s.name);
+
+      // Upstream hash — lightweight change detection
       const upstreamHash = createHash('sha256')
-        .update(JSON.stringify(s.tools.slice().sort()) + s.version + (s.endpoint || '') + (s.github_url || ''))
+        .update([
+          JSON.stringify(s.tools.slice().sort()),
+          s.version ?? '',
+          s.endpoint ?? '',
+          s.github_url ?? '',
+        ].join('|'))
         .digest('hex');
 
-      const hoursSinceScan = existing?.last_scanned_at 
-        ? (new Date().getTime() - new Date(existing.last_scanned_at).getTime()) / (1000 * 60 * 60)
-        : 999;
+      const hoursSinceScan = existing?.last_scanned_at
+        ? (Date.now() - new Date(existing.last_scanned_at).getTime()) / 3_600_000
+        : Infinity;
 
-      // Skip expensive HTTP checks if schema unchanged and scanned recently (< 24h)
+      // Skip: hash unchanged and scanned recently
       if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
         result.skipped++;
         continue;
       }
 
-      // L1: Static scan
+      // Fetch tool schemas (non-fatal)
+      // Fetch MCP primitives using the proper initialize handshake (spec-compliant)
+      // This replaces the old bare tools/list call which violated the MCP protocol.
+      let toolSchemas = s.tool_schemas ?? [];
+      let mcpResources: any[] = [];
+      let mcpPrompts:   any[] = [];
+      let protocolVersion: string | null = null;
+      let mcpCompliant = false;
+
+      if (s.endpoint) {
+        const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url);
+        if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
+          toolSchemas = primitives.toolSchemas;
+        }
+        mcpResources    = primitives.resources;
+        mcpPrompts      = primitives.prompts;
+        protocolVersion = primitives.protocolVersion;
+        mcpCompliant    = primitives.mcpCompliant;
+      } else if (toolSchemas.length === 0 && s.github_url) {
+        toolSchemas = await parseReadmeSchemas(s.github_url);
+      }
+
+      if (s.tools.length === 0 && toolSchemas.length > 0) {
+        s.tools = toolSchemas.map(t => t.name);
+      }
+
+      // L1: Static security scan
+      // CRITICAL FIX: Always provide a fallback description — empty string causes scan
+      // to silently score as if the server has no issues but score 0.
+      // Also: do NOT hard-reject on 'no_tools' (high severity). Many valid servers
+      // only expose tools at runtime (e.g. Smithery stdio wrappers, GitHub-listed servers).
       const scanResult = scanServer({
         name:        s.name,
-        description: s.description || 'No description',
+        description: s.description || s.display_name || 'No description provided',
         endpoint:    s.endpoint,
         tools:       s.tools,
         tags:        s.tags,
       });
 
-      // S-14: npm CVE scan (only for servers with GitHub URL)
+      // S-14: npm CVE scan
       let cveIssues: any[] = [];
       if (s.github_url) {
         cveIssues = await scanNpmDependencies(s.github_url);
       }
 
-      // Fetch full tool schemas from the live server (non-fatal)
-      let toolSchemas = s.tool_schemas ?? [];
-      if (toolSchemas.length === 0 && s.endpoint) {
-        toolSchemas = await fetchToolSchemas(s.endpoint);
-      }
-      // Fallback: parse README for tool names + descriptions
-      if (toolSchemas.length === 0 && s.github_url) {
-        toolSchemas = await parseReadmeSchemas(s.github_url);
-      }
-      // Backfill tool names from schemas if tools array is empty
-      if (s.tools.length === 0 && toolSchemas.length > 0) {
-        s.tools = toolSchemas.map(t => t.name);
-      }
-
-      // Reject on critical scan issues
-      const hasCritical = scanResult.issues.some(i => i.severity === 'critical');
+      // CRITICAL FIX: Only hard-reject CRITICAL issues.
+      // Previously, rejecting on 'high' (which includes 'no_tools') caused almost
+      // ALL ingested servers to be rejected before being written to the DB.
+      const hasCritical    = scanResult.issues.some(i => i.severity === 'critical');
       const hasCriticalCve = cveIssues.some(i => i.severity === 'critical');
 
       if (hasCritical || hasCriticalCve) {
+        const reason = scanResult.issues.find(i => i.severity === 'critical')?.description
+          ?? cveIssues.find(i => i.severity === 'critical')?.cve
+          ?? 'critical issue';
+        console.warn(`${tag} [REJECT:critical] ${s.name} — ${reason}`);
         result.rejected++;
         continue;
       }
@@ -584,27 +654,36 @@ export async function upsertServers(
         daysSinceChange: 0,
       });
 
-      const status = scanResult.passed ? 'active' : 'rejected';
+      // High issues → pending_review rather than active.
+      // Server is stored for admin review without being surfaced to end users.
+      const hasHighSeverity = scanResult.issues.some(i => i.severity === 'high')
+        || cveIssues.some(i => i.severity === 'high');
+      const status = hasHighSeverity ? 'pending_review' : 'active';
 
-      const serverData = {
+      const serverData: Record<string, any> = {
         name:             s.name,
         display_name:     s.display_name || s.name,
-        description:      s.description || 'No description provided',
+        description:      s.description  || s.display_name || 'No description provided',
         long_description: s.long_description ?? null,
-        version:          s.version,
-        endpoint:         s.endpoint,
-        github_url:       s.github_url ?? null,
+        version:          s.version || '1.0.0',
+        endpoint:         s.endpoint || null,
+        github_url:       s.github_url   ?? null,
         homepage_url:     s.homepage_url ?? null,
         license:          s.license || 'MIT',
         tags:             s.tags.length > 0 ? s.tags : ['general'],
         tools:            s.tools,
         tool_schemas:     toolSchemas as any,
-        transport:        s.transport ?? detectTransport(s.endpoint, s.github_url),
+        resources:        mcpResources as any,
+        prompts:          mcpPrompts as any,
+        protocol_version: protocolVersion,
+        mcp_compliant:    mcpCompliant,
+        transport,
         source:           s.source,
         smithery_id:      s.smithery_id ?? null,
         official_id:      s.official_id ?? null,
+        glama_id:         (s as any).glama_id ?? null,
         verified:         s.verified ?? false,
-        status:           status as any,
+        status,
         schema_hash:      upstreamHash,
         scan_status:      (scanResult.passed ? 'passed' : 'failed') as any,
         scan_issues:      scanResult.issues as any,
@@ -618,71 +697,78 @@ export async function upsertServers(
       let serverId: string | null = existing?.id ?? null;
 
       if (existing) {
+        // UPDATE path
         const { error: updateErr } = await svc
           .from('servers')
           .update(serverData)
           .eq('id', existing.id);
 
         if (updateErr) {
+          console.error(`${tag} [ERROR:update] ${s.name} — ${updateErr.message}`);
           result.errors.push(`${s.name}: update failed — ${updateErr.message}`);
           continue;
         }
+        console.log(`${tag} [UPDATE] ${s.name} trust:${trustScore} status:${status}`);
         result.updated++;
 
       } else {
-        // Atomic upsert on name — prevents duplicate-insert race condition
-        let upsertObject = { ...serverData };
-        if (systemAuthorId) {
-          upsertObject = { ...upsertObject, author_id: systemAuthorId } as any;
-        } else {
-          // System fallback if db wasn't seeded but might accept null or trigger generic foreign key error
-          console.warn(`[ingest] No systemAuthorId. Upserting ${s.name} without author_id`);
-        }
+        // INSERT path — upsert on UNIQUE(name) is atomic and race-safe
+        const insertData: Record<string, any> = { ...serverData };
+        if (systemAuthorId) insertData.author_id = systemAuthorId;
 
-        // Upsert on name (UNIQUE constraint) — atomic, no race condition
         const { data: upserted, error: upsertErr } = await svc
           .from('servers')
-          .upsert(
-            upsertObject,
-            { onConflict: 'name', ignoreDuplicates: false }
-          )
+          .upsert(insertData, { onConflict: 'name', ignoreDuplicates: false })
           .select('id')
           .maybeSingle();
 
         if (upsertErr) {
-          // Fallback: try plain insert, then fetch if duplicate
-          const { data: fallbackFetch } = await svc
+          // Race condition — concurrent run already inserted this name
+          const { data: raceWinner } = await svc
             .from('servers').select('id').eq('name', s.name).maybeSingle();
-          if (fallbackFetch?.id) {
-            serverId = fallbackFetch.id;
+          if (raceWinner?.id) {
+            console.warn(`${tag} [WARN:race-recovered] ${s.name}`);
+            serverId = raceWinner.id;
             result.updated++;
           } else {
-            result.errors.push(`${s.name}: upsert failed — ${upsertErr.message}`);
+            console.error(`${tag} [ERROR:upsert] ${s.name} — ${upsertErr.message}`);
+            result.errors.push(`${s.name}: ${upsertErr.message}`);
             continue;
           }
         } else {
+          // Upsert may return null id on some conflict paths — fetch to be sure
           serverId = upserted?.id ?? null;
+          if (!serverId) {
+            const { data: fallback } = await svc
+              .from('servers').select('id').eq('name', s.name).maybeSingle();
+            serverId = fallback?.id ?? null;
+          }
+          console.log(`${tag} [ADD] ${s.name} trust:${trustScore} status:${status}`);
           result.added++;
         }
       }
 
-      // Write scan result — now always has a valid server_id
+      // Write scan audit (non-fatal — never blocks ingest)
       if (serverId) {
-        await svc.from('scan_results').insert({
+        svc.from('scan_results').insert({
           server_id: serverId,
           scan_type: 'ingest',
           passed:    scanResult.passed,
           score:     scanResult.score,
           issues:    [...scanResult.issues, ...cveIssues] as any,
-          details:   `Ingested from ${s.source}. CVEs found: ${cveIssues.length}.`,
-        }).catch(() => {}); // Non-fatal — never block ingest on audit write
+          details:   `Source:${s.source} score:${scanResult.score} cves:${cveIssues.length}`,
+        }).then(({ error }: { error: any }) => {
+          if (error) console.warn(`${tag} [WARN:scan-audit] ${s.name} — ${error.message}`);
+        });
       }
 
     } catch (e: any) {
-      result.errors.push(`${s.name}: ${e.message}`);
+      console.error(`${tag} [ERROR:exception] ${s.name ?? '?'} — ${e.message}`);
+      result.errors.push(`${s.name ?? '?'}: ${e.message}`);
     }
   }
 
+  console.log(`${tag} Done — added:${result.added} updated:${result.updated} skipped:${result.skipped} rejected:${result.rejected} errors:${result.errors.length}`);
   return result;
 }
 
@@ -691,7 +777,7 @@ export async function upsertServers(
 function slugify(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[@/]/g, '-')    // npm scopes: @scope/name → scope-name
+    .replace(/[@/]/g, '-')
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
