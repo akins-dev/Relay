@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveUser } from '@/lib/auth-server';
 
 export async function GET(
   req: NextRequest,
@@ -22,7 +23,7 @@ export async function GET(
     .order('created_at', { ascending: false })
     .limit(5);
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await resolveUser(req);
   let starred = false;
   if (user) {
     const { data: star } = await supabase

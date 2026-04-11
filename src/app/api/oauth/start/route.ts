@@ -12,6 +12,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { randomBytes }                       from 'crypto';
 import { rateLimit }                         from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
+import { resolveUser }                       from '@/lib/auth-server';
 
 // Only allow redirects to our own origin — prevents open redirect abuse
 function validateRedirect(redirect: string | null, serverName: string): string {
@@ -39,8 +40,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Must be authenticated
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('redirect', req.url);

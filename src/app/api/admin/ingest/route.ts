@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { apiError, zodError } from '@/lib/api';
+import { resolveUser } from '@/lib/auth-server';
 import { z } from 'zod';
 
 const AdminIngestSchema = z.object({
@@ -10,8 +11,7 @@ const AdminIngestSchema = z.object({
 const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID ?? '';
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user || !ADMIN_UID || user.id !== ADMIN_UID) return apiError('Unauthorized', 401);
 
   let body: z.infer<typeof AdminIngestSchema>;

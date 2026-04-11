@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveUser } from '@/lib/auth-server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
@@ -71,8 +72,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await resolveUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const rlCheck = await rateLimit(`publish:${user.id}`, LIMITS.publish);

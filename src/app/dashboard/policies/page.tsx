@@ -25,74 +25,86 @@ const ACTIONS: Record<Action, { label: string; desc: string; activeClass: string
   block:   { label: 'Block',   desc: 'Call rejected immediately',  activeClass: 'border-red-200 bg-red-50 text-red-700',         dotColor: 'bg-red-500'    },
 };
 
-export default function PoliciesPage() {
+// Helper to get Bearer auth headers
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return {};
+  return { 'Authorization': `Bearer ${session.access_token}` };
+}
+
+export default function PoliciesPage() {
   const [settings, setSettings] = useState<Record<string, Action>>(() => {
     const d: Record<string, Action> = {};
     PERMISSION_GROUPS.forEach(g => { d[g.id] = g.default; });
     return d;
   });
-  const [userId,  setUserId]  = useState<string | null>(null);
+  const [authed,  setAuthed]  = useState<boolean | null>(null);
   const [saving,  setSaving]  = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState<string | null>(null);
+  const [error,   setError]   = useState('');
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setLoading(false); return; }
-      setUserId(user.id);
-      supabase.from('tool_policies').select('*').eq('user_id', user.id).is('server_name', null)
-        .then(({ data }) => {
-          if (data?.length) {
-            const loaded: Record<string, Action> = {};
-            data.forEach((row: any) => {
-              PERMISSION_GROUPS.forEach(g => {
-                if (g.patterns.includes(row.tool_pattern)) loaded[g.id] = row.action;
-              });
-            });
-            setSettings(prev => ({ ...prev, ...loaded }));
-          }
-          setLoading(false);
+    async function load() {
+      const headers = await getAuthHeaders();
+      if (!headers['Authorization']) { setAuthed(false); setLoading(false); return; }
+      setAuthed(true);
+
+      const res = await fetch('/api/policies', { headers });
+      if (!res.ok) { setLoading(false); return; }
+      const { policies } = await res.json();
+
+      if (policies?.length) {
+        const loaded: Record<string, Action> = {};
+        policies.forEach((row: any) => {
+          PERMISSION_GROUPS.forEach(g => {
+            if (g.patterns.includes(row.tool_pattern)) loaded[g.id] = row.action;
+          });
         });
-    });
+        setSettings(prev => ({ ...prev, ...loaded }));
+      }
+      setLoading(false);
+    }
+    load();
   }, []);
 
   async function save(groupId: string, action: Action) {
-    if (!userId) return;
     setSaving(groupId);
+    setError('');
     const group = PERMISSION_GROUPS.find(g => g.id === groupId)!;
+    const headers = await getAuthHeaders();
 
-    // Delete existing policies for this group, then insert new ones if not default
-    await supabase.from('tool_policies')
-      .delete()
-      .eq('user_id', userId)
-      .in('tool_pattern', group.patterns)
-      .is('server_name', null);
+    const res = await fetch('/api/policies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ group_id: groupId, patterns: group.patterns, action, label: group.label }),
+    });
 
-    if (action !== 'allow') {
-      await supabase.from('tool_policies').insert(
-        group.patterns.map(p => ({
-          user_id: userId, server_name: null, tool_pattern: p,
-          action, reason: `${group.label}: ${action}`,
-        }))
-      );
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      setError(json.error ?? 'Failed to save');
+    } else {
+      setSettings(prev => ({ ...prev, [groupId]: action }));
+      setSaved(groupId);
+      setTimeout(() => setSaved(null), 2000);
     }
-
-    setSettings(prev => ({ ...prev, [groupId]: action }));
     setSaving(null);
-    setSaved(groupId);
-    setTimeout(() => setSaved(null), 2000);
   }
 
   async function resetAll() {
-    if (!userId || !confirm('Reset all policies to defaults?')) return;
-    await supabase.from('tool_policies').delete().eq('user_id', userId).is('server_name', null);
+    if (!confirm('Reset all policies to defaults?')) return;
+    const headers = await getAuthHeaders();
+
+    const allPatterns = PERMISSION_GROUPS.flatMap(g => g.patterns);
+    await fetch(`/api/policies?patterns=${allPatterns.join(',')}`, { method: 'DELETE', headers });
+
     const d: Record<string, Action> = {};
     PERMISSION_GROUPS.forEach(g => { d[g.id] = g.default; });
     setSettings(d);
   }
 
-  if (!userId && !loading) {
+  if (authed === false) {
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <p className="text-muted-foreground">Sign in to manage agent permissions.</p>
@@ -119,6 +131,12 @@ export default function PoliciesPage() {
           <Button size="sm" variant="outline" onClick={resetAll}>Reset defaults</Button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Legend */}
       <div className="mb-6 flex flex-wrap gap-4">
