@@ -216,22 +216,51 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
     const pageData: any = await pageRes.json();
     const items: any[] = pageData.servers ?? pageData.items ?? [];
 
-    for (const s of items) {
+    for (const entry of items) {
+      // The official registry wraps data: { server: {...}, _meta: {...} }
+      // Handle both the wrapped format and flat format for backwards compat
+      const s = entry.server ?? entry;
+      const meta = entry._meta?.['io.modelcontextprotocol.registry/official'] ?? {};
+
+      // Skip non-latest versions to avoid duplicates
+      if (meta.isLatest === false) continue;
+
+      // Extract name — official uses qualified names like "org/name"
+      const rawName = s.name ?? s.qualifiedName ?? '';
+      if (!rawName) continue;
+
+      // Extract the first remote endpoint
+      const remote = (s.remotes ?? [])[0];
+      const endpoint = remote?.url ?? s.url ?? s.endpoint ?? '';
+
+      // Detect transport from remote type
+      let transport: IngestServer['transport'] = 'unknown';
+      if (remote?.type === 'streamable-http' || remote?.type === 'http') {
+        transport = 'streamable_http';
+      } else if (remote?.type === 'sse') {
+        transport = 'sse';
+      } else if (remote?.type === 'stdio') {
+        transport = 'stdio';
+      } else if (endpoint) {
+        transport = 'streamable_http'; // default for URL-bearing remotes
+      }
+
       servers.push({
-        name:         slugify(s.name ?? s.qualifiedName ?? ''),
-        display_name: s.displayName ?? s.name ?? '',
+        name:         slugify(rawName),
+        display_name: s.displayName ?? rawName,
         description:  s.description ?? '',
-        endpoint:     s.url ?? s.endpoint ?? '',
+        endpoint,
         version:      s.version ?? '1.0.0',
         github_url:   s.repository?.url ?? s.githubUrl ?? undefined,
-        homepage_url: s.homepage ?? undefined,
+        homepage_url: s.websiteUrl ?? s.homepage ?? undefined,
         license:      s.license ?? 'MIT',
         tags:         s.tags ?? s.categories ?? [],
         tools:        s.tools?.map((t: any) => t.name ?? t) ?? [],
         tool_schemas: [],
         source:       'official',
-        official_id:  s.id ?? s.qualifiedName ?? undefined,
-        verified:     s.isVerified ?? false,
+        official_id:  s.id ?? s.qualifiedName ?? rawName,
+        verified:     s.isVerified ?? (meta.status === 'active'),
+        transport,
       });
     }
 
@@ -508,6 +537,7 @@ export async function upsertServers(
 ): Promise<IngestResult> {
   const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
   const tag = '[ingest:upsert]';
+  const skipReasons: Record<string, number> = {};
 
   // Resolve system author_id ONCE
   const { data: systemProfile } = await svc
@@ -521,9 +551,13 @@ export async function upsertServers(
   }
 
   // Batch pre-fetch all existing servers to eliminate N+1 DB lookups
-  const { data: allExisting } = await svc
+  const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
     .select('id, name, schema_hash, smithery_id, official_id, glama_id, last_scanned_at');
+
+  if (prefetchErr) {
+    console.error(`${tag} Pre-fetch FAILED: ${prefetchErr.message}. Will treat all servers as new.`);
+  }
 
   const existingByName     = new Map<string, any>();
   const existingBySmithery = new Map<string, any>();
@@ -542,30 +576,31 @@ export async function upsertServers(
   for (const s of servers) {
     try {
       // Guard: name required
-      if (!s.name) { result.skipped++; continue; }
+      if (!s.name) { result.skipped++; skipReasons['no_name'] = (skipReasons['no_name'] ?? 0) + 1; continue; }
 
       // Normalise name first so logging is readable
       s.name = slugify(s.name).slice(0, 64);
-      if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) { result.skipped++; continue; }
+      if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) { result.skipped++; skipReasons['invalid_name'] = (skipReasons['invalid_name'] ?? 0) + 1; continue; }
 
       // SSRF protection
       if (s.endpoint && !isSafeUrl(s.endpoint)) {
         console.warn(`${tag} [SKIP:unsafe-url] ${s.name} endpoint rejected`);
         result.skipped++;
+        skipReasons['unsafe_url'] = (skipReasons['unsafe_url'] ?? 0) + 1;
         continue;
       }
 
       // Classify transport — DO NOT skip stdio servers.
       // Discovery (search/browse) and proxying are independent concerns.
       // Stdio servers are stored with proxy_available=false so users can
-      // find them and invoke them via the CLI bridge or a future container bridge.
-      // Only truly unreachable servers (no endpoint, no github_url) are skipped.
+      // find them and invoke them via the CLI or a future container bridge.
       const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
       const proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
 
       // Skip only if there is genuinely nothing to store (no name, no endpoint, no github)
       if (!s.endpoint && !s.github_url && transport === 'stdio') {
         result.skipped++;
+        skipReasons['stdio_no_source'] = (skipReasons['stdio_no_source'] ?? 0) + 1;
         continue;
       }
 
@@ -593,6 +628,7 @@ export async function upsertServers(
       // Skip: hash unchanged and scanned recently
       if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
         result.skipped++;
+        skipReasons['unchanged'] = (skipReasons['unchanged'] ?? 0) + 1;
         continue;
       }
 
@@ -614,8 +650,41 @@ export async function upsertServers(
         mcpPrompts      = primitives.prompts;
         protocolVersion = primitives.protocolVersion;
         mcpCompliant    = primitives.mcpCompliant;
+      } else if (transport === 'stdio' && process.env.SANDBOX_URL && (s.github_url || s.smithery_id)) {
+        // Stdio server with Sandbox integration configured
+        try {
+          // Use Smithery's universal runner as a reliable way to execute any GitHub MCP repo
+          const target = s.smithery_id || s.github_url;
+          const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json', 
+              'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
+            },
+            body: JSON.stringify({
+              command: 'npx',
+              args: ['-y', '@smithery/cli@latest', 'run', target]
+            })
+          });
+          
+          if (req.ok) {
+            const result = await req.json();
+            if (result.success && result.data) {
+              toolSchemas = result.data.tools || [];
+              mcpResources = result.data.resources || [];
+              mcpPrompts = result.data.prompts || [];
+              mcpCompliant = true;
+              protocolVersion = '2024-11-05';
+              console.log(`${tag} Sandbox extracted ${toolSchemas.length} tools for ${s.name}`);
+            }
+          } else {
+             console.warn(`${tag} Sandbox rejected ${s.name} with status ${req.status}`);
+          }
+        } catch (e) {
+          console.warn(`${tag} Sandbox probe failed for ${s.name}:`, e);
+        }
       } else if (toolSchemas.length === 0 && s.github_url) {
-        // Stdio/no-endpoint server: parse README for tool hints only
+        // Stdio/no-endpoint server (NO Sandbox): parse README for tool hints only
         toolSchemas = await parseReadmeSchemas(s.github_url);
       }
 
@@ -780,7 +849,8 @@ export async function upsertServers(
     }
   }
 
-  console.log(`${tag} Done — added:${result.added} updated:${result.updated} skipped:${result.skipped} rejected:${result.rejected} errors:${result.errors.length}`);
+  const skipDetail = Object.entries(skipReasons).map(([k, v]) => `${k}:${v}`).join(' ');
+  console.log(`${tag} Done — added:${result.added} updated:${result.updated} skipped:${result.skipped} rejected:${result.rejected} errors:${result.errors.length}${skipDetail ? ` (skip breakdown: ${skipDetail})` : ''}`);
   return result;
 }
 
