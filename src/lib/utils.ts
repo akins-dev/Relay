@@ -65,12 +65,19 @@ const BLOCKED_PATTERNS = [
   /^https?:\/\/10\./,
   /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./,
   /^https?:\/\/192\.168\./,
-  /^https?:\/\/169\.254\./,   // AWS metadata
-  /^https?:\/\/100\.64\./,    // Carrier-grade NAT
-  /^https?:\/\/\[::1\]/,      // IPv6 loopback
-  /^https?:\/\/\[fc\|fd\]/i,  // IPv6 private
+  /^https?:\/\/169\.254\./,               // AWS IMDS v1
+  /^https?:\/\/100\.64\./,               // Carrier-grade NAT
+  // IPv6 — comprehensive coverage
+  /^https?:\/\/\[::1\]/,                 // loopback
+  /^https?:\/\/\[::ffff:127\./,          // IPv4-mapped loopback
+  /^https?:\/\/\[::ffff:0:127\./,        // IPv4-mapped loopback (alt)
+  /^https?:\/\/\[fe80:/i,                // link-local
+  /^https?:\/\/\[fc/i,                   // unique-local fc00::/7
+  /^https?:\/\/\[fd/i,                   // unique-local fd00::/8
+  /^https?:\/\/\[0:0:0:0:0:0:0:1\]/,    // ::1 expanded form
   /metadata\.google\.internal/i,
   /metadata\.amazonaws\.com/i,
+  /169\.254\.169\.254/,                  // AWS IMDS (catch without protocol)
 ];
 
 export function isSafeUrl(url: string): boolean {
@@ -118,5 +125,30 @@ export async function readBoundedResponse(
   return {
     body:      new TextDecoder().decode(Buffer.concat(chunks)),
     truncated: false,
+  };
+}
+
+// ── CORS helper for proxy routes ─────────────────────────────────────────────
+// Explicit CORS policy for the proxy API routes.
+// We never use * — that would allow any website to call the proxy with
+// the user's session cookies, which is a CSRF/session-hijack risk.
+// Instead we allow only the production origin and localhost for development.
+const ALLOWED_ORIGINS = new Set([
+  process.env.NEXT_PUBLIC_APP_URL ?? 'https://openmcp.io',
+  'http://localhost:3000',
+  'http://localhost:3001',
+]);
+
+export function corsHeaders(requestOrigin: string | null): Record<string, string> {
+  const origin = requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)
+    ? requestOrigin
+    : (process.env.NEXT_PUBLIC_APP_URL ?? 'https://openmcp.io');
+  return {
+    'Access-Control-Allow-Origin':      origin,
+    'Access-Control-Allow-Methods':     'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers':     'Content-Type, Authorization, X-Confirm-Token',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age':           '86400',
+    'Vary':                              'Origin',
   };
 }

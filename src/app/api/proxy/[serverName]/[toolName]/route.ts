@@ -12,7 +12,7 @@ import { NextRequest, NextResponse }         from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
-import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
+import { signToken, verifyToken, isSafeUrl, readBoundedResponse, corsHeaders } from '@/lib/utils';
 import { createHash }                        from 'crypto';
 import { SITE_URL }                          from '@/lib/site';
 import { BRAND }                             from '@/lib/brand';
@@ -391,15 +391,23 @@ export async function POST(
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { serverName: string; toolName: string } }
 ) {
   const { data: server } = await createClient()
     .from('servers')
-    .select('name, display_name, description, tools, trust_score, latency_ms, uptime_pct, verified, auth_type')
+    .select('name, display_name, description, tools, trust_score, latency_ms, uptime_pct, verified, auth_type, transport, proxy_available')
     .eq('name', params.serverName).eq('status', 'active').single();
   if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(server);
+  return NextResponse.json(server, { headers: corsHeaders(req.headers.get('origin')) });
+}
+
+// Preflight for cross-origin agent UI requests
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders(req.headers.get('origin')),
+  });
 }
 
 async function audit(svc: ReturnType<typeof createServiceClient>, data: {

@@ -555,9 +555,19 @@ export async function upsertServers(
         continue;
       }
 
-      // Skip stdio-only (not reachable as HTTP)
+      // Classify transport — DO NOT skip stdio servers.
+      // Discovery (search/browse) and proxying are independent concerns.
+      // Stdio servers are stored with proxy_available=false so users can
+      // find them and invoke them via the CLI bridge or a future container bridge.
+      // Only truly unreachable servers (no endpoint, no github_url) are skipped.
       const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
-      if (transport === 'stdio') { result.skipped++; continue; }
+      const proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+
+      // Skip only if there is genuinely nothing to store (no name, no endpoint, no github)
+      if (!s.endpoint && !s.github_url && transport === 'stdio') {
+        result.skipped++;
+        continue;
+      }
 
       // Lookup existing record via any matching ID
       let existing: any = null;
@@ -586,16 +596,16 @@ export async function upsertServers(
         continue;
       }
 
-      // Fetch tool schemas (non-fatal)
-      // Fetch MCP primitives using the proper initialize handshake (spec-compliant)
-      // This replaces the old bare tools/list call which violated the MCP protocol.
+      // Fetch MCP primitives — skip live probe for stdio servers (no HTTP endpoint).
+      // Stdio servers only get README-parsed tool hints; live probing requires the CLI bridge.
       let toolSchemas = s.tool_schemas ?? [];
       let mcpResources: any[] = [];
       let mcpPrompts:   any[] = [];
       let protocolVersion: string | null = null;
       let mcpCompliant = false;
 
-      if (s.endpoint) {
+      if (proxyAvailable && s.endpoint) {
+        // HTTP-accessible server: do full MCP probe with initialize handshake
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url);
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
           toolSchemas = primitives.toolSchemas;
@@ -605,6 +615,7 @@ export async function upsertServers(
         protocolVersion = primitives.protocolVersion;
         mcpCompliant    = primitives.mcpCompliant;
       } else if (toolSchemas.length === 0 && s.github_url) {
+        // Stdio/no-endpoint server: parse README for tool hints only
         toolSchemas = await parseReadmeSchemas(s.github_url);
       }
 
@@ -677,6 +688,7 @@ export async function upsertServers(
         prompts:          mcpPrompts as any,
         protocol_version: protocolVersion,
         mcp_compliant:    mcpCompliant,
+        proxy_available:  proxyAvailable,  // false for stdio servers — use CLI bridge
         transport,
         source:           s.source,
         smithery_id:      s.smithery_id ?? null,

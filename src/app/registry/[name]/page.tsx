@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { Server } from '@/types';
 import { SITE_URL } from '@/lib/site';
+import { BRAND }    from '@/lib/brand';
 
 export default function ServerDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -14,7 +15,7 @@ export default function ServerDetailPage() {
   const [scans,   setScans]   = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [starred, setStarred] = useState(false);
-  const [tab,     setTab]     = useState<'overview'|'tools'|'security'|'analytics'|'integrate'>('overview');
+  const [tab, setTab] = useState<'overview'|'tools'|'resources'|'prompts'|'security'|'analytics'|'integrate'>('overview');
   const [copied,  setCopied]  = useState('');
   const [analytics,  setAnalytics]  = useState<any>(null);
   const [connected,  setConnected]  = useState<boolean | null>(null); // OAuth connection state
@@ -87,14 +88,41 @@ export default function ServerDetailPage() {
   const trustColor = server.trust_score >= 90 ? 'var(--green)' : server.trust_score >= 70 ? 'var(--yellow)' : 'var(--red)';
   const authorName = (server as any).profiles?.username ?? (server as any).author_name ?? 'unknown';
 
-  const promptSnippet = `## MCP Tools — ${server.display_name}
+  const isStdio        = (server as any).transport === 'stdio';
+  const proxyAvailable = (server as any).proxy_available !== false; // default true for older records
+  const mcpCompliant   = (server as any).mcp_compliant ?? false;
+  const protocolVer    = (server as any).protocol_version ?? null;
+  const resources: any[] = (server as any).resources ?? [];
+  const prompts:   any[] = (server as any).prompts   ?? [];
+
+  const transportLabel = isStdio ? 'stdio' :
+    (server as any).transport === 'sse' ? 'sse' : 'http';
+  const transportColor = isStdio ? 'var(--yellow)' :
+    (server as any).transport === 'sse' ? 'var(--blue)' : 'var(--green)';
+
+  const promptSnippet = isStdio
+    ? `# ${BRAND.cli} (coming soon)
+# This server uses stdio transport.
+# When ${BRAND.cli} launches, you will be able to run:
+#   ${BRAND.slug} run ${server.name}
+#
+# For now, this server is discoverable but not invocable
+# through the web proxy. Use the GitHub repo to run locally.`
+    : `## MCP Tools — ${server.display_name}
 
 POST /api/proxy/${server.name}/{toolName}
 Available tools: ${server.tools.join(', ')}
 
-Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
+# Auto-discover via registry:
+GET /.well-known/mcp.json`;
 
-  const curlSnippet = `curl -X POST ${SITE_URL}/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
+  const curlSnippet = isStdio
+    ? `# ${BRAND.cli} is not yet available.
+# This stdio server must be run locally.
+# See the GitHub repo for installation instructions.
+${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL available.'}`
+    : `curl -X POST ${SITE_URL}/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
+  -H "Authorization: Bearer sk_mcp_..." \\
   -H "Content-Type: application/json" \\
   -d '{"param": "value"}'`;
 
@@ -113,6 +141,22 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
             <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'var(--mono)' }}>{server.name}</h1>
             {server.verified && <span className="badge badge-green">✓ verified</span>}
+            {/* Transport badge */}
+            <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', padding: '2px 8px', borderRadius: '4px', background: 'var(--bg-3)', border: `1px solid ${transportColor}`, color: transportColor }}>
+              {transportLabel}
+            </span>
+            {/* MCP compliance */}
+            {mcpCompliant && (
+              <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', padding: '2px 8px', borderRadius: '4px', background: 'var(--green-bg)', border: '1px solid #166534', color: 'var(--green)' }}>
+                MCP {protocolVer ?? '2025'}
+              </span>
+            )}
+            {/* Stdio warning */}
+            {isStdio && (
+              <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', padding: '2px 8px', borderRadius: '4px', background: '#2b2000', border: '1px solid #713f12', color: 'var(--yellow)' }}>
+                ⬡ stdio · CLI coming soon
+              </span>
+            )}
             <span style={{ fontSize: '12px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>v{server.version}</span>
           </div>
           <p style={{ color: 'var(--text-2)', fontSize: '15px', maxWidth: '540px', lineHeight: 1.6 }}>{server.description}</p>
@@ -130,6 +174,20 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
           </button>
           {server.github_url && (
             <a href={server.github_url} target="_blank" rel="noopener" className="btn btn-ghost" style={{ textDecoration: 'none' }}>GitHub →</a>
+          )}
+          {/* Primary CTA — different for stdio vs HTTP */}
+          {isStdio ? (
+            server.github_url ? (
+              <a href={server.github_url} target="_blank" rel="noopener" className="btn btn-primary" style={{ textDecoration: 'none', fontFamily: 'var(--mono)', fontSize: '12px' }}>
+                ⬡ View on GitHub
+              </a>
+            ) : (
+              <button className="btn btn-ghost" disabled style={{ fontFamily: 'var(--mono)', fontSize: '12px', opacity: 0.5 }}>
+                ⬡ {BRAND.cli} coming soon
+              </button>
+            )
+          ) : (
+            <button onClick={() => setTab('integrate')} className="btn btn-primary">Integrate →</button>
           )}
         </div>
       </div>
@@ -153,9 +211,13 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
       </div>
 
       {/* Tabs */}
-      <div style={{ borderBottom: '1px solid var(--border)', marginBottom: '28px', display: 'flex' }}>
-        {(['overview','tools','security','analytics','integrate'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{ background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--green)' : '2px solid transparent', color: tab === t ? 'var(--text)' : 'var(--text-3)', padding: '10px 18px', cursor: 'pointer', fontSize: '13px', fontFamily: 'var(--font)', fontWeight: tab === t ? 600 : 400, textTransform: 'capitalize', transition: 'color .15s' }}>
+      <div style={{ borderBottom: '1px solid var(--border)', marginBottom: '28px', display: 'flex', overflowX: 'auto' }}>
+        {(['overview', 'tools',
+          ...(resources.length > 0 ? ['resources'] : []),
+          ...(prompts.length   > 0 ? ['prompts']   : []),
+          'security', 'analytics', 'integrate',
+        ] as const).map((t: any) => (
+          <button key={t} onClick={() => setTab(t)} style={{ background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--green)' : '2px solid transparent', color: tab === t ? 'var(--text)' : 'var(--text-3)', padding: '10px 18px', cursor: 'pointer', fontSize: '13px', fontFamily: 'var(--font)', fontWeight: tab === t ? 600 : 400, textTransform: 'capitalize', transition: 'color .15s', whiteSpace: 'nowrap' }}>
             {t}
           </button>
         ))}
@@ -171,6 +233,23 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
                 <p style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-2)' }}>{server.long_description}</p>
               </div>
             )}
+
+            {/* stdio callout */}
+            {isStdio && (
+              <div style={{ padding: '18px 20px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>⬡ stdio Server — {BRAND.cli} Coming Soon</div>
+                <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '12px' }}>
+                  This server runs as a local subprocess (stdio transport). It cannot be called through the web proxy.
+                  {BRAND.cli} will bridge stdio servers locally when it launches. For now, check the GitHub repo for installation instructions.
+                </p>
+                {server.github_url && (
+                  <a href={server.github_url} target="_blank" rel="noopener" style={{ fontFamily: 'var(--mono)', fontSize: '12px', background: 'var(--bg-3)', padding: '10px 14px', borderRadius: '6px', color: 'var(--green)', display: 'block', textDecoration: 'none' }}>
+                    → {server.github_url}
+                  </a>
+                )}
+              </div>
+            )}
+
             <div className="card" style={{ padding: '22px' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Tools ({server.tools.length})</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -179,15 +258,47 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
                     fn {t}()
                   </span>
                 ))}
+                {server.tools.length === 0 && (
+                  <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet — tools are listed after a live probe</span>
+                )}
               </div>
             </div>
+
+            {/* Resources preview */}
+            {resources.length > 0 && (
+              <div className="card" style={{ padding: '22px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Resources ({resources.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {resources.slice(0, 5).map((r: any, i: number) => (
+                    <div key={i} style={{ fontSize: '13px', fontFamily: 'var(--mono)', color: 'var(--blue)', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                      {r.uri ?? r.name}
+                      {r.description && <span style={{ color: 'var(--text-3)', fontSize: '11px', marginLeft: '10px', fontFamily: 'var(--font)' }}>{r.description}</span>}
+                    </div>
+                  ))}
+                  {resources.length > 5 && <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>+{resources.length - 5} more — see Resources tab</span>}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Sidebar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="card" style={{ padding: '18px' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>Details</div>
-              {[['Author', authorName], ['License', server.license], ['Version', server.version]].map(([l, v]) => (
+              {[
+                ['Author',    authorName],
+                ['License',   server.license],
+                ['Version',   server.version],
+                ['Transport', transportLabel.toUpperCase()],
+                ...(protocolVer ? [['Protocol', protocolVer]] : []),
+                ['MCP',       mcpCompliant ? '✓ compliant' : isStdio ? '— not probed' : '✗ not compliant'],
+                ['Resources', String(resources.length)],
+                ['Prompts',   String(prompts.length)],
+                ['Proxy',     proxyAvailable ? '✓ available' : '✗ CLI only'],
+              ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--text-3)' }}>{l}</span><span>{v}</span>
+                  <span style={{ color: 'var(--text-3)' }}>{l}</span>
+                  <span style={{ color: l === 'MCP' && !mcpCompliant && !isStdio ? 'var(--red)' : l === 'MCP' && mcpCompliant ? 'var(--green)' : l === 'Proxy' && !proxyAvailable ? 'var(--yellow)' : 'var(--text)' }}>{v}</span>
                 </div>
               ))}
             </div>
@@ -205,14 +316,71 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
       {/* Tools */}
       {tab === 'tools' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {isStdio && (
+            <div style={{ padding: '12px 16px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12', fontSize: '13px', color: 'var(--yellow)', marginBottom: '8px' }}>
+              ⬡ stdio server — {BRAND.cli} (coming soon) will enable local invocation of these tools
+            </div>
+          )}
+          {server.tools.length === 0 && (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>No tools discovered yet</div>
+          )}
           {server.tools.map(tool => (
             <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
                 <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
               </div>
-              <button onClick={() => copy(`POST /api/proxy/${server.name}/${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>
-                {copied === tool ? '✓ copied' : 'copy endpoint'}
-              </button>
+              {proxyAvailable ? (
+                <button onClick={() => copy(`POST /api/proxy/${server.name}/${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>
+                  {copied === tool ? '✓ copied' : 'copy endpoint'}
+                </button>
+              ) : (
+                <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)' }}>
+                  ⬡ stdio only
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}      {/* Resources tab */}
+      {tab === 'resources' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {resources.map((r: any, i: number) => (
+            <div key={i} className="card" style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--blue)', marginBottom: '4px' }}>{r.uri ?? r.name}</div>
+                  {r.description && <div style={{ fontSize: '12px', color: 'var(--text-3)' }}>{r.description}</div>}
+                  {r.mimeType  && <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px', fontFamily: 'var(--mono)' }}>{r.mimeType}</div>}
+                </div>
+                {r.uri && proxyAvailable && (
+                  <button onClick={() => copy(r.uri, `res-${i}`)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px', flexShrink: 0 }}>
+                    {copied === `res-${i}` ? '✓' : 'copy uri'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Prompts tab */}
+      {tab === 'prompts' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {prompts.map((p: any, i: number) => (
+            <div key={i} className="card" style={{ padding: '16px 20px' }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: '14px', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--purple)' }}>prompt </span>{p.name}
+              </div>
+              {p.description && <div style={{ fontSize: '13px', color: 'var(--text-2)', marginBottom: '8px' }}>{p.description}</div>}
+              {p.arguments?.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {p.arguments.map((a: any) => (
+                    <span key={a.name} style={{ fontSize: '11px', fontFamily: 'var(--mono)', padding: '2px 8px', background: 'var(--bg-3)', borderRadius: '4px', border: '1px solid var(--border)', color: a.required ? 'var(--text)' : 'var(--text-3)' }}>
+                      {a.name}{a.required ? '' : '?'}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -223,6 +391,7 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
         <SecurityTab server={server} scans={scans} />
       )}
 
+
       {/* Analytics */}
       {tab === 'analytics' && (
         <AnalyticsTab analytics={analytics} />
@@ -231,10 +400,28 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
       {/* Integrate */}
       {tab === 'integrate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {[
-            { title: 'System Prompt / AGENTS.md', key: 'prompt', code: promptSnippet, color: 'var(--text-2)' },
-            { title: 'cURL',                      key: 'curl',   code: curlSnippet,   color: 'var(--green)' },
-          ].map(({ title, key, code, color }) => (
+          {isStdio && (
+            <div style={{ padding: '18px 20px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>⬡ stdio Server — {BRAND.cli} Coming Soon</div>
+              <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6 }}>
+                This server uses the stdio transport and cannot be proxied through the web.
+                When {BRAND.cli} launches, it will bridge stdio servers locally as HTTP endpoints.
+                For now, see the GitHub repo for local setup instructions.
+              </p>
+            </div>
+          )}
+
+          {[{
+            title: isStdio ? `${BRAND.cli} (coming soon)` : 'System Prompt / AGENTS.md',
+            key:   'prompt',
+            code:  promptSnippet,
+            color: 'var(--text-2)',
+          }, {
+            title: isStdio ? 'Local Setup' : 'cURL',
+            key:   'curl',
+            code:  curlSnippet,
+            color: 'var(--green)',
+          }].map(({ title, key, code, color }) => (
             <div key={key} className="codeblock">
               <div className="codeblock-header">
                 <span style={{ fontSize: '13px', fontWeight: 600 }}>{title}</span>
@@ -243,16 +430,36 @@ Or auto-discover: GET /api/servers/search?q=${server.tags?.[0] ?? server.name}`;
               <pre style={{ color }}>{code}</pre>
             </div>
           ))}
+
           <div className="card" style={{ padding: '22px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>Endpoint Reference</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {server.tools.map(t => (
-                <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700 }}>POST</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}>/api/proxy/{server.name}/{t}</span>
-                </div>
-              ))}
+            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>
+              {isStdio ? 'CLI Reference' : 'Endpoint Reference'}
             </div>
+            {isStdio ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ padding: '14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--yellow)', marginBottom: '8px', fontWeight: 600 }}>⬡ {BRAND.cli} is not yet available</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5 }}>
+                    When it launches, you'll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code>
+                  </div>
+                </div>
+                {server.github_url && (
+                  <a href={server.github_url} target="_blank" rel="noopener" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--green)', fontFamily: 'var(--mono)', fontSize: '13px' }}>
+                    → Run locally via GitHub
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {server.tools.map(t => (
+                  <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700 }}>POST</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}>/api/proxy/{server.name}/{t}</span>
+                  </div>
+                ))}
+                {resources.length > 0 && <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Also: GET /api/proxy/{server.name}/resources | POST /api/proxy/{server.name}/prompts/&lt;name&gt;</div>}
+              </div>
+            )}
           </div>
         </div>
       )}

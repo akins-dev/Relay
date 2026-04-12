@@ -29,17 +29,22 @@ ${BRAND.tagline} ${activeServers} active servers. Zero local setup.
 
 ## What you can do
 
-- Discover invokable remote MCP servers by describing what you need
-- Only servers with HTTP endpoints (SSE or StreamableHTTP transport) are returned today — stdio-only local servers are excluded until ${BRAND.cli} ships
-- Invoke tools through a security proxy — request DLP blocking, response scanning, audit trail on every call
-- Trust every result — each server scanned across 15 security layers before listing
+- **Discover** MCP servers by intent — all transports (stdio, SSE, Streamable HTTP)
+- **Invoke tools** through a security proxy (HTTP servers only) — DLP blocking, response scanning, audit trail on every call
+- **Read resources** — file/data contexts exposed by servers (GET/POST /api/proxy/{server}/resources)
+- **Run prompts** — server-defined prompt templates (POST /api/proxy/{server}/prompts/{name})
+- **Trust every result** — each server scanned across 14 security layers before listing
+- **Autodiscover this registry** — \`GET /.well-known/mcp.json\` returns a machine-readable manifest
+
+**About stdio servers:** stdio servers appear in search results with \`proxy_available: false\`. They are not invocable through the web proxy today. ${BRAND.cli} (planned) will bridge them locally. For now, skip results where \`proxy_available\` is \`false\`.
 
 ## Live stats (as of this request)
 
-- Active servers: ${activeServers}
+- Active servers: ${activeServers} (all transports — stdio, SSE, HTTP)
 - Verified servers: ${verifiedServers}
 - Calls today: ${callsToday}
-- Sources: Official MCP Registry + Smithery + Glama + GitHub
+- Sources: Official MCP Registry + Smithery + Glama + PulseMCP + GitHub
+- MCP spec version: 2025-03-26 (also supports 2024-11-05)
 
 ---
 
@@ -77,8 +82,14 @@ GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 
 **Response fields you need:**
 - \`name\` — server identifier, used for invocation
+- \`transport\` — \`streamable_http\` | \`sse\` | \`stdio\`
+- \`proxy_available\` — \`true\` = call through web proxy; \`false\` = use CLI bridge (\`openmcp run {name}\`)
+- \`mcp_compliant\` — server passed MCP initialize handshake
+- \`protocol_version\` — e.g. \`2025-03-26\` or \`2024-11-05\`
 - \`tools[].name\` — tool name, used for invocation
 - \`tools[].inputSchema\` — exact arguments required (use this, do not guess)
+- \`resources\` — list of data contexts the server exposes (uri, name, mimeType)
+- \`prompts\` — list of prompt templates (name, description, arguments)
 - \`trust_score\` — 0–100. Prefer > 80 for production. > 90 = verified + stable.
 - \`latency_ms\` — average upstream latency
 - \`source\` — \`official\` | \`smithery\` | \`github\` | \`direct\`
@@ -91,6 +102,10 @@ GET /api/servers/search?q=send transactional email&limit=3
     {
       "name": "sendgrid-mail",
       "trust_score": 82,
+      "transport": "streamable_http",
+      "proxy_available": true,
+      "mcp_compliant": true,
+      "protocol_version": "2025-03-26",
       "tools": [
         {
           "name": "send_email",
@@ -105,7 +120,16 @@ GET /api/servers/search?q=send transactional email&limit=3
             }
           }
         }
-      ]
+      ],
+      "resources": [],
+      "prompts": []
+    },
+    {
+      "name": "filesystem",
+      "transport": "stdio",
+      "proxy_available": false,
+      "tools": ["read_file", "write_file", "list_directory"],
+      "_hint": "Run locally: openmcp run filesystem"
     }
   ]
 \`\`\`
@@ -116,10 +140,44 @@ GET /api/servers/search?q=send transactional email&limit=3
 
 \`\`\`
 POST ${SITE_URL}/api/proxy/{serverName}/{toolName}
+Authorization: Bearer sk_mcp_<your-key>
 Content-Type: application/json
 
 { ...tool arguments from inputSchema }
 \`\`\`
+
+## Reading resources
+
+\`\`\`
+# List all resources
+GET ${SITE_URL}/api/proxy/{serverName}/resources
+
+# Read a specific resource by URI
+POST ${SITE_URL}/api/proxy/{serverName}/resources
+Content-Type: application/json
+{ "uri": "file:///path/to/resource" }
+\`\`\`
+
+## Running prompts
+
+\`\`\`
+# List all prompts
+GET ${SITE_URL}/api/proxy/{serverName}/prompts
+
+# Get a prompt with arguments (MCP spec: all arguments must be strings)
+POST ${SITE_URL}/api/proxy/{serverName}/prompts/{promptName}
+Content-Type: application/json
+{ "arguments": { "topic": "TypeScript generics", "tone": "concise" } }
+\`\`\`
+
+## About stdio servers
+
+stdio servers appear in search results with \`proxy_available: false\` and \`transport: "stdio"\`.
+They cannot be invoked through the web proxy. ${BRAND.cli} (coming soon) will act as a local
+stdio bridge — running the server as a subprocess and exposing it via HTTP locally.
+
+**For now:** When you encounter a search result with \`proxy_available: false\`, skip it.
+Only invoke servers where \`proxy_available\` is \`true\`.
 
 Every call is:
 - DLP-blocked on requests; response matches are surfaced via warnings and audit metadata
@@ -179,15 +237,19 @@ Current OWASP MCP Top 10 coverage: ~70%. Target: 90%+ with WASM sandbox.
 ## Quick example workflow
 
 \`\`\`
-# 1. Search
+# 1. Autodiscover the registry (agents do this once)
+GET /.well-known/mcp.json
+
+# 2. Search
 GET /api/servers/search?q=create a GitHub pull request
 
-# 2. Read the inputSchema from the result — use it exactly
-# 3. Invoke
+# 3. Check proxy_available — if false, skip (stdio, not invocable through web proxy yet)
+# 4. Read the inputSchema from the result — use it exactly
+# 5. Invoke (HTTP server example)
 POST /api/proxy/github-tools/create_pull_request
 { "repo": "owner/repo", "title": "Fix bug", "head": "fix/branch", "base": "main" }
 
-# 4. Check X-Registry-DLP-Warning header on response
+# 6. Check X-Registry-DLP-Warning header on response
 \`\`\`
 
 ---
@@ -210,12 +272,15 @@ If you are running in a CLI-first agent framework (OpenClaw, shell-based agents)
 { "mcpServers": { "${BRAND.slug}": { "url": "${SITE_URL}/api/mcp-server" } } }
 \`\`\`
 
-## Coming soon
+## Coming soon / In progress
 
-- **${BRAND.cli}:** Use the same discovery layer for local stdio MCP servers. The bridge will route remote servers through ${BRAND.cloud} and local servers through a local process runner.
-- **AgentSecrets-backed local credentials:** The CLI will use AgentSecrets as the credential substrate so local MCP servers can run without exposing secret values to agent context.
-- **Expanded OAuth coverage:** Broader per-user OAuth support, provider auto-discovery, and improved connected-account UX. Static key vault works today for API-key-based servers.
-- **WASM sandbox execution:** Pre-listing sandboxed execution to catch runtime-only payloads. Brings OWASP MCP Top 10 coverage from ~70% to ~85%.
+- **${BRAND.cli}:** Local stdio bridge — run stdio MCP servers as local subprocesses, bridged to HTTP. Same discovery layer, same security scanning.
+- **TypeScript and Python SDKs:** Programmatic agent integration — \`import { search, invoke } from '${BRAND.slug}'\`
+- **Session pooling:** Reuse MCP initialized sessions — reduces latency from ~600ms to ~50ms per call.
+- **Sampling security:** Rate-limit and audit server-initiated \`sampling/createMessage\` requests.
+- **OAuth token refresh:** Auto-refresh expired tokens in the proxy without user action.
+- **WASM sandbox:** Pre-listing sandboxed execution. Brings OWASP MCP Top 10 coverage from ~70% to ~90%.
+- **Cloud stdio bridge:** Container-based stdio invocation without local CLI.
 
 ---
 
