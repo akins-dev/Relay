@@ -173,10 +173,10 @@ Content-Type: application/json
 ## About stdio servers
 
 stdio servers appear in search results with \`proxy_available: false\` and \`transport: "stdio"\`.
-They cannot be invoked through the web proxy. ${BRAND.cli} (coming soon) will act as a local
-stdio bridge — running the server as a subprocess and exposing it via HTTP locally.
+They cannot be invoked through the web proxy. ${BRAND.cli} (coming soon) will act as a Native MCP server.
+When configured in your agent host, the CLI dynamically spawns stdio subprocesses on demand (like \`npx\` downloads and runs without a permanent install), manages the process lifecycle, applies local security scans, and returns the result safely.
 
-**For now:** When you encounter a search result with \`proxy_available: false\`, skip it.
+**For now:** When you encounter a search result with \`proxy_available: false\`, skip it until the CLI is available.
 Only invoke servers where \`proxy_available\` is \`true\`.
 
 Every call is:
@@ -274,7 +274,7 @@ If you are running in a CLI-first agent framework (OpenClaw, shell-based agents)
 
 ## Coming soon / In progress
 
-- **${BRAND.cli}:** Local stdio bridge — run stdio MCP servers as local subprocesses, bridged to HTTP. Same discovery layer, same security scanning.
+- **${BRAND.cli}:** Native MCP server for your agent host. Spawns stdio MCP servers as local subprocesses on demand (like \`npx\`). Same discovery layer, same security scanning, fully central Vault credentials management.
 - **TypeScript and Python SDKs:** Programmatic agent integration — \`import { search, invoke } from '${BRAND.slug}'\`
 - **Session pooling:** Reuse MCP initialized sessions — reduces latency from ~600ms to ~50ms per call.
 - **Sampling security:** Rate-limit and audit server-initiated \`sampling/createMessage\` requests.

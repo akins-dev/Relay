@@ -43,18 +43,22 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
   }
 
   if (authType === 'agentsecrets') {
+    // AgentSecrets deprecated — all credentials go through the centralized Vault
     return {
       requires_credential: true,
-      auth_type: 'agentsecrets',
+      auth_type: 'api_key',
+      suggested_secret_name: apiKeyName,
       setup: {
-        description: `${serverName} is designed for AgentSecrets-managed credentials. Use the local CLI/bridge flow when that launches.`,
+        description: `${serverName} requires an API key. Store it once in the ${BRAND.vault} — the proxy injects it on every call automatically.`,
         steps: [
-          '1. Save this server for later if you need local stdio execution',
-          `2. Watch for ${BRAND.cli} launch updates`,
-          '3. Use AgentSecrets-backed setup from the CLI when available',
+          `1. Get your API key from the ${serverName} service dashboard`,
+          `2. Open: ${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+          `3. Paste your key in the "Value" field and click "Store securely"`,
+          `4. Re-run the tool call — ${BRAND.name} will inject the key automatically`,
         ],
+        dashboard_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
       },
-      flow: `Credential injection for this server is planned through the ${BRAND.cli} and AgentSecrets, not direct vault entry.`,
+      flow: `Agent calls tool → ${BRAND.name} proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory.`,
     };
   }
 
@@ -152,7 +156,7 @@ export async function GET(req: NextRequest) {
     const supabase = createClient();
 
     const { data: results, error } = await supabase
-      .rpc('search_servers', { query_text: q, result_limit: limit });
+      .rpc('search_servers', { query_text: q, result_limit: limit, include_stdio: true });
 
     if (error) {
       console.error('[search] RPC error:', error.message);
@@ -172,6 +176,7 @@ export async function GET(req: NextRequest) {
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
         auth_type, auth_setup_url, oauth_authorization_url,
+        transport, endpoint,
         profiles!author_id ( username )
       `)
       .in('id', ids)
@@ -183,6 +188,9 @@ export async function GET(req: NextRequest) {
       const authType = s.oauth_authorization_url ? 'oauth' : (s.auth_type ?? 'managed');
       const connectUrl = s.oauth_authorization_url ? `${SITE_URL}/registry/${s.name}?connect=1` : null;
       const secretsTutorial = buildCredentialSetup(s.name, authType, connectUrl);
+      const transport = s.transport ?? 'http';
+      const isStdio = transport === 'stdio';
+      const proxyAvailable = !isStdio && !!s.endpoint;
 
       return {
         name:         s.name,
@@ -200,9 +208,14 @@ export async function GET(req: NextRequest) {
         tags:         s.tags ?? [],
         author:       s.profiles?.username ?? null,
 
+        // Transport + invocability
+        transport,
+        proxy_available: proxyAvailable,
+        ...(!proxyAvailable && {
+          cli_hint: `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`,
+        }),
+
         // Full tool schemas — agent MUST read inputSchema before calling
-        // inputSchema tells the agent what arguments to pass
-        // NEVER include API keys in arguments — the server handles its own credentials
         tools:        s.tools ?? [],
         tool_schemas: (s.tool_schemas?.length ?? 0) > 0
           ? s.tool_schemas
@@ -220,11 +233,13 @@ export async function GET(req: NextRequest) {
         // Credential setup — vault-based, presented to agent for user guidance
         credential_setup: secretsTutorial,
 
-        // How to invoke
-        invoke: {
-          rest: `POST /api/proxy/${s.name}/{toolName}`,
-          mcp:  `invoke_tool({ server: "${s.name}", tool: "{toolName}", args: {} })`,
-        },
+        // How to invoke (only for proxy-available servers)
+        ...(proxyAvailable && {
+          invoke: {
+            rest: `POST /api/proxy/${s.name}/{toolName}`,
+            mcp:  `invoke_tool({ server: "${s.name}", tool: "{toolName}", args: {} })`,
+          },
+        }),
       };
     });
 

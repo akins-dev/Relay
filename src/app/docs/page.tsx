@@ -383,7 +383,7 @@ export default function DocsPage() {
             </P>
             <P>
               Today, {BRAND.name} focuses on network-reachable MCP servers with HTTP transports. Local
-              <InlineCode>stdio</InlineCode> support is planned for {BRAND.name} CLI.
+              <InlineCode>stdio</InlineCode> servers appear in search results for discovery, and {BRAND.name} CLI (coming soon) will invoke them as a native MCP server in your agent host.
             </P>
             <Callout>
               <p className="font-serif text-[15px] italic leading-relaxed text-white/80">
@@ -499,7 +499,7 @@ export default function DocsPage() {
             </P>
             <P>
               <strong className="text-white">Transports supported:</strong> StreamableHTTP (POST — primary) and SSE (GET — for
-              older clients). stdio is not supported yet — {BRAND.name} is a hosted service today, with a CLI bridge planned next.
+              older clients). stdio is not yet supported through the web service — {BRAND.name} CLI (coming soon) will run as a native MCP server in your agent host, spawning stdio servers on demand like <InlineCode>npx</InlineCode> downloads and runs packages without a permanent install.
             </P>
             <H3>search_tools</H3>
             <CodeBlock code={CODE.mcpServerSearch} label="Find servers by natural language intent" />
@@ -585,7 +585,7 @@ export default function DocsPage() {
 
           <Section id="categories" title="MCP categories">
             <P>
-              {BRAND.name} indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio support is planned for {BRAND.name} CLI. About 70% of invokable servers require credentials.
+              {BRAND.name} indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio servers appear in search results for discovery, with invocation via {BRAND.name} CLI coming soon. About 70% of invokable servers require credentials.
             </P>
             <div className="grid gap-3 sm:grid-cols-2">
               {CATEGORIES.map(cat => (
@@ -613,8 +613,8 @@ export default function DocsPage() {
                 [`How do credentials work if my MCP needs an API key?`, `API keys are stored in the ${BRAND.name} Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.`],
                 [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. ${BRAND.name} is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.`],
                 [`Can I use ${BRAND.name} with Antigravity?`, `Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "${BRAND.name}": { "url": "${SITE_URL}/api/mcp-server" } } }`],
-                [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while ${BRAND.name} focuses on discovery, trust, and secure invocation of remote MCP servers. ${BRAND.name} scans and scores the servers it lists, injects stored credentials through its vault and proxy, and plans to use AgentSecrets as the credential substrate for the future CLI/local bridge.`],
-                [`Does ${BRAND.name} support stdio or local MCP servers today?`, `Not yet. The current product is remote-first and focuses on network-reachable MCP servers with HTTP transports. ${BRAND.name} CLI is the planned bridge for local stdio servers, with AgentSecrets handling credentials outside agent context.`],
+                [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while ${BRAND.name} focuses on discovery, trust, and secure invocation of remote MCP servers. ${BRAND.name} scans and scores the servers it lists, and injects stored credentials through its centralized Vault and proxy on every call.`],
+                [`Does ${BRAND.name} support stdio or local MCP servers today?`, `Not yet directly. stdio servers appear in search results (with proxy_available: false) so agents know they exist, but cannot be invoked through the web proxy. ${BRAND.name} CLI (coming soon) will run as a native MCP server in your agent host — it spawns stdio servers as local subprocesses on demand, like npx downloads and runs without a permanent install. The CLI uses the same centralized Vault for credential injection.`],
                 [`What does the 15-layer security stack actually do?`, `See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.`],
               ].map(([q, a], i) => (
                 <div key={q as string} className={cn('pb-6', i !== 7 && 'border-b border-white/5')}>
@@ -633,9 +633,14 @@ export default function DocsPage() {
             <div className="flex flex-col gap-4 mb-12">
               {[
                 {
-                  title:  `${BRAND.name} CLI for local stdio servers`,
+                  title:  `${BRAND.name} CLI — native MCP server for stdio`,
                   status: 'Next launch wave',
-                  detail: `A local bridge that uses the same discovery layer for stdio MCP servers. It will resolve candidates from ${BRAND.name}, run local MCP servers when needed, and use AgentSecrets for credential injection outside agent context.`,
+                  detail: `A CLI package that runs as a native MCP server in your agent host (stdio transport). It uses the same discovery layer as the web API, but can also spawn local stdio MCP servers on demand — like npx downloads and runs without a permanent install. Credentials are fetched from the centralized ${BRAND.name} Vault. Security scanning runs locally.`,
+                },
+                {
+                  title:  'TypeScript + Python SDKs',
+                  status: 'Planned',
+                  detail: `Programmatic agent integration — import { search, invoke } from '@${BRAND.slug}/sdk'. Wraps the REST API with authentication, retry, response header extraction, and type-safe tool argument validation.`,
                 },
                 {
                   title:  'Per-user OAuth delegation',

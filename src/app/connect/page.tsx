@@ -156,7 +156,7 @@ export default function ConnectPage() {
               <p className="text-sm leading-7 text-brand-steel">
                 {BRAND.name} currently focuses on network-reachable MCP servers over HTTP. Local{' '}
                 <code className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[12px] text-white">stdio</code>{' '}
-                support will ship through ${BRAND.name} CLI later.
+                support will ship through {BRAND.name} CLI later.
               </p>
             </AnimatedSection>
           </div>

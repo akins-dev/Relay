@@ -87,7 +87,7 @@ export async function GET() {
       cli: {
         name:        BRAND.cli,
         status:      'planned',
-        description: 'Local CLI bridge for stdio MCP servers. Will use the same discovery layer and security scanning.',
+        description: 'Local CLI that runs as a native MCP server (stdio). It spawns stdio servers on demand (like npx) and routes HTTP calls to the cloud API, giving agents a single unified interface with full security and audit logging.',
       },
       sdks: {
         status:      'planned',
