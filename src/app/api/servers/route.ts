@@ -25,15 +25,16 @@ export async function GET(req: NextRequest) {
   const supabase = createClient();
   const { searchParams } = new URL(req.url);
 
-  const q        = searchParams.get('q') || '';
-  const tag      = searchParams.get('tag') || '';
-  const sort     = searchParams.get('sort') || 'stars';
-  const verified = searchParams.get('verified') === 'true';
-  const source   = searchParams.get('source') || '';
-  const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit    = Math.min(50, parseInt(searchParams.get('limit') || '12'));
-  const from     = (page - 1) * limit;
-  const to       = from + limit - 1;
+  const q         = searchParams.get('q') || '';
+  const tag       = searchParams.get('tag') || '';
+  const sort      = searchParams.get('sort') || 'stars';
+  const verified  = searchParams.get('verified') === 'true';
+  const source    = searchParams.get('source') || '';
+  const transport = searchParams.get('transport') || '';
+  const page      = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit     = Math.min(50, parseInt(searchParams.get('limit') || '12'));
+  const from      = (page - 1) * limit;
+  const to        = from + limit - 1;
 
   let query = supabase
     .from('servers')
@@ -43,12 +44,14 @@ export async function GET(req: NextRequest) {
       latency_ms, uptime_pct, trust_score, scan_status, scan_issues,
       created_at, profiles!author_id ( username, avatar_url )
     `, { count: 'exact' })
-    .eq('status', 'active');
+    .in('status', ['active', 'pending_review']);
 
-  if (source)   query = query.eq('source', source);
-  if (q)        query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
-  if (tag)      query = query.contains('tags', [tag]);
-  if (verified) query = query.eq('verified', true);
+  if (source)    query = query.eq('source', source);
+  if (q)         query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
+  if (tag)       query = query.contains('tags', [tag]);
+  if (verified)  query = query.eq('verified', true);
+  if (transport === 'cloud') query = query.neq('transport', 'stdio');
+  if (transport === 'stdio') query = query.eq('transport', 'stdio');
 
   const sortMap: Record<string, { column: string; ascending: boolean }> = {
     stars:   { column: 'stars',       ascending: false },

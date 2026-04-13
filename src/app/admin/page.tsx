@@ -56,6 +56,9 @@ export default function AdminPage() {
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -154,7 +157,7 @@ export default function AdminPage() {
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-            Last refresh: {lastRefresh.toLocaleTimeString()} · auto-refreshes every 60s
+            {mounted ? `Last refresh: ${lastRefresh.toLocaleTimeString()} · auto-refreshes every 60s` : 'Loading...'}
           </span>
           <button onClick={load} className="btn btn-ghost btn-sm" disabled={loading}>
             {loading ? '...' : '↺ Refresh'}

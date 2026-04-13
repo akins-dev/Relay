@@ -2,31 +2,50 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShieldCheck, ChevronLeft, ChevronRight, Cloud, Terminal, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ServerCard } from '@/components/registry/ServerCard';
 import { SearchSpotlight } from '@/components/registry/SearchSpotlight';
 import type { Server } from '@/types';
 
-const TAGS = ['payments','security','database','git','email','browser','automation','devops','messaging','storage','ai','scraping'];
+// ── Filter constants matching actual data ─────────────────────────────────────
+const TAGS = [
+  'general', 'ai', 'database', 'devops', 'security', 'email',
+  'browser', 'automation', 'messaging', 'storage', 'git',
+  'payments', 'scraping', 'official', 'reference',
+];
 const SORTS = [
-  { value: 'stars',   label: 'Stars'   },
-  { value: 'trust',   label: 'Trust'   },
-  { value: 'calls',   label: 'Usage'   },
-  { value: 'recent',  label: 'Recent'  },
-  { value: 'latency', label: 'Fastest' },
+  { value: 'trust',   label: 'Trust Score' },
+  { value: 'stars',   label: 'Stars'       },
+  { value: 'calls',   label: 'Usage'       },
+  { value: 'recent',  label: 'Recent'      },
+  { value: 'latency', label: 'Fastest'     },
+];
+const SOURCES = [
+  { value: '',          label: 'All sources' },
+  { value: 'official',  label: 'Official'    },
+  { value: 'smithery',  label: 'Smithery'    },
+  { value: 'glama',     label: 'Glama'       },
+  { value: 'github',    label: 'GitHub'      },
+  { value: 'direct',    label: 'Direct'      },
+];
+const TRANSPORTS = [
+  { value: '',      label: 'All types',   icon: null           },
+  { value: 'cloud', label: 'Cloud-ready', icon: Cloud          },
+  { value: 'stdio', label: 'Local (CLI)', icon: Terminal       },
 ];
 
 export default function RegistryPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const q        = sp.get('q')    || '';
-  const tag      = sp.get('tag')  || '';
-  const sort     = sp.get('sort') || 'stars';
-  const verified = sp.get('verified') || '';
-  const source   = sp.get('source')   || '';
-  const page     = parseInt(sp.get('page') || '1');
+  const q         = sp.get('q')         || '';
+  const tag       = sp.get('tag')       || '';
+  const sort      = sp.get('sort')      || 'trust';
+  const verified  = sp.get('verified')  || '';
+  const source    = sp.get('source')    || '';
+  const transport = sp.get('transport') || '';
+  const page      = parseInt(sp.get('page') || '1');
 
   const [servers,    setServers]    = useState<Server[]>([]);
   const [total,      setTotal]      = useState(0);
@@ -38,23 +57,24 @@ export default function RegistryPage() {
   function set(key: string, val: string) {
     const p = new URLSearchParams(sp.toString());
     if (val) p.set(key, val); else p.delete(key);
-    p.delete('page');
+    if (key !== 'page') p.delete('page'); // reset to page 1 on filter change
     router.push(`/registry?${p.toString()}`);
   }
 
   const load = useCallback(async () => {
     setLoading(true);
     const p: Record<string, string> = { sort, page: String(page), limit: '12' };
-    if (q)        p.q        = q;
-    if (tag)      p.tag      = tag;
-    if (verified) p.verified = verified;
-    if (source)   p.source   = source;
+    if (q)         p.q         = q;
+    if (tag)       p.tag       = tag;
+    if (verified)  p.verified  = verified;
+    if (source)    p.source    = source;
+    if (transport) p.transport = transport;
     const res = await fetch(`/api/servers?${new URLSearchParams(p)}`).then(r => r.json());
     setServers(res.servers || []);
     setTotal(res.total   || 0);
     setPages(res.pages   || 1);
     setLoading(false);
-  }, [q, tag, sort, verified, source, page]);
+  }, [q, tag, sort, verified, source, transport, page]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -63,6 +83,23 @@ export default function RegistryPage() {
       .then(d => setTotalCalls(d.calls_today))
       .catch(() => {});
   }, []);
+
+  // ── Smart pagination: 1 ... 4 [5] 6 ... 99 ────────────────────────────────
+  function getPageNumbers(): (number | '...')[] {
+    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+    const nums: (number | '...')[] = [];
+    nums.push(1);
+    if (page > 3) nums.push('...');
+    for (let i = Math.max(2, page - 1); i <= Math.min(pages - 1, page + 1); i++) {
+      nums.push(i);
+    }
+    if (page < pages - 2) nums.push('...');
+    nums.push(pages);
+    return nums;
+  }
+
+  // ── Count active filters ──────────────────────────────────────────────────
+  const activeFilterCount = [q, tag, verified, source, transport].filter(Boolean).length;
 
   return (
     <div className="overflow-x-hidden pb-24">
@@ -77,7 +114,7 @@ export default function RegistryPage() {
               Registry
             </h1>
             <p className="mt-2 text-brand-steel text-[15px]">
-              {total > 0 ? `${total} server${total !== 1 ? 's' : ''}` : 'Discover MCP servers'}
+              {total > 0 ? `${total.toLocaleString()} server${total !== 1 ? 's' : ''}` : 'Discover MCP servers'}
               {totalCalls ? ` · ${(totalCalls / 1000).toFixed(0)}K calls today` : ''}
             </p>
           </div>
@@ -88,7 +125,7 @@ export default function RegistryPage() {
       </div>
 
       <div className="page pt-8">
-        {/* ── Search spotlight (replaces plain form) ── */}
+        {/* ── Search spotlight ── */}
         <div className="mb-5">
           <SearchSpotlight
             defaultValue={q}
@@ -97,7 +134,8 @@ export default function RegistryPage() {
         </div>
 
         {/* ── Filters row ── */}
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex flex-wrap gap-2 mb-5 items-center">
+          {/* Sort */}
           <select
             className="input !w-auto text-sm"
             value={sort}
@@ -106,6 +144,35 @@ export default function RegistryPage() {
             {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
 
+          {/* Source */}
+          <select
+            className="input !w-auto text-sm"
+            value={source}
+            onChange={e => set('source', e.target.value)}
+          >
+            {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+
+          {/* Transport toggle */}
+          <div className="flex rounded-lg border border-white/10 overflow-hidden">
+            {TRANSPORTS.map(t => (
+              <button
+                key={t.value}
+                onClick={() => set('transport', transport === t.value ? '' : t.value)}
+                className={cn(
+                  'px-3 py-1.5 text-[12px] font-mono flex items-center gap-1.5 transition-colors',
+                  transport === t.value
+                    ? 'bg-brand-DEFAULT/20 text-brand-signal'
+                    : 'text-brand-steel hover:text-white hover:bg-white/5'
+                )}
+              >
+                {t.icon && <t.icon className="h-3 w-3" />}
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Verified */}
           <button
             onClick={() => set('verified', verified ? '' : 'true')}
             className={cn('btn btn-sm gap-1.5', verified ? 'btn-primary' : 'btn-ghost')}
@@ -113,17 +180,15 @@ export default function RegistryPage() {
             <ShieldCheck className="h-3.5 w-3.5" /> Verified
           </button>
 
-          <select
-            className="input !w-auto text-sm"
-            value={source}
-            onChange={e => set('source', e.target.value)}
-          >
-            <option value="">All sources</option>
-            <option value="official">Official</option>
-            <option value="github">GitHub</option>
-            <option value="smithery">Smithery</option>
-            <option value="direct">Direct</option>
-          </select>
+          {/* Clear all */}
+          {activeFilterCount > 1 && (
+            <button
+              onClick={() => router.push('/registry')}
+              className="btn btn-sm btn-ghost text-brand-steel hover:text-white"
+            >
+              Clear all
+            </button>
+          )}
         </div>
 
         {/* ── Tag pills ── */}
@@ -146,12 +211,12 @@ export default function RegistryPage() {
         </div>
 
         {/* ── Active filters chips ── */}
-        {(q || tag) && (
+        {(q || tag || source || transport) && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-brand-steel uppercase tracking-widest font-mono">Filtering:</span>
             {q && (
               <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 font-mono text-[12px] text-white">
-                "{q}"
+                &quot;{q}&quot;
                 <button onClick={() => set('q', '')} className="text-brand-steel hover:text-white transition-colors">✕</button>
               </span>
             )}
@@ -159,6 +224,18 @@ export default function RegistryPage() {
               <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 font-mono text-[12px] text-brand-signal">
                 #{tag}
                 <button onClick={() => set('tag', '')} className="text-brand-steel hover:text-white transition-colors">✕</button>
+              </span>
+            )}
+            {source && (
+              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 font-mono text-[12px] text-white">
+                {source}
+                <button onClick={() => set('source', '')} className="text-brand-steel hover:text-white transition-colors">✕</button>
+              </span>
+            )}
+            {transport && (
+              <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1 font-mono text-[12px] text-white">
+                {transport === 'cloud' ? '☁ Cloud-ready' : '⌘ Local CLI'}
+                <button onClick={() => set('transport', '')} className="text-brand-steel hover:text-white transition-colors">✕</button>
               </span>
             )}
           </div>
@@ -189,32 +266,47 @@ export default function RegistryPage() {
         ) : (
           <>
             <div className="mb-4 font-mono text-[11px] uppercase tracking-widest text-brand-steel">
-              {total} result{total !== 1 ? 's' : ''}
+              {total.toLocaleString()} result{total !== 1 ? 's' : ''}
+              {pages > 1 && ` · page ${page} of ${pages}`}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {servers.map(s => <ServerCard key={s.id} server={s} query={q} />)}
             </div>
+
+            {/* ── Smart pagination ── */}
             {pages > 1 && (
-              <div className="mt-12 flex justify-center items-center gap-2">
-                {page > 1 && (
-                  <button onClick={() => set('page', String(page - 1))} className="btn btn-ghost btn-sm gap-1">
-                    <ChevronLeft className="h-4 w-4" /> Prev
-                  </button>
+              <div className="mt-12 flex justify-center items-center gap-1">
+                <button
+                  onClick={() => set('page', String(page - 1))}
+                  disabled={page <= 1}
+                  className={cn('btn btn-ghost btn-sm gap-1', page <= 1 && 'opacity-30 pointer-events-none')}
+                >
+                  <ChevronLeft className="h-4 w-4" /> Prev
+                </button>
+
+                {getPageNumbers().map((n, i) =>
+                  n === '...' ? (
+                    <span key={`ellipsis-${i}`} className="px-2 text-brand-steel">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </span>
+                  ) : (
+                    <button
+                      key={n}
+                      onClick={() => set('page', String(n))}
+                      className={cn('btn btn-sm min-w-[36px]', n === page ? 'btn-primary' : 'btn-ghost')}
+                    >
+                      {n}
+                    </button>
+                  )
                 )}
-                {[...Array(Math.min(pages, 7))].map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => set('page', String(i + 1))}
-                    className={cn('btn btn-sm min-w-[36px]', i + 1 === page ? 'btn-primary' : 'btn-ghost')}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-                {page < pages && (
-                  <button onClick={() => set('page', String(page + 1))} className="btn btn-ghost btn-sm gap-1">
-                    Next <ChevronRight className="h-4 w-4" />
-                  </button>
-                )}
+
+                <button
+                  onClick={() => set('page', String(page + 1))}
+                  disabled={page >= pages}
+                  className={cn('btn btn-ghost btn-sm gap-1', page >= pages && 'opacity-30 pointer-events-none')}
+                >
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
             )}
           </>
