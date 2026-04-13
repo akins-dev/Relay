@@ -517,7 +517,7 @@ export default function DocsPage() {
                 { method: 'GET',  path: BRAND.agentMdRoute,                             desc: 'Agent skill file — markdown, live stats injected' },
                 { method: 'GET',  path: '/api/mcp',                               desc: 'Registry info, security layers, agent prompt template' },
                 { method: 'GET',  path: '/api/servers/search?q={intent}',         desc: 'Semantic search — returns servers with full inputSchema' },
-                { method: 'GET',  path: '/api/servers?sort=trust&source=official', desc: 'Browse with filters: sort, verified, source, tag, page' },
+                { method: 'GET',  path: '/api/servers?sort=trust&source=official&page=2&page_size=24', desc: 'Browse with filters: sort, verified, source, tag, page, page_size' },
                 { method: 'GET',  path: '/api/servers/:name',                     desc: 'Server detail — scan history, CVE issues, tools' },
                 { method: 'POST', path: '/api/proxy/:serverName/:toolName',       desc: 'Remote invocation proxy — request blocking, response scanning, audit' },
                 { method: 'POST', path: '/api/mcp-server',                        desc: 'Native MCP server (StreamableHTTP) — search_tools + invoke_tool' },

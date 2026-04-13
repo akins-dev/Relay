@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { ServerCard } from '@/components/registry/ServerCard';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { Server } from '@/types';
 import { SITE_URL } from '@/lib/site';
@@ -13,6 +14,7 @@ export default function ServerDetailPage() {
   const { user } = useAuth();  // no token — Supabase uses cookies
   const [server,  setServer]  = useState<Server | null>(null);
   const [scans,   setScans]   = useState<any[]>([]);
+  const [relatedServers, setRelatedServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [starred, setStarred] = useState(false);
   const [tab, setTab] = useState<'overview'|'tools'|'resources'|'prompts'|'security'|'analytics'|'integrate'>('overview');
@@ -36,7 +38,13 @@ export default function ServerDetailPage() {
     // cookies sent automatically — no Authorization header needed
     fetch(`/api/servers/${name}`)
       .then(r => r.json())
-      .then(d => { setServer(d); setScans(d.scans || []); setStarred(d.starred); setLoading(false); })
+      .then(d => {
+        setServer(d);
+        setScans(d.scans || []);
+        setRelatedServers(d.related_servers || []);
+        setStarred(d.starred);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [name]);
 
@@ -460,6 +468,22 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                 {resources.length > 0 && <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Also: GET /api/proxy/{server.name}/resources | POST /api/proxy/{server.name}/prompts/&lt;name&gt;</div>}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {relatedServers.length > 0 && (
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', fontFamily: 'var(--mono)' }}>
+              Continue Exploring
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 700 }}>Related servers</div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {relatedServers.map((item) => (
+              <ServerCard key={item.id} server={item} />
+            ))}
           </div>
         </div>
       )}

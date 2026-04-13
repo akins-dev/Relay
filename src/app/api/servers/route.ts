@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
   const source    = searchParams.get('source') || '';
   const transport = searchParams.get('transport') || '';
   const page      = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit     = Math.min(50, parseInt(searchParams.get('limit') || '12'));
+  const requestedLimit = searchParams.get('page_size') || searchParams.get('limit') || '24';
+  const limit     = Math.min(96, Math.max(12, parseInt(requestedLimit)));
   const from      = (page - 1) * limit;
   const to        = from + limit - 1;
 
@@ -61,16 +62,49 @@ export async function GET(req: NextRequest) {
     latency: { column: 'latency_ms',  ascending: true  },
   };
   const s = sortMap[sort] ?? sortMap.stars;
-  query = query.order(s.column, { ascending: s.ascending });
+  query = query.order(s.column, {
+    ascending: s.ascending,
+    nullsFirst: s.column === 'latency_ms' ? false : undefined,
+  });
+
+  // Stable secondary ordering avoids duplicate/missing rows across pages
+  // when many servers share the same primary sort value.
+  if (s.column !== 'trust_score') query = query.order('trust_score', { ascending: false });
+  if (s.column !== 'stars')       query = query.order('stars',       { ascending: false });
+  if (s.column !== 'total_calls') query = query.order('total_calls', { ascending: false });
+  query = query.order('name', { ascending: true });
 
   const { data, count, error } = await query.range(from, to);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const total = count ?? 0;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const fromItem = total === 0 ? 0 : from + 1;
+  const toItem = Math.min(to + 1, total);
+
   return NextResponse.json({
     servers: data ?? [],
-    total: count ?? 0,
+    total,
     page,
-    pages: Math.ceil((count ?? 0) / limit),
+    pages,
+    meta: {
+      page,
+      page_size: limit,
+      total,
+      pages,
+      from: fromItem,
+      to: toItem,
+      has_prev: page > 1,
+      has_next: page < pages,
+      sort,
+      filters: {
+        q,
+        tag,
+        verified,
+        source,
+        transport,
+      },
+    },
   });
 }
 
@@ -83,15 +117,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = PublishSchema.parse(await req.json());
+    const serversTable = supabase.from('servers') as any;
 
     // Name taken?
-    const { data: existing } = await supabase
-      .from('servers').select('id').eq('name', body.name).maybeSingle();
+    const { data: existing } = await serversTable.select('id').eq('name', body.name).maybeSingle();
     if (existing) return NextResponse.json({ error: 'Server name already taken' }, { status: 409 });
 
     // L8: Typosquatting check via SQL RPC
-    const { data: similar } = await supabase
-      .rpc('find_similar_names', { candidate: body.name });
+    const { data: similar } = await ((supabase as any)
+      .rpc('find_similar_names', { candidate: body.name }) as any);
     const highRisk = (similar ?? []).filter((s: any) => s.similarity > 0.8);
     if (highRisk.length > 0) {
       return NextResponse.json({
@@ -116,9 +150,7 @@ export async function POST(req: NextRequest) {
       uptimePct: 100, stars: 0, daysSinceChange: 0,
     });
 
-    const { data: server, error: insertErr } = await supabase
-      .from('servers')
-      .insert({
+    const { data: server, error: insertErr } = await serversTable.insert({
         name:             body.name,
         display_name:     body.display_name,
         description:      body.description,
@@ -145,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     // Write scan result via service client (RLS: users can't write scan_results)
     const svc = createServiceClient();
-    await svc.from('scan_results').insert({
+    await (svc.from('scan_results') as any).insert({
       server_id: server.id,
       scan_type: 'static',
       passed:    scanResult.passed,

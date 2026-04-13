@@ -35,7 +35,7 @@ export async function GET() {
     ],
     endpoints: {
       search:      'GET  /api/servers/search?q={intent}&limit={n}',
-      browse:      'GET  /api/servers?sort=trust&verified=true&tag={tag}&source={source}',
+      browse:      'GET  /api/servers?sort=trust&verified=true&tag={tag}&source={source}&page={n}&page_size={n}',
       server_info: 'GET  /api/servers/{name}',
       invoke:      'POST /api/proxy/{serverName}/{toolName}',
       stats:       'GET  /api/servers/stats',

@@ -293,7 +293,8 @@ Set all environment variables in Vercel dashboard. Crons run automatically on Ve
 GET  /openmcp.md                              Agent skill file — fetch once, understand everything
 GET  /api/mcp                                 Registry info, security layer list, agent prompt template
 GET  /api/servers/search?q={intent}&limit=5   Semantic search — full inputSchema per tool returned
-GET  /api/servers?sort=trust&verified=true    Browse with filters
+GET  /api/servers?sort=trust&verified=true&page=2&page_size=24
+                                              Browse with filters + pagination
 GET  /api/servers/:name                       Server detail, scan history, CVE issues
 POST /api/proxy/:serverName/:toolName         15-layer security proxy — every call inspected
 POST /api/mcp-server                          Native MCP server (StreamableHTTP)

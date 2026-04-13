@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, ChevronLeft, ChevronRight, Cloud, Terminal, MoreHorizontal } from 'lucide-react';
@@ -34,6 +34,7 @@ const TRANSPORTS = [
   { value: 'cloud', label: 'Cloud-ready', icon: Cloud          },
   { value: 'stdio', label: 'Local (CLI)', icon: Terminal       },
 ];
+const PAGE_SIZES = [12, 24, 48, 96];
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -46,12 +47,17 @@ export default function RegistryPage() {
   const source    = sp.get('source')    || '';
   const transport = sp.get('transport') || '';
   const page      = parseInt(sp.get('page') || '1');
+  const pageSize  = PAGE_SIZES.includes(parseInt(sp.get('page_size') || '24'))
+    ? parseInt(sp.get('page_size') || '24')
+    : 24;
 
   const [servers,    setServers]    = useState<Server[]>([]);
   const [total,      setTotal]      = useState(0);
   const [pages,      setPages]      = useState(1);
   const [loading,    setLoading]    = useState(true);
   const [totalCalls, setTotalCalls] = useState<number | null>(null);
+  const [range,      setRange]      = useState({ from: 0, to: 0, hasPrev: false, hasNext: false });
+  const cacheRef = useRef(new Map<string, any>());
 
   // Push a single filter key/value to the URL (clears page)
   function set(key: string, val: string) {
@@ -61,28 +67,100 @@ export default function RegistryPage() {
     router.push(`/registry?${p.toString()}`);
   }
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const p: Record<string, string> = { sort, page: String(page), limit: '12' };
+  const load = useCallback(() => {
+    const p: Record<string, string> = { sort, page: String(page), page_size: String(pageSize) };
     if (q)         p.q         = q;
     if (tag)       p.tag       = tag;
     if (verified)  p.verified  = verified;
     if (source)    p.source    = source;
     if (transport) p.transport = transport;
-    const res = await fetch(`/api/servers?${new URLSearchParams(p)}`).then(r => r.json());
-    setServers(res.servers || []);
-    setTotal(res.total   || 0);
-    setPages(res.pages   || 1);
-    setLoading(false);
-  }, [q, tag, sort, verified, source, transport, page]);
+    const key = new URLSearchParams(p).toString();
+    const cached = cacheRef.current.get(key);
 
-  useEffect(() => { load(); }, [load]);
+    if (cached) {
+      setServers(cached.servers || []);
+      setTotal(cached.total || 0);
+      setPages(cached.pages || 1);
+      setRange({
+        from: cached.meta?.from || 0,
+        to: cached.meta?.to || 0,
+        hasPrev: cached.meta?.has_prev || false,
+        hasNext: cached.meta?.has_next || false,
+      });
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLoading(true);
+
+    fetch(`/api/servers?${key}`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(res => {
+        cacheRef.current.set(key, res);
+        setServers(res.servers || []);
+        setTotal(res.total || 0);
+        setPages(res.pages || 1);
+        setRange({
+          from: res.meta?.from || 0,
+          to: res.meta?.to || 0,
+          hasPrev: res.meta?.has_prev || false,
+          hasNext: res.meta?.has_next || false,
+        });
+      })
+      .catch(err => {
+        if (err?.name !== 'AbortError') {
+          setServers([]);
+          setTotal(0);
+          setPages(1);
+          setRange({ from: 0, to: 0, hasPrev: false, hasNext: false });
+        }
+      })
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, [page, pageSize, q, source, sort, tag, transport, verified]);
+
+  useEffect(() => {
+    const cleanup = load();
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [load]);
   useEffect(() => {
     fetch('/api/servers/stats')
       .then(r => r.json())
       .then(d => setTotalCalls(d.calls_today))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const queryFor = (targetPage: number) => {
+      if (targetPage < 1 || targetPage > pages) return null;
+      const p = new URLSearchParams();
+      p.set('sort', sort);
+      p.set('page', String(targetPage));
+      p.set('page_size', String(pageSize));
+      if (q)         p.set('q', q);
+      if (tag)       p.set('tag', tag);
+      if (verified)  p.set('verified', verified);
+      if (source)    p.set('source', source);
+      if (transport) p.set('transport', transport);
+      return p.toString();
+    };
+
+    const candidates = [page - 1, page + 1]
+      .map(queryFor)
+      .filter((value): value is string => Boolean(value));
+
+    for (const key of candidates) {
+      if (cacheRef.current.has(key)) continue;
+      fetch(`/api/servers?${key}`)
+        .then(r => r.json())
+        .then(res => cacheRef.current.set(key, res))
+        .catch(() => {});
+    }
+  }, [page, pages, pageSize, q, source, sort, tag, transport, verified]);
 
   // ── Smart pagination: 1 ... 4 [5] 6 ... 99 ────────────────────────────────
   function getPageNumbers(): (number | '...')[] {
@@ -151,6 +229,20 @@ export default function RegistryPage() {
             onChange={e => set('source', e.target.value)}
           >
             {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+
+          {/* Page size */}
+          <select
+            className="input !w-auto text-sm"
+            value={String(pageSize)}
+            onChange={e => set('page_size', e.target.value)}
+            aria-label="Results per page"
+          >
+            {PAGE_SIZES.map(size => (
+              <option key={size} value={size}>
+                {size} / page
+              </option>
+            ))}
           </select>
 
           {/* Transport toggle */}
@@ -266,8 +358,12 @@ export default function RegistryPage() {
         ) : (
           <>
             <div className="mb-4 font-mono text-[11px] uppercase tracking-widest text-brand-steel">
-              {total.toLocaleString()} result{total !== 1 ? 's' : ''}
+              {range.from > 0
+                ? `Showing ${range.from.toLocaleString()}-${range.to.toLocaleString()} of ${total.toLocaleString()}`
+                : `${total.toLocaleString()} result${total !== 1 ? 's' : ''}`
+              }
               {pages > 1 && ` · page ${page} of ${pages}`}
+              {` · ${pageSize}/page`}
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {servers.map(s => <ServerCard key={s.id} server={s} query={q} />)}
@@ -278,8 +374,8 @@ export default function RegistryPage() {
               <div className="mt-12 flex justify-center items-center gap-1">
                 <button
                   onClick={() => set('page', String(page - 1))}
-                  disabled={page <= 1}
-                  className={cn('btn btn-ghost btn-sm gap-1', page <= 1 && 'opacity-30 pointer-events-none')}
+                  disabled={!range.hasPrev}
+                  className={cn('btn btn-ghost btn-sm gap-1', !range.hasPrev && 'opacity-30 pointer-events-none')}
                 >
                   <ChevronLeft className="h-4 w-4" /> Prev
                 </button>
@@ -302,8 +398,8 @@ export default function RegistryPage() {
 
                 <button
                   onClick={() => set('page', String(page + 1))}
-                  disabled={page >= pages}
-                  className={cn('btn btn-ghost btn-sm gap-1', page >= pages && 'opacity-30 pointer-events-none')}
+                  disabled={!range.hasNext}
+                  className={cn('btn btn-ghost btn-sm gap-1', !range.hasNext && 'opacity-30 pointer-events-none')}
                 >
                   Next <ChevronRight className="h-4 w-4" />
                 </button>
