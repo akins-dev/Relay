@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useMotionTemplate } from 'framer-motion';
 import {
   ArrowRight,
   Compass,
@@ -56,22 +56,33 @@ const PRINCIPLES = [
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 
-function Metric({ value, label }: { value: string; label: string }) {
+function Metric({ value, label, delay = 0 }: { value: string; label: string; delay?: number }) {
   return (
-    <div className="flex flex-col items-center justify-center p-5 sm:p-4">
+    <AnimatedSection delay={delay} className="flex flex-col items-center justify-center p-5 sm:p-4 h-full w-full">
       <div className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-brand-steel">
         {label}
       </div>
       <div className="mt-2 font-display text-3xl sm:text-4xl font-medium tracking-[-0.03em] text-white drop-shadow-md">
         {value}
       </div>
-    </div>
+    </AnimatedSection>
   );
 }
 
 // ─── main component ───────────────────────────────────────────────────────────
 
 export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: Server[] }) {
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothX = useSpring(mouseX, { damping: 40, stiffness: 150 });
+  const smoothY = useSpring(mouseY, { damping: 40, stiffness: 150 });
+
+  function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
+    const { left, top } = currentTarget.getBoundingClientRect();
+    mouseX.set(clientX - left);
+    mouseY.set(clientY - top);
+  }
+
   const invokable =
     stats.invokable_servers?.toLocaleString() ?? stats.active_servers.toLocaleString();
   const callsToday = stats.calls_today
@@ -83,7 +94,18 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
     <div className="overflow-x-hidden pb-16">
 
       {/* ── 1. Hero ── */}
-      <section className="page text-center relative w-full h-screen flex items-center justify-center overflow-hidden">
+      <section 
+        className="page text-center relative w-full h-screen flex items-center justify-center overflow-hidden"
+        onMouseMove={handleMouseMove}
+      >
+        {/* Glow following cursor */}
+        <motion.div
+           className="pointer-events-none absolute inset-0 z-0 opacity-40 mix-blend-screen"
+           style={{
+             background: useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`
+           }}
+        />
+
         {/* Animated Ambient Background */}
         <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none mix-blend-screen">
           <motion.div
@@ -173,10 +195,10 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         className="page py-10 sm:py-12 border-b border-[rgba(255,255,255,0.05)] mt-8 sm:mt-12"
       >
         <div className="grid grid-cols-2 gap-0 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[rgba(255,255,255,0.08)] backdrop-blur-md bg-[rgba(255,255,255,0.02)] rounded-3xl border border-[rgba(255,255,255,0.05)]">
-          <Metric label="Invokable" value={invokable} />
-          <Metric label="Verified" value={stats.verified_servers?.toLocaleString() ?? '0'} />
-          <Metric label="Calls today" value={callsToday} />
-          <Metric label="Avg trust" value={avgTrust} />
+          <Metric delay={0.1} label="Invokable" value={invokable} />
+          <Metric delay={0.2} label="Verified" value={stats.verified_servers?.toLocaleString() ?? '0'} />
+          <Metric delay={0.3} label="Calls today" value={callsToday} />
+          <Metric delay={0.4} label="Avg trust" value={avgTrust} />
         </div>
       </AnimatedSection>
 
@@ -191,27 +213,27 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
              The only registry built for <span className="pr-1 text-transparent bg-clip-text bg-gradient-to-r from-brand-signal to-brand-DEFAULT drop-shadow-md">runtime.</span>
            </h2>
            <div className="grid md:grid-cols-3 gap-8 text-left relative z-10">
-             <div className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-signal/30 transition-colors">
+             <AnimatedSection delay={0.1} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-signal/30 transition-colors">
                 <div className="text-brand-signal font-mono text-xs font-bold uppercase tracking-wider">01. Discovery</div>
                 <h3 className="text-white text-xl font-medium tracking-tight">Search by intent</h3>
                 <p className="text-brand-steel text-[15px] leading-relaxed">
                   We are the industry's first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
                 </p>
-             </div>
-             <div className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
+             </AnimatedSection>
+             <AnimatedSection delay={0.2} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
                 <div className="text-brand-trust font-mono text-xs font-bold uppercase tracking-wider">02. Security</div>
                 <h3 className="text-white text-xl font-medium tracking-tight">Robust trust layer</h3>
                 <p className="text-brand-steel text-[15px] leading-relaxed">
                   A highly robust security layer governs every tool invocation, handling custom policy validation, zero-knowledge credential injection, and strict rate limits.
                 </p>
-             </div>
-             <div className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#38bdf8]/30 transition-colors">
+             </AnimatedSection>
+             <AnimatedSection delay={0.3} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#38bdf8]/30 transition-colors">
                 <div className="text-[#38bdf8] font-mono text-xs font-bold uppercase tracking-wider">03. Precision</div>
                 <h3 className="text-white text-xl font-medium tracking-tight">Absolute accuracy</h3>
                 <p className="text-brand-steel text-[15px] leading-relaxed">
                   The first registry to dynamically sandbox and extract mathematically perfect primitive data for <code className="text-[12px] bg-white/10 px-1 rounded">stdio</code> servers, regardless of whether the developer wrote a good Readme.
                 </p>
-             </div>
+             </AnimatedSection>
            </div>
         </AnimatedSection>
       </section>

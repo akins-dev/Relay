@@ -23,10 +23,10 @@ export async function GET(
     .order('created_at', { ascending: false })
     .limit(5);
 
-  const { user, supabase } = await resolveUser(req);
+  const { user, supabase: userSupabase } = await resolveUser(req);
   let starred = false;
   if (user) {
-    const { data: star } = await supabase
+    const { data: star } = await userSupabase
       .from('server_stars')
       .select('user_id')
       .eq('user_id', user.id)
