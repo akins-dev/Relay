@@ -83,8 +83,35 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
     <div className="overflow-x-hidden pb-16">
 
       {/* ── 1. Hero ── */}
-      <section className="page text-center relative z-10 w-full h-screen flex items-center justify-center">
-        <div className="mx-auto max-w-4xl flex flex-col items-center">
+      <section className="page text-center relative w-full h-screen flex items-center justify-center overflow-hidden">
+        {/* Animated Ambient Background */}
+        <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none mix-blend-screen">
+          <motion.div
+            className="absolute rounded-full bg-brand-signal opacity-[0.2] blur-[100px] w-[400px] h-[400px] sm:w-[600px] sm:h-[600px]"
+            animate={{
+              scale: [1, 1.25, 1],
+              opacity: [0.15, 0.3, 0.15],
+              x: [-100, 100, -100],
+              y: [-50, 100, -50],
+            }}
+            transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute rounded-full bg-brand-DEFAULT opacity-[0.25] blur-[120px] w-[500px] h-[500px] sm:w-[800px] sm:h-[800px]"
+            animate={{
+              scale: [1, 1.15, 1],
+              opacity: [0.2, 0.4, 0.2],
+              x: [100, -150, 100],
+              y: [50, -100, 50],
+            }}
+            transition={{ duration: 24, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </div>
+
+        {/* Subtle dot matrix overlay */}
+        <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_0)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_75%_75%_at_50%_40%,#000_20%,transparent_100%)]" />
+
+        <div className="mx-auto max-w-4xl flex flex-col items-center relative z-10">
 
           {/* Word-by-word animated hero heading */}
           <motion.h1
