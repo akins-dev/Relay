@@ -89,6 +89,14 @@ export default function ServerDetailPage() {
     setListPages((current) => ({ ...current, [key]: page }));
   }
 
+  const resources: any[] = (server as any)?.resources ?? [];
+  const prompts:   any[] = (server as any)?.prompts   ?? [];
+  
+  const pagedTools = useMemo(() => paginateItems(server?.tools ?? [], listPages.tools, 12), [server?.tools, listPages.tools]);
+  const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
+  const pagedPrompts = useMemo(() => paginateItems(prompts, listPages.prompts, 8), [prompts, listPages.prompts]);
+  const pagedRelated = useMemo(() => paginateItems(relatedServers, listPages.related, 3), [relatedServers, listPages.related]);
+
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
       <div className="anim-spin" style={{ width: '24px', height: '24px', border: '2px solid var(--border)', borderTopColor: 'var(--green)', borderRadius: '50%' }} />
@@ -107,13 +115,7 @@ export default function ServerDetailPage() {
   const proxyAvailable = (server as any).proxy_available !== false; // default true for older records
   const mcpCompliant   = (server as any).mcp_compliant ?? false;
   const protocolVer    = (server as any).protocol_version ?? null;
-  const resources: any[] = (server as any).resources ?? [];
-  const prompts:   any[] = (server as any).prompts   ?? [];
   const previewTools = server.tools.slice(0, 12);
-  const pagedTools = useMemo(() => paginateItems(server.tools ?? [], listPages.tools, 12), [server.tools, listPages.tools]);
-  const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
-  const pagedPrompts = useMemo(() => paginateItems(prompts, listPages.prompts, 8), [prompts, listPages.prompts]);
-  const pagedRelated = useMemo(() => paginateItems(relatedServers, listPages.related, 3), [relatedServers, listPages.related]);
 
   const transportLabel = isStdio ? 'stdio' :
     (server as any).transport === 'sse' ? 'sse' : 'http';

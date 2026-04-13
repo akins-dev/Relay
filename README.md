@@ -189,10 +189,29 @@ bun dev
 
 The admin dashboard lives at `/admin`.
 
-- If you are not signed in, `/admin` redirects to `/login?redirect=/admin`.
-- If you are signed in with the wrong account, the page shows an access-required state instead of bouncing back to the landing page.
-- To enable admin access, set `NEXT_PUBLIC_ADMIN_UID` to your Supabase Auth user UUID from Supabase Dashboard → Authentication → Users.
-- Admin-triggered ingests use `POST /api/admin/ingest`, which validates the signed-in user server-side before calling the protected cron ingest route.
+- If you are not signed in, `/admin` redirects to `/login`.
+- If you are signed in with the wrong account (UID doesn't match), it will redirect you away from the admin dashboard back to the landing page or a protected area.
+
+**How to configure admin access:**
+1. Navigate to **Supabase Dashboard** → **Authentication** → **Users**.
+2. Find your personal administrative user account.
+3. Copy the **User UID** string.
+4. Set it exactly as `NEXT_PUBLIC_ADMIN_UID` in your environment (`.env`).
+
+Admin-triggered ingests use `POST /api/admin/ingest`, which validates the signed-in user server-side before running.
+
+---
+
+## Sandbox Service
+
+To support stdio-based servers properly via isolated Docker execution, openMCP utilizes a lightweight Node.js Express microservice located in the `/sandbox` folder.
+
+**Deployment:**
+1. This is a separate service that must be deployed independently (e.g. Render.com, Fly.io, AWS ECS) using the provided `sandbox/Dockerfile`.
+2. Secure the sandbox deploying with a secret token.
+3. Update your main openMCP `.env` to include:
+   - `SANDBOX_URL=https://your-sandbox-deployment.app`
+   - `SANDBOX_AUTH_TOKEN=your-randomly-generated-secret`
 
 ---
 
