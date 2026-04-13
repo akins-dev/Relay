@@ -2,10 +2,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, ChevronLeft, ChevronRight, Cloud, Terminal, MoreHorizontal } from 'lucide-react';
+import { ShieldCheck, Cloud, Terminal } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ServerCard } from '@/components/registry/ServerCard';
 import { SearchSpotlight } from '@/components/registry/SearchSpotlight';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import type { Server } from '@/types';
 
 // ── Filter constants matching actual data ─────────────────────────────────────
@@ -34,7 +35,7 @@ const TRANSPORTS = [
   { value: 'cloud', label: 'Cloud-ready', icon: Cloud          },
   { value: 'stdio', label: 'Local (CLI)', icon: Terminal       },
 ];
-const PAGE_SIZES = [12, 24, 48, 96];
+const PAGE_SIZES = [24, 48, 96];
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -47,9 +48,8 @@ export default function RegistryPage() {
   const source    = sp.get('source')    || '';
   const transport = sp.get('transport') || '';
   const page      = parseInt(sp.get('page') || '1');
-  const pageSize  = PAGE_SIZES.includes(parseInt(sp.get('page_size') || '24'))
-    ? parseInt(sp.get('page_size') || '24')
-    : 24;
+  const rawPageSize = parseInt(sp.get('page_size') || '24');
+  const pageSize  = PAGE_SIZES.includes(rawPageSize) ? rawPageSize : 24;
 
   const [servers,    setServers]    = useState<Server[]>([]);
   const [total,      setTotal]      = useState(0);
@@ -66,6 +66,13 @@ export default function RegistryPage() {
     if (key !== 'page') p.delete('page'); // reset to page 1 on filter change
     router.push(`/registry?${p.toString()}`);
   }
+
+  useEffect(() => {
+    if (PAGE_SIZES.includes(rawPageSize)) return;
+    const p = new URLSearchParams(sp.toString());
+    p.set('page_size', '24');
+    router.replace(`/registry?${p.toString()}`);
+  }, [rawPageSize, router, sp]);
 
   const load = useCallback(() => {
     const p: Record<string, string> = { sort, page: String(page), page_size: String(pageSize) };
@@ -162,20 +169,6 @@ export default function RegistryPage() {
     }
   }, [page, pages, pageSize, q, source, sort, tag, transport, verified]);
 
-  // ── Smart pagination: 1 ... 4 [5] 6 ... 99 ────────────────────────────────
-  function getPageNumbers(): (number | '...')[] {
-    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-    const nums: (number | '...')[] = [];
-    nums.push(1);
-    if (page > 3) nums.push('...');
-    for (let i = Math.max(2, page - 1); i <= Math.min(pages - 1, page + 1); i++) {
-      nums.push(i);
-    }
-    if (page < pages - 2) nums.push('...');
-    nums.push(pages);
-    return nums;
-  }
-
   // ── Count active filters ──────────────────────────────────────────────────
   const activeFilterCount = [q, tag, verified, source, transport].filter(Boolean).length;
 
@@ -229,20 +222,6 @@ export default function RegistryPage() {
             onChange={e => set('source', e.target.value)}
           >
             {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-
-          {/* Page size */}
-          <select
-            className="input !w-auto text-sm"
-            value={String(pageSize)}
-            onChange={e => set('page_size', e.target.value)}
-            aria-label="Results per page"
-          >
-            {PAGE_SIZES.map(size => (
-              <option key={size} value={size}>
-                {size} / page
-              </option>
-            ))}
           </select>
 
           {/* Transport toggle */}
@@ -369,42 +348,18 @@ export default function RegistryPage() {
               {servers.map(s => <ServerCard key={s.id} server={s} query={q} />)}
             </div>
 
-            {/* ── Smart pagination ── */}
-            {pages > 1 && (
-              <div className="mt-12 flex justify-center items-center gap-1">
-                <button
-                  onClick={() => set('page', String(page - 1))}
-                  disabled={!range.hasPrev}
-                  className={cn('btn btn-ghost btn-sm gap-1', !range.hasPrev && 'opacity-30 pointer-events-none')}
-                >
-                  <ChevronLeft className="h-4 w-4" /> Prev
-                </button>
-
-                {getPageNumbers().map((n, i) =>
-                  n === '...' ? (
-                    <span key={`ellipsis-${i}`} className="px-2 text-brand-steel">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </span>
-                  ) : (
-                    <button
-                      key={n}
-                      onClick={() => set('page', String(n))}
-                      className={cn('btn btn-sm min-w-[36px]', n === page ? 'btn-primary' : 'btn-ghost')}
-                    >
-                      {n}
-                    </button>
-                  )
-                )}
-
-                <button
-                  onClick={() => set('page', String(page + 1))}
-                  disabled={!range.hasNext}
-                  className={cn('btn btn-ghost btn-sm gap-1', !range.hasNext && 'opacity-30 pointer-events-none')}
-                >
-                  Next <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+            <PaginationControls
+              className="mt-10"
+              page={page}
+              pages={pages}
+              from={range.from}
+              to={range.to}
+              total={total}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZES}
+              onPageChange={(nextPage) => set('page', String(nextPage))}
+              onPageSizeChange={(nextSize) => set('page_size', String(nextSize))}
+            />
           </>
         )}
       </div>

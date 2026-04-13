@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
   const transport = searchParams.get('transport') || '';
   const page      = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const requestedLimit = searchParams.get('page_size') || searchParams.get('limit') || '24';
-  const limit     = Math.min(96, Math.max(12, parseInt(requestedLimit)));
+  const parsedLimit = Number.parseInt(requestedLimit, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(96, Math.max(24, parsedLimit))
+    : 24;
   const from      = (page - 1) * limit;
   const to        = from + limit - 1;
 

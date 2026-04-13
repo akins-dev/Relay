@@ -1,13 +1,15 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { ServerCard } from '@/components/registry/ServerCard';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { Server } from '@/types';
 import { SITE_URL } from '@/lib/site';
 import { BRAND }    from '@/lib/brand';
+import { paginateItems } from '@/lib/pagination';
 
 export default function ServerDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -22,6 +24,7 @@ export default function ServerDetailPage() {
   const [analytics,  setAnalytics]  = useState<any>(null);
   const [connected,  setConnected]  = useState<boolean | null>(null); // OAuth connection state
   const [connecting, setConnecting] = useState(false);
+  const [listPages, setListPages] = useState({ tools: 1, resources: 1, prompts: 1, related: 1 });
 
   useEffect(() => {
     // Check OAuth connection status if user is logged in
@@ -82,6 +85,10 @@ export default function ServerDetailPage() {
     setTimeout(() => setCopied(''), 2000);
   }
 
+  function setListPage(key: keyof typeof listPages, page: number) {
+    setListPages((current) => ({ ...current, [key]: page }));
+  }
+
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
       <div className="anim-spin" style={{ width: '24px', height: '24px', border: '2px solid var(--border)', borderTopColor: 'var(--green)', borderRadius: '50%' }} />
@@ -102,6 +109,11 @@ export default function ServerDetailPage() {
   const protocolVer    = (server as any).protocol_version ?? null;
   const resources: any[] = (server as any).resources ?? [];
   const prompts:   any[] = (server as any).prompts   ?? [];
+  const previewTools = server.tools.slice(0, 12);
+  const pagedTools = useMemo(() => paginateItems(server.tools ?? [], listPages.tools, 12), [server.tools, listPages.tools]);
+  const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
+  const pagedPrompts = useMemo(() => paginateItems(prompts, listPages.prompts, 8), [prompts, listPages.prompts]);
+  const pagedRelated = useMemo(() => paginateItems(relatedServers, listPages.related, 3), [relatedServers, listPages.related]);
 
   const transportLabel = isStdio ? 'stdio' :
     (server as any).transport === 'sse' ? 'sse' : 'http';
@@ -261,7 +273,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
             <div className="card" style={{ padding: '22px' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Tools ({server.tools.length})</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {server.tools.map(t => (
+                {previewTools.map(t => (
                   <span key={t} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 12px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>
                     fn {t}()
                   </span>
@@ -270,6 +282,11 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                   <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet — tools are listed after a live probe</span>
                 )}
               </div>
+              {server.tools.length > previewTools.length && (
+                <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '12px' }}>
+                  Showing the first {previewTools.length} tools here. Open the Tools tab for the full paginated list.
+                </div>
+              )}
             </div>
 
             {/* Resources preview */}
@@ -332,7 +349,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
           {server.tools.length === 0 && (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>No tools discovered yet</div>
           )}
-          {server.tools.map(tool => (
+          {pagedTools.items.map(tool => (
             <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
                 <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
@@ -348,11 +365,21 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               )}
             </div>
           ))}
+          <PaginationControls
+            className="mt-4"
+            page={pagedTools.page}
+            pages={pagedTools.pages}
+            from={pagedTools.from}
+            to={pagedTools.to}
+            total={pagedTools.total}
+            pageSize={pagedTools.pageSize}
+            onPageChange={(nextPage) => setListPage('tools', nextPage)}
+          />
         </div>
       )}      {/* Resources tab */}
       {tab === 'resources' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {resources.map((r: any, i: number) => (
+          {pagedResources.items.map((r: any, i: number) => (
             <div key={i} className="card" style={{ padding: '16px 20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                 <div>
@@ -368,13 +395,23 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               </div>
             </div>
           ))}
+          <PaginationControls
+            className="mt-4"
+            page={pagedResources.page}
+            pages={pagedResources.pages}
+            from={pagedResources.from}
+            to={pagedResources.to}
+            total={pagedResources.total}
+            pageSize={pagedResources.pageSize}
+            onPageChange={(nextPage) => setListPage('resources', nextPage)}
+          />
         </div>
       )}
 
       {/* Prompts tab */}
       {tab === 'prompts' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {prompts.map((p: any, i: number) => (
+          {pagedPrompts.items.map((p: any, i: number) => (
             <div key={i} className="card" style={{ padding: '16px 20px' }}>
               <div style={{ fontFamily: 'var(--mono)', fontSize: '14px', marginBottom: '6px' }}>
                 <span style={{ color: 'var(--purple)' }}>prompt </span>{p.name}
@@ -391,6 +428,16 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               )}
             </div>
           ))}
+          <PaginationControls
+            className="mt-4"
+            page={pagedPrompts.page}
+            pages={pagedPrompts.pages}
+            from={pagedPrompts.from}
+            to={pagedPrompts.to}
+            total={pagedPrompts.total}
+            pageSize={pagedPrompts.pageSize}
+            onPageChange={(nextPage) => setListPage('prompts', nextPage)}
+          />
         </div>
       )}
 
@@ -459,7 +506,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {server.tools.map(t => (
+                {pagedTools.items.map(t => (
                   <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700 }}>POST</span>
                     <span style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}>/api/proxy/{server.name}/{t}</span>
@@ -481,10 +528,20 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
             <div style={{ fontSize: '18px', fontWeight: 700 }}>Related servers</div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {relatedServers.map((item) => (
+            {pagedRelated.items.map((item) => (
               <ServerCard key={item.id} server={item} />
             ))}
           </div>
+          <PaginationControls
+            className="mt-4"
+            page={pagedRelated.page}
+            pages={pagedRelated.pages}
+            from={pagedRelated.from}
+            to={pagedRelated.to}
+            total={pagedRelated.total}
+            pageSize={pagedRelated.pageSize}
+            onPageChange={(nextPage) => setListPage('related', nextPage)}
+          />
         </div>
       )}
     </div>

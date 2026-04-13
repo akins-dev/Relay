@@ -1,9 +1,11 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { paginateItems } from '@/lib/pagination';
 
 // ── Your admin user ID — change this to your Supabase auth UID ───────────────
 // Get it from Supabase → Authentication → Users → your row → User UID
@@ -44,6 +46,7 @@ interface IngestRun {
 }
 
 type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats';
+const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
   const supabase = createClient();
@@ -61,6 +64,14 @@ export default function AdminPage() {
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
   const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [tablePageSize, setTablePageSize] = useState(8);
+  const [tablePages, setTablePages] = useState({
+    ingestRuns: 1,
+    threats: 1,
+    topServers: 1,
+    suspIPs: 1,
+  });
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -77,25 +88,33 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
+    setAdminError(null);
     const svc = supabase;
 
-    const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes] = await Promise.all([
-      svc.from('platform_kpis').select('*').single(),
-      svc.from('ingest_quality').select('*'),
-      svc.from('security_threats').select('*').limit(14),
-      svc.from('suspicious_ips').select('*').limit(20),
-      svc.from('top_servers_by_usage').select('*').limit(20),
-      svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(20),
-    ]) as any[];
+    try {
+      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes] = await Promise.all([
+        svc.from('platform_kpis').select('*').single(),
+        svc.from('ingest_quality').select('*'),
+        svc.from('security_threats').select('*').limit(30),
+        svc.from('suspicious_ips').select('*').limit(100),
+        svc.from('top_servers_by_usage').select('*').limit(100),
+        svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(100),
+      ]) as any[];
 
-    if (kpisRes.data)    setKpis(kpisRes.data as any);
-    if (ingestRes.data)  setIngest(ingestRes.data as any);
-    if (threatsRes.data) setThreats(threatsRes.data as any);
-    if (suspRes.data)    setSuspIPs(suspRes.data as any);
-    if (topRes.data)     setTopServers(topRes.data as any);
-    if (runsRes.data)    setIngestRuns(runsRes.data as any);
-    setLoading(false);
-    setLastRefresh(new Date());
+      if (kpisRes.error) throw new Error(kpisRes.error.message);
+
+      if (kpisRes.data)    setKpis(kpisRes.data as any);
+      if (ingestRes.data)  setIngest(ingestRes.data as any);
+      if (threatsRes.data) setThreats(threatsRes.data as any);
+      if (suspRes.data)    setSuspIPs(suspRes.data as any);
+      if (topRes.data)     setTopServers(topRes.data as any);
+      if (runsRes.data)    setIngestRuns(runsRes.data as any);
+      setLastRefresh(new Date());
+    } catch (error: any) {
+      setAdminError(error.message ?? 'Could not load admin dashboard');
+    } finally {
+      setLoading(false);
+    }
   }, [isAdmin, supabase]);
 
   useEffect(() => {
@@ -172,6 +191,27 @@ export default function AdminPage() {
     return <td style={{ padding: '9px 12px', fontSize: '13px', fontFamily: mono ? 'var(--mono)' : 'var(--font)', color: color ?? 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children ?? '—'}</td>;
   }
 
+  const pagedIngestRuns = useMemo(
+    () => paginateItems(ingestRuns, tablePages.ingestRuns, tablePageSize),
+    [ingestRuns, tablePages.ingestRuns, tablePageSize]
+  );
+  const pagedThreats = useMemo(
+    () => paginateItems(threats, tablePages.threats, tablePageSize),
+    [threats, tablePages.threats, tablePageSize]
+  );
+  const pagedTopServers = useMemo(
+    () => paginateItems(topServers, tablePages.topServers, tablePageSize),
+    [topServers, tablePages.topServers, tablePageSize]
+  );
+  const pagedSuspIPs = useMemo(
+    () => paginateItems(suspIPs, tablePages.suspIPs, tablePageSize),
+    [suspIPs, tablePages.suspIPs, tablePageSize]
+  );
+
+  function setTablePage<K extends keyof typeof tablePages>(key: K, page: number) {
+    setTablePages((current) => ({ ...current, [key]: page }));
+  }
+
   if (authLoading) {
     return (
       <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
@@ -228,15 +268,31 @@ export default function AdminPage() {
     <div style={{ padding: '32px 48px', maxWidth: '1400px', margin: '0 auto' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', gap: '16px', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>admin</div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em' }}>Platform Dashboard</h1>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
             {mounted ? `Last refresh: ${lastRefresh.toLocaleTimeString()} · auto-refreshes every 60s` : 'Loading...'}
           </span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
+            table size
+            <select
+              className="input"
+              style={{ width: 'auto', padding: '0.45rem 0.7rem', fontSize: '12px' }}
+              value={String(tablePageSize)}
+              onChange={(e) => {
+                setTablePageSize(Number(e.target.value));
+                setTablePages({ ingestRuns: 1, threats: 1, topServers: 1, suspIPs: 1 });
+              }}
+            >
+              {ADMIN_PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
           <button onClick={load} className="btn btn-ghost btn-sm" disabled={loading}>
             {loading ? '...' : '↺ Refresh'}
           </button>
@@ -257,6 +313,12 @@ export default function AdminPage() {
 
       {loading && !kpis && (
         <div style={{ textAlign: 'center', padding: '80px', color: 'var(--text-3)' }}>Loading...</div>
+      )}
+
+      {adminError && (
+        <div style={{ marginBottom: '20px', padding: '14px 16px', background: '#2b1111', border: '1px solid #7f1d1d', borderRadius: '10px', color: '#fca5a5', fontSize: '13px' }}>
+          {adminError}
+        </div>
       )}
 
       {/* ── OVERVIEW ─────────────────────────────────────────────────────────── */}
@@ -350,7 +412,7 @@ export default function AdminPage() {
                 <TH>Found</TH><TH>Added</TH><TH>Rejected</TH>
               </tr></thead>
               <tbody>
-                {ingestRuns.map(run => {
+                {pagedIngestRuns.items.map(run => {
                   const dur = run.finished_at
                     ? `${Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s`
                     : 'running...';
@@ -367,6 +429,16 @@ export default function AdminPage() {
                 })}
               </tbody>
             </table>
+            <PaginationControls
+              className="mt-4"
+              page={pagedIngestRuns.page}
+              pages={pagedIngestRuns.pages}
+              from={pagedIngestRuns.from}
+              to={pagedIngestRuns.to}
+              total={pagedIngestRuns.total}
+              pageSize={pagedIngestRuns.pageSize}
+              onPageChange={(nextPage) => setTablePage('ingestRuns', nextPage)}
+            />
           </div>
         </div>
       )}
@@ -383,7 +455,7 @@ export default function AdminPage() {
                 <TH>Errors</TH><TH>DLP Rate</TH><TH>Avg Latency</TH>
               </tr></thead>
               <tbody>
-                {threats.map(row => (
+                {pagedThreats.items.map(row => (
                   <tr key={row.day}>
                     <TD mono>{row.day?.slice(0,10)}</TD>
                     <TD>{fmt(row.total_calls)}</TD>
@@ -398,6 +470,16 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+            <PaginationControls
+              className="mt-4"
+              page={pagedThreats.page}
+              pages={pagedThreats.pages}
+              from={pagedThreats.from}
+              to={pagedThreats.to}
+              total={pagedThreats.total}
+              pageSize={pagedThreats.pageSize}
+              onPageChange={(nextPage) => setTablePage('threats', nextPage)}
+            />
           </div>
         </div>
       )}
@@ -412,7 +494,7 @@ export default function AdminPage() {
               <TH>Calls 30d</TH><TH>Error Rate</TH><TH>DLP Triggers</TH>
             </tr></thead>
             <tbody>
-              {topServers.map(row => (
+              {pagedTopServers.items.map(row => (
                 <tr key={row.name}>
                   <TD mono color={C.blue}>{row.name}</TD>
                   <TD>{row.source}</TD>
@@ -426,6 +508,16 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+          <PaginationControls
+            className="mt-4"
+            page={pagedTopServers.page}
+            pages={pagedTopServers.pages}
+            from={pagedTopServers.from}
+            to={pagedTopServers.to}
+            total={pagedTopServers.total}
+            pageSize={pagedTopServers.pageSize}
+            onPageChange={(nextPage) => setTablePage('topServers', nextPage)}
+          />
         </div>
       )}
 
@@ -439,27 +531,39 @@ export default function AdminPage() {
           {suspIPs.length === 0
             ? <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-3)' }}>No suspicious IPs detected in the last hour.</div>
             : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <thead><tr>
-                  <TH>IP</TH><TH>Calls/h</TH><TH>DLP Hits</TH><TH>Blocked</TH>
-                  <TH>Servers Hit</TH><TH>Risk Score</TH><TH>Last Seen</TH>
-                </tr></thead>
-                <tbody>
-                  {suspIPs.map(row => (
-                    <tr key={row.ip}>
-                      <TD mono color={C.red}>{row.ip}</TD>
-                      <TD>{fmt(row.calls_1h)}</TD>
-                      <TD color={row.dlp_triggers > 0 ? C.red : undefined}>{fmt(row.dlp_triggers)}</TD>
-                      <TD color={row.blocked_calls > 0 ? C.orange : undefined}>{fmt(row.blocked_calls)}</TD>
-                      <TD>{fmt(row.servers_hit)}</TD>
-                      <TD color={row.risk_score > 100 ? C.red : row.risk_score > 50 ? C.orange : C.grey}>
-                        {row.risk_score}
-                      </TD>
-                      <TD>{ago(row.last_seen)}</TD>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>IP</TH><TH>Calls/h</TH><TH>DLP Hits</TH><TH>Blocked</TH>
+                    <TH>Servers Hit</TH><TH>Risk Score</TH><TH>Last Seen</TH>
+                  </tr></thead>
+                  <tbody>
+                    {pagedSuspIPs.items.map(row => (
+                      <tr key={row.ip}>
+                        <TD mono color={C.red}>{row.ip}</TD>
+                        <TD>{fmt(row.calls_1h)}</TD>
+                        <TD color={row.dlp_triggers > 0 ? C.red : undefined}>{fmt(row.dlp_triggers)}</TD>
+                        <TD color={row.blocked_calls > 0 ? C.orange : undefined}>{fmt(row.blocked_calls)}</TD>
+                        <TD>{fmt(row.servers_hit)}</TD>
+                        <TD color={row.risk_score > 100 ? C.red : row.risk_score > 50 ? C.orange : C.grey}>
+                          {row.risk_score}
+                        </TD>
+                        <TD>{ago(row.last_seen)}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <PaginationControls
+                  className="mt-4"
+                  page={pagedSuspIPs.page}
+                  pages={pagedSuspIPs.pages}
+                  from={pagedSuspIPs.from}
+                  to={pagedSuspIPs.to}
+                  total={pagedSuspIPs.total}
+                  pageSize={pagedSuspIPs.pageSize}
+                  onPageChange={(nextPage) => setTablePage('suspIPs', nextPage)}
+                />
+              </div>
             )
           }
         </div>
