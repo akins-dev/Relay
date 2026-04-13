@@ -83,11 +83,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
     mouseY.set(clientY - top);
   }
 
-  const invokable =
+  const discovered = (stats.discovered_servers ?? stats.total_servers).toLocaleString();
+  const cloudReady =
     stats.invokable_servers?.toLocaleString() ?? stats.active_servers.toLocaleString();
-  const callsToday = stats.calls_today
-    ? `${Math.max(1, Math.round(stats.calls_today / 1000))}K`
-    : '0';
   const avgTrust = stats.avg_trust_score ? stats.avg_trust_score.toFixed(1) : '0.0';
 
   return (
@@ -195,9 +193,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         className="page py-10 sm:py-12 border-b border-[rgba(255,255,255,0.05)] mt-8 sm:mt-12"
       >
         <div className="grid grid-cols-2 gap-0 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[rgba(255,255,255,0.08)] backdrop-blur-md bg-[rgba(255,255,255,0.02)] rounded-3xl border border-[rgba(255,255,255,0.05)]">
-          <Metric delay={0.1} label="Invokable" value={invokable} />
-          <Metric delay={0.2} label="Verified" value={stats.verified_servers?.toLocaleString() ?? '0'} />
-          <Metric delay={0.3} label="Calls today" value={callsToday} />
+          <Metric delay={0.1} label="Discovered" value={discovered} />
+          <Metric delay={0.2} label="Cloud-ready" value={cloudReady} />
+          <Metric delay={0.3} label="Verified" value={stats.verified_servers?.toLocaleString() ?? '0'} />
           <Metric delay={0.4} label="Avg trust" value={avgTrust} />
         </div>
       </AnimatedSection>

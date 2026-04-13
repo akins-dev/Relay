@@ -86,6 +86,84 @@ curl -X POST "${SITE_URL}/api/proxy/sendgrid-mail/send_email" \\
 # 3. Fetch the agent skill file
 curl ${SITE_URL}${BRAND.agentMdRoute}`,
   },
+  windsurf: {
+    label: 'Windsurf',
+    lang:  'json',
+    file:  '~/.windsurf/mcp.json',
+    code: `{
+  "mcpServers": {
+    "${BRAND.name}": {
+      "serverUrl": "${SITE_URL}/api/mcp-server"
+    }
+  }
+}`,
+  },
+  'vscode-copilot': {
+    label: 'VS Code Copilot',
+    lang:  'json',
+    file:  '.vscode/mcp.json',
+    code: `{
+  "servers": {
+    "${BRAND.name}": {
+      "type": "sse",
+      "url": "${SITE_URL}/api/mcp-server"
+    }
+  }
+}`,
+  },
+  'continue-dev': {
+    label: 'Continue.dev',
+    lang:  'json',
+    file:  '~/.continue/config.json',
+    code: `{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "transport": { "type": "sse", "url": "${SITE_URL}/api/mcp-server" }
+      }
+    ]
+  }
+}`,
+  },
+  'openai-agents': {
+    label: 'OpenAI Agents SDK',
+    lang:  'python',
+    file:  'Any OpenAI Agents project',
+    code: `from agents import Agent
+from agents.mcp import MCPServerSse
+
+async with MCPServerSse(url="${SITE_URL}/api/mcp-server") as server:
+    agent = Agent(
+        name="my-agent",
+        mcp_servers=[server],
+    )`,
+  },
+  crewai: {
+    label: 'CrewAI',
+    lang:  'python',
+    file:  'Any CrewAI project',
+    code: `from crewai import Agent
+from crewai.tools import MCPServerAdapter
+
+adapter = MCPServerAdapter(
+    server_params={"url": "${SITE_URL}/api/mcp-server"},
+    transport="sse"
+)
+agent = Agent(role="researcher", tools=adapter.tools)`,
+  },
+  ollama: {
+    label: 'Ollama (via bridge)',
+    lang:  'json',
+    file:  'mcp-servers.config.json (ollama-mcp-bridge)',
+    code: `{
+  "mcpServers": {
+    "${BRAND.name}": {
+      "type": "sse",
+      "url": "${SITE_URL}/api/mcp-server"
+    }
+  }
+}`,
+  },
 } as const;
 
 const STEPS = [

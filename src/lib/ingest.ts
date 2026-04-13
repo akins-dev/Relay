@@ -334,138 +334,129 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
 // ── GitHub MCP Servers ────────────────────────────────────────────────────────
 
 export async function fetchGitHubServers(): Promise<IngestServer[]> {
-  // The official MCP servers repo has a well-known README listing servers
-  // We pull the JSON manifest if available, otherwise fall back to readme parsing
+  // The official MCP servers repo has subdirectories under src/
+  // Each subdirectory is a server. We pull the list via GitHub Contents API
+  // then fetch each server's README for description.
   try {
     const res = await fetch(
-      'https://raw.githubusercontent.com/modelcontextprotocol/servers/main/servers.json',
-      { signal: AbortSignal.timeout(10_000) }
+      'https://api.github.com/repos/modelcontextprotocol/servers/contents/src',
+      {
+        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
+        signal: AbortSignal.timeout(10_000),
+      }
     );
     if (!res.ok) return [];
-    const data = await res.json();
-    return (data.servers ?? []).map((s: any) => ({
-      name:         slugify(s.name ?? ''),
-      display_name: s.name ?? '',
-      description:  s.description ?? '',
-      endpoint:     s.url ?? s.endpoint ?? '',
-      version:      s.version ?? '1.0.0',
-      github_url:   s.repository ?? undefined,
-      license:      s.license ?? 'MIT',
-      tags:         s.tags ?? [],
-      tools:        s.tools ?? [],
-      tool_schemas: [],
-      source:       'github' as const,
-      verified:     true, // GitHub-listed servers are curated
-    }));
+    const dirs: any[] = await res.json();
+
+    const servers: IngestServer[] = [];
+    for (const dir of dirs) {
+      if (dir.type !== 'dir') continue;
+      const name = slugify(dir.name);
+      if (!name) continue;
+
+      // Try to read the package.json or README for description
+      let description = `Official MCP reference server: ${dir.name}`;
+      try {
+        const readmeRes = await fetch(
+          `https://raw.githubusercontent.com/modelcontextprotocol/servers/main/src/${dir.name}/README.md`,
+          { signal: AbortSignal.timeout(5_000) }
+        );
+        if (readmeRes.ok) {
+          const readme = await readmeRes.text();
+          // Take the first paragraph as description
+          const firstParagraph = readme.split('\n\n').find(p => p.trim() && !p.startsWith('#') && !p.startsWith('```'));
+          if (firstParagraph) description = firstParagraph.trim().slice(0, 300);
+        }
+      } catch { /* ignore — description already has a fallback */ }
+
+      servers.push({
+        name:         `mcp-${name}`,
+        display_name: dir.name.charAt(0).toUpperCase() + dir.name.slice(1),
+        description,
+        endpoint:     '',
+        version:      '1.0.0',
+        github_url:   `https://github.com/modelcontextprotocol/servers/tree/main/src/${dir.name}`,
+        license:      'MIT',
+        tags:         ['official', 'reference'],
+        tools:        [],
+        tool_schemas: [],
+        source:       'github' as const,
+        verified:     true,
+        transport:    'stdio',
+      });
+    }
+
+    return servers;
   } catch {
     return [];
   }
 }
 
-// ── Glama ─────────────────────────────────────────────────────────────────────
-// 14,274 servers, automated quality checks — best quality signal after official
-// Glama validates READMEs, licenses, and runs basic vuln checks before listing
+// ── PulseMCP ──────────────────────────────────────────────────────────────────
+// PulseMCP does NOT have a public API (returns 403).
+// This fetcher is kept as a scaffold for when they open access or provide API keys.
+
+export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
+  console.warn('[ingest:pulsemcp] PulseMCP API returns 403 — no public API available. Skipping.');
+  return [];
+}
 
 export async function fetchGlamaServers(): Promise<IngestServer[]> {
   const servers: IngestServer[] = [];
-  let page = 1;
-  const pageSize = 50;
+  let cursor: string | null = null;
+  const perPage = 100;
 
   while (true) {
     try {
-      const res = await fetch(
-        `https://glama.ai/api/mcp/v1/servers?page=${page}&perPage=${pageSize}`,
-        {
-          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(15_000),
-        }
-      );
+      const url = cursor
+        ? `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}&after=${cursor}`
+        : `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}`;
+
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
       if (!res.ok) break;
 
       const data = await res.json();
-      const items: any[] = data.servers ?? data.data ?? [];
+      const items: any[] = data.servers ?? [];
       if (items.length === 0) break;
 
       for (const s of items) {
-        const name = slugify(s.name ?? s.id ?? '');
+        const name = slugify(s.name ?? s.slug ?? s.id ?? '');
         if (!name) continue;
+
+        // Detect transport from Glama's 'attributes' array
+        const attrs: string[] = s.attributes ?? [];
+        let transport: IngestServer['transport'] = 'unknown';
+        if (attrs.some(a => a.includes('remote'))) transport = 'sse';
+        else if (attrs.some(a => a.includes('local-only'))) transport = 'stdio';
 
         servers.push({
           name,
           display_name: s.name ?? name,
-          description:  s.description ?? s.shortDescription ?? '',
-          endpoint:     s.url ?? s.endpoint ?? s.sseUrl ?? '',
-          version:      s.version ?? '1.0.0',
-          github_url:   s.repository ?? s.githubUrl ?? undefined,
-          homepage_url: s.homepage ?? s.websiteUrl ?? undefined,
-          license:      s.license ?? 'MIT',
-          tags:         s.tags ?? s.categories ?? [],
+          description:  s.description ?? '',
+          endpoint:     s.url ?? '',
+          version:      '1.0.0',
+          github_url:   s.repository?.url ?? undefined,
+          homepage_url: s.url ?? undefined,
+          license:      s.spdxLicense?.name ?? 'MIT',
+          tags:         attrs,
           tools:        s.tools?.map((t: any) => t.name ?? t) ?? [],
           tool_schemas: [],
           source:       'glama' as any,
-          verified:     s.verified ?? s.isVerified ?? false,
+          glama_id:     s.id ?? undefined,
+          verified:     false,
+          transport,
         });
       }
 
-      if (items.length < pageSize) break;
-      page++;
+      // Cursor pagination: use pageInfo.endCursor
+      const hasNext = data.pageInfo?.hasNextPage ?? false;
+      cursor = data.pageInfo?.endCursor ?? null;
+      if (!hasNext || !cursor) break;
+
       await new Promise(r => setTimeout(r, 300)); // polite rate limiting
-    } catch {
-      break;
-    }
-  }
-
-  return servers;
-}
-
-
-// ── PulseMCP ──────────────────────────────────────────────────────────────────
-// 11,800+ servers, daily updated, popularity signals, marks official vs community
-
-export async function fetchPulseMCPServers(): Promise<IngestServer[]> {
-  const servers: IngestServer[] = [];
-  let page = 1;
-  const pageSize = 100;
-
-  while (true) {
-    try {
-      const res = await fetch(
-        `https://www.pulsemcp.com/api/servers?page=${page}&limit=${pageSize}`,
-        {
-          headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(15_000),
-        }
-      );
-      if (!res.ok) break;
-
-      const data = await res.json();
-      const items: any[] = data.servers ?? data.data ?? data ?? [];
-      if (!Array.isArray(items) || items.length === 0) break;
-
-      for (const s of items) {
-        const name = slugify(s.name ?? s.title ?? s.id ?? '');
-        if (!name) continue;
-
-        servers.push({
-          name,
-          display_name: s.name ?? s.title ?? name,
-          description:  s.description ?? s.shortDescription ?? '',
-          endpoint:     s.url ?? s.endpoint ?? s.mcpUrl ?? '',
-          version:      s.version ?? '1.0.0',
-          github_url:   s.githubUrl ?? s.repository ?? undefined,
-          homepage_url: s.websiteUrl ?? s.homepage ?? undefined,
-          license:      s.license ?? 'MIT',
-          tags:         s.tags ?? s.categories ?? [],
-          tools:        s.tools?.map((t: any) => t.name ?? t) ?? [],
-          tool_schemas: [],
-          source:       'pulsemcp' as const,
-          verified:     s.isOfficial ?? s.verified ?? false,
-        });
-      }
-
-      if (items.length < pageSize) break;
-      page++;
-      await new Promise(r => setTimeout(r, 300));
     } catch {
       break;
     }
