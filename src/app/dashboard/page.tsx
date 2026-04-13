@@ -81,6 +81,8 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTab = searchParams.get('tab') as TabId | null;
+  const adminUid = (process.env.NEXT_PUBLIC_ADMIN_UID ?? '').trim();
+  const isAdminUser = Boolean(user && adminUid && user.id === adminUid);
 
   const [data,        setData]        = useState<DashboardData | null>(null);
   const [tab,         setTab]         = useState<TabId>(urlTab || 'servers');
@@ -245,6 +247,13 @@ function DashboardContent() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isAdminUser && (
+            <Link href="/admin">
+              <Button variant="outline" className="gap-2 rounded-xl border-white/10 bg-white/5 py-5 text-white hover:bg-white/10">
+                <LayoutDashboard size={16} /> Admin panel
+              </Button>
+            </Link>
+          )}
           <Link href="/publish">
             <Button className="gap-2 rounded-xl py-5 shadow-lg shadow-brand/20 transition-all hover:scale-105">
               <Plus size={16} /> Publish server

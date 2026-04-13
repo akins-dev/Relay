@@ -172,6 +172,7 @@ cp .env.example .env.local
 | `SMITHERY_API_KEY` | Optional | Free at smithery.ai — needed for Smithery ingest |
 | `UPSTASH_REDIS_REST_URL` | Optional | Production rate limiting (console.upstash.com) |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Required with above |
+| `NEXT_PUBLIC_ADMIN_UID` | Optional | Supabase Auth user ID allowed to open `/admin` and trigger admin-only ingest |
 
 ### 4. Run
 
@@ -181,6 +182,17 @@ bun dev
 
 # Sign up at /login, then re-run 002_seed_data.sql in Supabase SQL Editor
 ```
+
+---
+
+## Admin Panel
+
+The admin dashboard lives at `/admin`.
+
+- If you are not signed in, `/admin` redirects to `/login?redirect=/admin`.
+- If you are signed in with the wrong account, the page shows an access-required state instead of bouncing back to the landing page.
+- To enable admin access, set `NEXT_PUBLIC_ADMIN_UID` to your Supabase Auth user UUID from Supabase Dashboard → Authentication → Users.
+- Admin-triggered ingests use `POST /api/admin/ingest`, which validates the signed-in user server-side before calling the protected cron ingest route.
 
 ---
 
@@ -210,15 +222,45 @@ Expected response:
 ```json
 {
   "success": true,
+  "message": "Ingest completed for all configured sources. 33548 fetched 26182 added 3 updated 6417 skipped 917 rejected 2 errors",
+  "run": {
+    "id": "run_123",
+    "source": "all",
+    "started_at": "2026-04-13T09:00:00.000Z",
+    "finished_at": "2026-04-13T09:04:12.000Z",
+    "duration_ms": 252000
+  },
   "results": {
-    "official":  { "fetched": 87,    "added": 82,    "updated": 3, "rejected": 2 },
-    "smithery":  { "fetched": 7300,  "added": 6100,  "rejected": 180 },
-    "glama":     { "fetched": 14274, "added": 11000, "rejected": 420 },
-    "pulsemcp":  { "fetched": 11800, "added": 9000,  "rejected": 310 },
-    "github":    { "fetched": 87,    "added": 80,    "rejected": 5 }
+    "official": {
+      "fetched": 87,
+      "added": 82,
+      "updated": 3,
+      "skipped": 0,
+      "rejected": 2,
+      "error_count": 0
+    },
+    "github": {
+      "fetched": 87,
+      "added": 80,
+      "updated": 0,
+      "skipped": 2,
+      "rejected": 5,
+      "error_count": 0
+    }
+  },
+  "total": {
+    "sources_processed": 2,
+    "servers_found": 174,
+    "servers_added": 162,
+    "servers_updated": 3,
+    "servers_skipped": 2,
+    "servers_rejected": 7,
+    "errors": 0
   }
 }
 ```
+
+The response is pretty-printed JSON and only includes per-source totals, not individual server names.
 
 ---
 
@@ -257,6 +299,7 @@ POST /api/proxy/:serverName/:toolName         15-layer security proxy — every 
 POST /api/mcp-server                          Native MCP server (StreamableHTTP)
 GET  /api/mcp-server                          Native MCP server (SSE — for older clients)
 POST /api/ingest                              Trigger ingest (CRON_SECRET required)
+POST /api/admin/ingest                        Trigger ingest from the signed-in admin session
 ```
 
 ---

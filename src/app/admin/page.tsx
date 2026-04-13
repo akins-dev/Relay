@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/components/AuthProvider';
 
 // ── Your admin user ID — change this to your Supabase auth UID ───────────────
 // Get it from Supabase → Authentication → Users → your row → User UID
@@ -46,6 +48,9 @@ type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats';
 export default function AdminPage() {
   const supabase = createClient();
   const router   = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const adminUid = ADMIN_UID.trim();
+  const isAdmin = Boolean(user && adminUid && user.id === adminUid);
   const [tab,        setTab]        = useState<Tab>('overview');
   const [kpis,       setKpis]       = useState<PlatformKPIs | null>(null);
   const [ingest,     setIngest]     = useState<IngestQuality[]>([]);
@@ -55,21 +60,22 @@ export default function AdminPage() {
   const [ingestRuns, setIngestRuns] = useState<IngestRun[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
+  const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || (ADMIN_UID && user.id !== ADMIN_UID)) {
-        router.push('/');
-      }
-    });
-  }, []);
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/login?redirect=%2Fadmin');
+    }
+  }, [authLoading, router, user]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const load = useCallback(async () => {
+    if (!isAdmin) return;
     setLoading(true);
     const svc = supabase;
 
@@ -80,7 +86,7 @@ export default function AdminPage() {
       svc.from('suspicious_ips').select('*').limit(20),
       svc.from('top_servers_by_usage').select('*').limit(20),
       svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(20),
-    ]);
+    ]) as any[];
 
     if (kpisRes.data)    setKpis(kpisRes.data as any);
     if (ingestRes.data)  setIngest(ingestRes.data as any);
@@ -90,29 +96,49 @@ export default function AdminPage() {
     if (runsRes.data)    setIngestRuns(runsRes.data as any);
     setLoading(false);
     setLastRefresh(new Date());
-  }, []);
+  }, [isAdmin, supabase]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (isAdmin) load();
+  }, [isAdmin, load]);
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
+    if (!isAdmin) return;
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [isAdmin, load]);
 
   // ── Trigger ingest ─────────────────────────────────────────────────────────
   const [ingesting, setIngesting] = useState(false);
   async function triggerIngest(source: string) {
     setIngesting(true);
-    // Admin ingest triggers through a dedicated admin API route
-    // that validates the user's session server-side — no secrets in client bundle
-    await fetch('/api/admin/ingest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source }),
-    });
-    setIngesting(false);
-    load();
+    setIngestFeedback(null);
+    try {
+      // Admin ingest triggers through a dedicated admin API route
+      // that validates the user's session server-side — no secrets in client bundle
+      const res = await fetch('/api/admin/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Failed to trigger ingest');
+      }
+      setIngestFeedback({
+        tone: 'success',
+        message: json.message ?? `Ingest completed for ${source}.`,
+      });
+      await load();
+    } catch (error: any) {
+      setIngestFeedback({
+        tone: 'error',
+        message: error.message ?? 'Failed to trigger ingest',
+      });
+    } finally {
+      setIngesting(false);
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -144,6 +170,58 @@ export default function AdminPage() {
   }
   function TD({ children, mono, color }: any) {
     return <td style={{ padding: '9px 12px', fontSize: '13px', fontFamily: mono ? 'var(--mono)' : 'var(--font)', color: color ?? 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children ?? '—'}</td>;
+  }
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+        Loading admin access...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+        Redirecting to login...
+      </div>
+    );
+  }
+
+  if (!adminUid) {
+    return (
+      <div style={{ padding: '48px 24px', maxWidth: '720px', margin: '0 auto' }}>
+        <div style={{ padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>admin</div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px' }}>Admin panel is not configured yet</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '18px' }}>
+            Set <code>NEXT_PUBLIC_ADMIN_UID</code> to your Supabase Auth user ID, then restart the app.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Link href="/dashboard" className="btn btn-ghost btn-sm">Back to dashboard</Link>
+            <Link href="/docs" className="btn btn-ghost btn-sm">Open docs</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: '48px 24px', maxWidth: '720px', margin: '0 auto' }}>
+        <div style={{ padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>admin</div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px' }}>Admin access required</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '18px' }}>
+            This account is signed in, but it does not match the configured admin user.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Link href="/dashboard" className="btn btn-ghost btn-sm">Back to dashboard</Link>
+            <button onClick={() => router.replace('/')} className="btn btn-ghost btn-sm">Go home</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -217,6 +295,18 @@ export default function AdminPage() {
       {/* ── INGEST ───────────────────────────────────────────────────────────── */}
       {tab === 'ingest' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {ingestFeedback && (
+            <div style={{
+              padding: '12px 14px',
+              background: ingestFeedback.tone === 'success' ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${ingestFeedback.tone === 'success' ? '#86efac' : '#fecaca'}`,
+              borderRadius: '10px',
+              fontSize: '13px',
+              color: ingestFeedback.tone === 'success' ? C.green : C.red,
+            }}>
+              {ingestFeedback.message}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
             {['all','official','smithery','glama','pulsemcp','github'].map(src => (

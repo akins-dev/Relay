@@ -15,24 +15,37 @@ import {
   fetchPulseMCPServers,
   upsertServers,
 } from '@/lib/ingest';
+import {
+  buildIngestMessage,
+  compactIngestResults,
+  summarizeIngestResults,
+} from '@/lib/ingest-response';
 
 function isAuthorized(req: NextRequest) {
   return safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`);
 }
 
+function jsonResponse(payload: unknown, status = 200) {
+  return new NextResponse(JSON.stringify(payload, null, 2), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+}
+
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAuthorized(req)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   let body: z.infer<typeof IngestSchema>;
   try { body = IngestSchema.parse(await req.json().catch(() => ({}))); }
   catch (e) { return zodError(e); }
   const { source } = body;
   const svc = createServiceClient();
+  const ingestRuns = svc.from('ingest_runs') as any;
   const startedAt = new Date().toISOString();
   const results: Record<string, any> = {};
 
   // Track run
-  const { data: run } = await svc.from('ingest_runs').insert({
+  const { data: run } = await ingestRuns.insert({
     source, started_at: startedAt,
   }).select('id').single();
 
@@ -78,48 +91,64 @@ export async function POST(req: NextRequest) {
     }
 
     // Update ingest run record
-    const total = Object.values(results).reduce((acc: any, r: any) => ({
-      servers_found:    (acc.servers_found    || 0) + (r.fetched    || 0),
-      servers_added:    (acc.servers_added    || 0) + (r.added      || 0),
-      servers_updated:  (acc.servers_updated  || 0) + (r.updated    || 0),
-      servers_rejected: (acc.servers_rejected || 0) + (r.rejected   || 0),
-    }), {});
+    const compactResults = compactIngestResults(results);
+    const total = summarizeIngestResults(compactResults);
+    const finishedAt = new Date().toISOString();
 
     if (run?.id) {
-      await svc.from('ingest_runs').update({
-        finished_at: new Date().toISOString(),
-        ...total,
+      await ingestRuns.update({
+        finished_at: finishedAt,
+        servers_found: total.servers_found,
+        servers_added: total.servers_added,
+        servers_updated: total.servers_updated,
+        servers_rejected: total.servers_rejected,
       }).eq('id', run.id);
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
-      results,
+      message: buildIngestMessage(source, total),
+      run: {
+        id: run?.id ?? null,
+        source,
+        started_at: startedAt,
+        finished_at: finishedAt,
+        duration_ms: new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
+      },
+      results: compactResults,
       total,
-      timestamp: new Date().toISOString(),
+      timestamp: finishedAt,
     });
 
   } catch (err: any) {
+    const finishedAt = new Date().toISOString();
     if (run?.id) {
-      await svc.from('ingest_runs').update({
-        finished_at: new Date().toISOString(),
+      await ingestRuns.update({
+        finished_at: finishedAt,
         error: err.message,
       }).eq('id', run.id);
     }
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return jsonResponse({
+      error: err.message,
+      run: {
+        id: run?.id ?? null,
+        source,
+        started_at: startedAt,
+        finished_at: finishedAt,
+      },
+    }, 500);
   }
 }
 
 // GET — ingest status / last run info
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAuthorized(req)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const svc = createServiceClient();
-  const { data: runs } = await svc
-    .from('ingest_runs')
+  const { data: runs } = await (svc.from('ingest_runs') as any)
     .select('*')
     .order('started_at', { ascending: false })
     .limit(10);
 
-  return NextResponse.json({ runs: runs ?? [] });
+  return jsonResponse({ runs: runs ?? [] });
 }

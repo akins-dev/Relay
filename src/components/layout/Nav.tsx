@@ -19,6 +19,8 @@ export function Nav() {
   const { user, loading, logout } = useAuth();
   const path   = usePathname();
   const router = useRouter();
+  const adminUid = (process.env.NEXT_PUBLIC_ADMIN_UID ?? '').trim();
+  const isAdminUser = Boolean(user && adminUid && user.id === adminUid);
   const isActive = (href: string) => path.startsWith(href);
   const [open, setOpen] = useState(false);
 
@@ -73,6 +75,19 @@ export function Nav() {
             </div>
           ) : user ? (
             <>
+              {isAdminUser && (
+                <Link
+                  href="/admin"
+                  className={cn(
+                    'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                    isActive('/admin')
+                      ? 'text-white font-medium'
+                      : 'text-[#94a3b8] hover:text-white'
+                  )}
+                >
+                  Admin
+                </Link>
+              )}
               <Link
                 href="/dashboard"
                 className={cn(
@@ -147,6 +162,18 @@ export function Nav() {
               </div>
             ) : user ? (
               <>
+                {isAdminUser && (
+                  <Link
+                    href="/admin"
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                      isActive('/admin') ? 'text-white font-semibold' : 'text-[#94a3b8]'
+                    )}
+                  >
+                    Admin
+                  </Link>
+                )}
                 <Link
                   href="/dashboard"
                   onClick={() => setOpen(false)}
