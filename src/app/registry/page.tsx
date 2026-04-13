@@ -35,7 +35,7 @@ const TRANSPORTS = [
   { value: 'cloud', label: 'Cloud-ready', icon: Cloud          },
   { value: 'stdio', label: 'Local (CLI)', icon: Terminal       },
 ];
-const PAGE_SIZES = [24, 48, 96];
+const PAGE_SIZES = [12, 24, 48, 96];
 
 export default function RegistryPage() {
   const router = useRouter();
@@ -48,8 +48,8 @@ export default function RegistryPage() {
   const source    = sp.get('source')    || '';
   const transport = sp.get('transport') || '';
   const page      = parseInt(sp.get('page') || '1');
-  const rawPageSize = parseInt(sp.get('page_size') || '24');
-  const pageSize  = PAGE_SIZES.includes(rawPageSize) ? rawPageSize : 24;
+  const rawPageSize = parseInt(sp.get('page_size') || '12');
+  const pageSize  = rawPageSize > 0 ? rawPageSize : 12;
 
   const [servers,    setServers]    = useState<Server[]>([]);
   const [total,      setTotal]      = useState(0);
@@ -68,9 +68,9 @@ export default function RegistryPage() {
   }
 
   useEffect(() => {
-    if (PAGE_SIZES.includes(rawPageSize)) return;
+    if (PAGE_SIZES.includes(rawPageSize) || rawPageSize > 0) return;
     const p = new URLSearchParams(sp.toString());
-    p.set('page_size', '24');
+    p.set('page_size', '12');
     router.replace(`/registry?${p.toString()}`);
   }, [rawPageSize, router, sp]);
 
