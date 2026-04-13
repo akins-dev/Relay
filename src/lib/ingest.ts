@@ -544,7 +544,7 @@ export async function upsertServers(
   // Batch pre-fetch all existing servers to eliminate N+1 DB lookups
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, schema_hash, smithery_id, official_id, glama_id, last_scanned_at');
+    .select('id, name, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at');
 
   if (prefetchErr) {
     console.error(`${tag} Pre-fetch FAILED: ${prefetchErr.message}. Will treat all servers as new.`);
@@ -554,12 +554,14 @@ export async function upsertServers(
   const existingBySmithery = new Map<string, any>();
   const existingByOfficial = new Map<string, any>();
   const existingByGlama    = new Map<string, any>();
+  const existingByGithub   = new Map<string, any>();
 
   for (const row of allExisting ?? []) {
     if (row.name)        existingByName.set(row.name, row);
     if (row.smithery_id) existingBySmithery.set(row.smithery_id, row);
     if (row.official_id) existingByOfficial.set(row.official_id, row);
     if (row.glama_id)    existingByGlama.set(row.glama_id, row);
+    if (row.github_url)  existingByGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
   }
 
   console.log(`${tag} Pre-fetched ${existingByName.size} existing servers. Processing ${servers.length} incoming...`);
@@ -600,6 +602,7 @@ export async function upsertServers(
       if (s.smithery_id)                    existing = existingBySmithery.get(s.smithery_id);
       if (!existing && s.official_id)       existing = existingByOfficial.get(s.official_id);
       if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
+      if (!existing && s.github_url)        existing = existingByGithub.get(s.github_url.replace(/\.git$/, '').toLowerCase());
       if (!existing)                        existing = existingByName.get(s.name);
 
       // Upstream hash — lightweight change detection
