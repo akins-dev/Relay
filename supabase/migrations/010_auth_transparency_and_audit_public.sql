@@ -10,7 +10,8 @@ ALTER TABLE public.servers
     CHECK (auth_type IN (
       'none',      -- fully public, no credentials needed (weather, public data APIs)
       'managed',   -- server manages OAuth / credentials internally (most hosted servers)
-      'key_param' -- server expects credentials as arguments (bad design, DLP will block)
+      'key_param', -- server expects credentials as arguments (bad design, DLP will block)
+      'agentsecrets' -- integrates with AgentSecrets vault
     )),
   ADD COLUMN IF NOT EXISTS auth_setup_url TEXT;  -- link to OAuth/connection setup
 
@@ -25,6 +26,11 @@ WHERE (
   'wikipedia' = ANY(tags) OR
   'search' = ANY(tags)
 ) AND verified = FALSE;  -- only for community servers, not verified ones
+
+-- AgentSecrets itself
+UPDATE public.servers
+SET auth_type = 'agentsecrets', auth_setup_url = 'https://github.com/the-17/agentsecrets'
+WHERE name = 'agentsecrets';
 
 -- ── Audit log — tiered public access ──────────────────────────────────────────
 -- Public: aggregate stats per server (no IPs, no DLP details, no user info)
@@ -94,6 +100,8 @@ GRANT SELECT ON public.platform_transparency TO anon, authenticated;
 -- ── Update search RPC to include auth_type ────────────────────────────────────
 -- Agents need to know upfront whether they need to set up auth
 -- before attempting to call a tool
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.search_servers(
   query_text    TEXT,
   result_limit  INTEGER DEFAULT 5,

@@ -1,7 +1,11 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/components/AuthProvider';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { paginateItems } from '@/lib/pagination';
 
 // ── Your admin user ID — change this to your Supabase auth UID ───────────────
 // Get it from Supabase → Authentication → Users → your row → User UID
@@ -40,12 +44,29 @@ interface IngestRun {
   id: string; source: string; started_at: string; finished_at: string;
   servers_found: number; servers_added: number; servers_rejected: number;
 }
+interface CronJobRun {
+  id: string; job_name: string; started_at: string; finished_at: string;
+  status: string; result: any; error: string | null; duration_seconds: number;
+}
+interface DriftEvent {
+  name: string; display_name: string; source: string; status: string;
+  trust_score: number; drifted_at: string; issues: any; details: string;
+}
+interface UptimeIssue {
+  name: string; display_name: string; source: string; endpoint: string;
+  transport: string; uptime_pct: number; latency_ms: number;
+  trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
+}
 
-type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats';
+type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations';
+const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
   const supabase = createClient();
   const router   = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const adminUid = ADMIN_UID.trim();
+  const isAdmin = Boolean(user && adminUid && user.id === adminUid);
   const [tab,        setTab]        = useState<Tab>('overview');
   const [kpis,       setKpis]       = useState<PlatformKPIs | null>(null);
   const [ingest,     setIngest]     = useState<IngestQuality[]>([]);
@@ -53,63 +74,112 @@ export default function AdminPage() {
   const [suspIPs,    setSuspIPs]    = useState<SuspiciousIP[]>([]);
   const [topServers, setTopServers] = useState<TopServer[]>([]);
   const [ingestRuns, setIngestRuns] = useState<IngestRun[]>([]);
+  const [cronJobs,   setCronJobs]   = useState<CronJobRun[]>([]);
+  const [driftEvents,setDriftEvents]= useState<DriftEvent[]>([]);
+  const [uptimeIssues,setUptimeIssues]= useState<UptimeIssue[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
+  const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [tablePageSize, setTablePageSize] = useState(8);
+  const [tablePages, setTablePages] = useState({
+    ingestRuns: 1,
+    threats: 1,
+    topServers: 1,
+    suspIPs: 1,
+  });
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || (ADMIN_UID && user.id !== ADMIN_UID)) {
-        router.push('/');
-      }
-    });
-  }, []);
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/login?redirect=%2Fadmin');
+    }
+  }, [authLoading, router, user]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const load = useCallback(async () => {
+    if (!isAdmin) return;
     setLoading(true);
+    setAdminError(null);
     const svc = supabase;
 
-    const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes] = await Promise.all([
-      svc.from('platform_kpis').select('*').single(),
-      svc.from('ingest_quality').select('*'),
-      svc.from('security_threats').select('*').limit(14),
-      svc.from('suspicious_ips').select('*').limit(20),
-      svc.from('top_servers_by_usage').select('*').limit(20),
-      svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(20),
-    ]);
+    try {
+      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes] = await Promise.all([
+        svc.from('platform_kpis').select('*').single(),
+        svc.from('ingest_quality').select('*'),
+        svc.from('security_threats').select('*').limit(30),
+        svc.from('suspicious_ips').select('*').limit(100),
+        svc.from('top_servers_by_usage').select('*').limit(100),
+        svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(100),
+        svc.from('cron_job_health').select('*'),
+        svc.from('drift_events').select('*').limit(50),
+        svc.from('uptime_issues').select('*').limit(50),
+      ]) as any[];
 
-    if (kpisRes.data)    setKpis(kpisRes.data as any);
-    if (ingestRes.data)  setIngest(ingestRes.data as any);
-    if (threatsRes.data) setThreats(threatsRes.data as any);
-    if (suspRes.data)    setSuspIPs(suspRes.data as any);
-    if (topRes.data)     setTopServers(topRes.data as any);
-    if (runsRes.data)    setIngestRuns(runsRes.data as any);
-    setLoading(false);
-    setLastRefresh(new Date());
-  }, []);
+      if (kpisRes.error) throw new Error(kpisRes.error.message);
 
-  useEffect(() => { load(); }, []);
+      if (kpisRes.data)    setKpis(kpisRes.data as any);
+      if (ingestRes.data)  setIngest(ingestRes.data as any);
+      if (threatsRes.data) setThreats(threatsRes.data as any);
+      if (suspRes.data)    setSuspIPs(suspRes.data as any);
+      if (topRes.data)     setTopServers(topRes.data as any);
+      if (runsRes.data)    setIngestRuns(runsRes.data as any);
+      if (cronRes?.data)   setCronJobs(cronRes.data as any);
+      if (driftRes?.data)  setDriftEvents(driftRes.data as any);
+      if (uptimeRes?.data) setUptimeIssues(uptimeRes.data as any);
+      setLastRefresh(new Date());
+    } catch (error: any) {
+      setAdminError(error.message ?? 'Could not load admin dashboard');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAdmin, supabase]);
+
+  useEffect(() => {
+    if (isAdmin) load();
+  }, [isAdmin, load]);
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
+    if (!isAdmin) return;
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [isAdmin, load]);
 
   // ── Trigger ingest ─────────────────────────────────────────────────────────
   const [ingesting, setIngesting] = useState(false);
   async function triggerIngest(source: string) {
     setIngesting(true);
-    // Admin ingest triggers through a dedicated admin API route
-    // that validates the user's session server-side — no secrets in client bundle
-    await fetch('/api/admin/ingest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source }),
-    });
-    setIngesting(false);
-    load();
+    setIngestFeedback(null);
+    try {
+      // Admin ingest triggers through a dedicated admin API route
+      // that validates the user's session server-side — no secrets in client bundle
+      const res = await fetch('/api/admin/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Failed to trigger ingest');
+      }
+      setIngestFeedback({
+        tone: 'success',
+        message: json.message ?? `Ingest completed for ${source}.`,
+      });
+      await load();
+    } catch (error: any) {
+      setIngestFeedback({
+        tone: 'error',
+        message: error.message ?? 'Failed to trigger ingest',
+      });
+    } finally {
+      setIngesting(false);
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -143,19 +213,108 @@ export default function AdminPage() {
     return <td style={{ padding: '9px 12px', fontSize: '13px', fontFamily: mono ? 'var(--mono)' : 'var(--font)', color: color ?? 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children ?? '—'}</td>;
   }
 
+  const pagedIngestRuns = useMemo(
+    () => paginateItems(ingestRuns, tablePages.ingestRuns, tablePageSize),
+    [ingestRuns, tablePages.ingestRuns, tablePageSize]
+  );
+  const pagedThreats = useMemo(
+    () => paginateItems(threats, tablePages.threats, tablePageSize),
+    [threats, tablePages.threats, tablePageSize]
+  );
+  const pagedTopServers = useMemo(
+    () => paginateItems(topServers, tablePages.topServers, tablePageSize),
+    [topServers, tablePages.topServers, tablePageSize]
+  );
+  const pagedSuspIPs = useMemo(
+    () => paginateItems(suspIPs, tablePages.suspIPs, tablePageSize),
+    [suspIPs, tablePages.suspIPs, tablePageSize]
+  );
+
+  function setTablePage<K extends keyof typeof tablePages>(key: K, page: number) {
+    setTablePages((current) => ({ ...current, [key]: page }));
+  }
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+        Loading admin access...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+        Redirecting to login...
+      </div>
+    );
+  }
+
+  if (!adminUid) {
+    return (
+      <div style={{ padding: '48px 24px', maxWidth: '720px', margin: '0 auto' }}>
+        <div style={{ padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>admin</div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px' }}>Admin panel is not configured yet</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '18px' }}>
+            Set <code>NEXT_PUBLIC_ADMIN_UID</code> to your Supabase Auth user ID, then restart the app.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Link href="/dashboard" className="btn btn-ghost btn-sm">Back to dashboard</Link>
+            <Link href="/docs" className="btn btn-ghost btn-sm">Open docs</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: '48px 24px', maxWidth: '720px', margin: '0 auto' }}>
+        <div style={{ padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px' }}>
+          <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>admin</div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px' }}>Admin access required</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '18px' }}>
+            This account is signed in, but it does not match the configured admin user.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Link href="/dashboard" className="btn btn-ghost btn-sm">Back to dashboard</Link>
+            <button onClick={() => router.replace('/')} className="btn btn-ghost btn-sm">Go home</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '32px 48px', maxWidth: '1400px', margin: '0 auto' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', gap: '16px', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>admin</div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em' }}>Platform Dashboard</h1>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-            Last refresh: {lastRefresh.toLocaleTimeString()} · auto-refreshes every 60s
+            {mounted ? `Last refresh: ${lastRefresh.toLocaleTimeString()} · auto-refreshes every 60s` : 'Loading...'}
           </span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
+            table size
+            <select
+              className="input"
+              style={{ width: 'auto', padding: '0.45rem 0.7rem', fontSize: '12px' }}
+              value={String(tablePageSize)}
+              onChange={(e) => {
+                setTablePageSize(Number(e.target.value));
+                setTablePages({ ingestRuns: 1, threats: 1, topServers: 1, suspIPs: 1 });
+              }}
+            >
+              {ADMIN_PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
           <button onClick={load} className="btn btn-ghost btn-sm" disabled={loading}>
             {loading ? '...' : '↺ Refresh'}
           </button>
@@ -163,19 +322,26 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px' }}>
-        {(['overview','ingest','security','servers','threats'] as Tab[]).map(t => (
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px', overflowX: 'auto' }}>
+        {(['overview','operations','ingest','security','servers','threats'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
             marginBottom: '-1px', fontSize: '13px', fontWeight: tab === t ? 600 : 400,
             color: tab === t ? 'var(--text)' : 'var(--text-3)', textTransform: 'capitalize',
+            whiteSpace: 'nowrap',
           }}>{t}</button>
         ))}
       </div>
 
       {loading && !kpis && (
         <div style={{ textAlign: 'center', padding: '80px', color: 'var(--text-3)' }}>Loading...</div>
+      )}
+
+      {adminError && (
+        <div style={{ marginBottom: '20px', padding: '14px 16px', background: '#2b1111', border: '1px solid #7f1d1d', borderRadius: '10px', color: '#fca5a5', fontSize: '13px' }}>
+          {adminError}
+        </div>
       )}
 
       {/* ── OVERVIEW ─────────────────────────────────────────────────────────── */}
@@ -214,6 +380,18 @@ export default function AdminPage() {
       {/* ── INGEST ───────────────────────────────────────────────────────────── */}
       {tab === 'ingest' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {ingestFeedback && (
+            <div style={{
+              padding: '12px 14px',
+              background: ingestFeedback.tone === 'success' ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${ingestFeedback.tone === 'success' ? '#86efac' : '#fecaca'}`,
+              borderRadius: '10px',
+              fontSize: '13px',
+              color: ingestFeedback.tone === 'success' ? C.green : C.red,
+            }}>
+              {ingestFeedback.message}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
             {['all','official','smithery','glama','pulsemcp','github'].map(src => (
@@ -257,7 +435,7 @@ export default function AdminPage() {
                 <TH>Found</TH><TH>Added</TH><TH>Rejected</TH>
               </tr></thead>
               <tbody>
-                {ingestRuns.map(run => {
+                {pagedIngestRuns.items.map(run => {
                   const dur = run.finished_at
                     ? `${Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s`
                     : 'running...';
@@ -274,6 +452,16 @@ export default function AdminPage() {
                 })}
               </tbody>
             </table>
+            <PaginationControls
+              className="mt-4"
+              page={pagedIngestRuns.page}
+              pages={pagedIngestRuns.pages}
+              from={pagedIngestRuns.from}
+              to={pagedIngestRuns.to}
+              total={pagedIngestRuns.total}
+              pageSize={pagedIngestRuns.pageSize}
+              onPageChange={(nextPage) => setTablePage('ingestRuns', nextPage)}
+            />
           </div>
         </div>
       )}
@@ -290,7 +478,7 @@ export default function AdminPage() {
                 <TH>Errors</TH><TH>DLP Rate</TH><TH>Avg Latency</TH>
               </tr></thead>
               <tbody>
-                {threats.map(row => (
+                {pagedThreats.items.map(row => (
                   <tr key={row.day}>
                     <TD mono>{row.day?.slice(0,10)}</TD>
                     <TD>{fmt(row.total_calls)}</TD>
@@ -305,6 +493,16 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+            <PaginationControls
+              className="mt-4"
+              page={pagedThreats.page}
+              pages={pagedThreats.pages}
+              from={pagedThreats.from}
+              to={pagedThreats.to}
+              total={pagedThreats.total}
+              pageSize={pagedThreats.pageSize}
+              onPageChange={(nextPage) => setTablePage('threats', nextPage)}
+            />
           </div>
         </div>
       )}
@@ -319,7 +517,7 @@ export default function AdminPage() {
               <TH>Calls 30d</TH><TH>Error Rate</TH><TH>DLP Triggers</TH>
             </tr></thead>
             <tbody>
-              {topServers.map(row => (
+              {pagedTopServers.items.map(row => (
                 <tr key={row.name}>
                   <TD mono color={C.blue}>{row.name}</TD>
                   <TD>{row.source}</TD>
@@ -333,6 +531,16 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+          <PaginationControls
+            className="mt-4"
+            page={pagedTopServers.page}
+            pages={pagedTopServers.pages}
+            from={pagedTopServers.from}
+            to={pagedTopServers.to}
+            total={pagedTopServers.total}
+            pageSize={pagedTopServers.pageSize}
+            onPageChange={(nextPage) => setTablePage('topServers', nextPage)}
+          />
         </div>
       )}
 
@@ -346,29 +554,191 @@ export default function AdminPage() {
           {suspIPs.length === 0
             ? <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-3)' }}>No suspicious IPs detected in the last hour.</div>
             : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <thead><tr>
-                  <TH>IP</TH><TH>Calls/h</TH><TH>DLP Hits</TH><TH>Blocked</TH>
-                  <TH>Servers Hit</TH><TH>Risk Score</TH><TH>Last Seen</TH>
-                </tr></thead>
-                <tbody>
-                  {suspIPs.map(row => (
-                    <tr key={row.ip}>
-                      <TD mono color={C.red}>{row.ip}</TD>
-                      <TD>{fmt(row.calls_1h)}</TD>
-                      <TD color={row.dlp_triggers > 0 ? C.red : undefined}>{fmt(row.dlp_triggers)}</TD>
-                      <TD color={row.blocked_calls > 0 ? C.orange : undefined}>{fmt(row.blocked_calls)}</TD>
-                      <TD>{fmt(row.servers_hit)}</TD>
-                      <TD color={row.risk_score > 100 ? C.red : row.risk_score > 50 ? C.orange : C.grey}>
-                        {row.risk_score}
-                      </TD>
-                      <TD>{ago(row.last_seen)}</TD>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>IP</TH><TH>Calls/h</TH><TH>DLP Hits</TH><TH>Blocked</TH>
+                    <TH>Servers Hit</TH><TH>Risk Score</TH><TH>Last Seen</TH>
+                  </tr></thead>
+                  <tbody>
+                    {pagedSuspIPs.items.map(row => (
+                      <tr key={row.ip}>
+                        <TD mono color={C.red}>{row.ip}</TD>
+                        <TD>{fmt(row.calls_1h)}</TD>
+                        <TD color={row.dlp_triggers > 0 ? C.red : undefined}>{fmt(row.dlp_triggers)}</TD>
+                        <TD color={row.blocked_calls > 0 ? C.orange : undefined}>{fmt(row.blocked_calls)}</TD>
+                        <TD>{fmt(row.servers_hit)}</TD>
+                        <TD color={row.risk_score > 100 ? C.red : row.risk_score > 50 ? C.orange : C.grey}>
+                          {row.risk_score}
+                        </TD>
+                        <TD>{ago(row.last_seen)}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <PaginationControls
+                  className="mt-4"
+                  page={pagedSuspIPs.page}
+                  pages={pagedSuspIPs.pages}
+                  from={pagedSuspIPs.from}
+                  to={pagedSuspIPs.to}
+                  total={pagedSuspIPs.total}
+                  pageSize={pagedSuspIPs.pageSize}
+                  onPageChange={(nextPage) => setTablePage('suspIPs', nextPage)}
+                />
+              </div>
             )
           }
+        </div>
+      )}
+      {/* ── OPERATIONS ────────────────────────────────────────────────────── */}
+      {tab === 'operations' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+          {/* Cron Job Health */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Background Job Health</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Job</TH><TH>Last Run</TH><TH>Status</TH><TH>Duration</TH><TH>Result</TH>
+              </tr></thead>
+              <tbody>
+                {(cronJobs.length > 0 ? cronJobs : [
+                  { id: '-', job_name: 'uptime_check', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'schema_drift', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'reset_daily_calls', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'ingest', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                ]).map(job => (
+                  <tr key={job.job_name}>
+                    <TD mono color={C.blue}>{job.job_name}</TD>
+                    <TD>{job.started_at ? ago(job.started_at) : '—'}</TD>
+                    <TD color={job.status === 'success' ? C.green : job.status === 'error' ? C.red : job.status === 'running' ? C.orange : C.grey}>
+                      {job.status === 'success' ? '✓ success' : job.status === 'error' ? '✗ error' : job.status === 'running' ? '⟳ running' : job.status}
+                    </TD>
+                    <TD mono>{job.duration_seconds ? `${job.duration_seconds}s` : '—'}</TD>
+                    <TD>{job.error ? <span style={{ color: C.red }}>{job.error}</span> : job.result ? JSON.stringify(job.result).slice(0, 80) : '—'}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Schema Drift Events */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Schema Drift Events <span style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 400 }}>(tools changed post-approval → suspended)</span></h3>
+            {driftEvents.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>No schema drift events detected. All servers are stable.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>Server</TH><TH>Source</TH><TH>Drifted</TH><TH>Status</TH><TH>Details</TH>
+                  </tr></thead>
+                  <tbody>
+                    {driftEvents.map(ev => (
+                      <tr key={ev.name + ev.drifted_at}>
+                        <TD mono color={C.red}>{ev.name}</TD>
+                        <TD>{ev.source}</TD>
+                        <TD>{ago(ev.drifted_at)}</TD>
+                        <TD color={ev.status === 'suspended' ? C.red : C.orange}>{ev.status}</TD>
+                        <TD>{ev.details?.slice(0, 100) ?? '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* Uptime Issues */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Uptime Issues <span style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 400 }}>(&lt;95% uptime or &gt;5s latency)</span></h3>
+            {uptimeIssues.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>All active servers meet uptime and latency thresholds.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>Server</TH><TH>Source</TH><TH>Transport</TH><TH>Uptime</TH><TH>Latency</TH><TH>Trust</TH><TH>Last Scan</TH>
+                  </tr></thead>
+                  <tbody>
+                    {uptimeIssues.slice(0, tablePageSize).map(s => (
+                      <tr key={s.name}>
+                        <TD mono color={C.blue}>{s.name}</TD>
+                        <TD>{s.source}</TD>
+                        <TD>{s.transport}</TD>
+                        <TD color={s.uptime_pct < 90 ? C.red : C.orange}>{s.uptime_pct != null ? `${Number(s.uptime_pct).toFixed(1)}%` : '—'}</TD>
+                        <TD color={s.latency_ms > 5000 ? C.red : undefined}>{s.latency_ms ? `${s.latency_ms}ms` : '—'}</TD>
+                        <TD>{s.trust_score ?? '—'}</TD>
+                        <TD>{s.last_scanned_at ? ago(s.last_scanned_at) : '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* API Endpoint Catalog */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>API Endpoint Catalog</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Endpoint</TH><TH>Method</TH><TH>Auth</TH><TH>Description</TH><TH>Rate Limit</TH>
+              </tr></thead>
+              <tbody>
+                {[
+                  { path: '/api/servers', method: 'GET', auth: 'None', desc: 'List & filter all active servers', rate: '60/min' },
+                  { path: '/api/servers/search', method: 'GET', auth: 'None', desc: 'Full-text + tag + tool search', rate: '60/min' },
+                  { path: '/api/servers/stats', method: 'GET', auth: 'None', desc: 'Global registry statistics', rate: '120/min' },
+                  { path: '/api/servers/[name]', method: 'GET', auth: 'None', desc: 'Server details by name', rate: '60/min' },
+                  { path: '/api/proxy/[server]/[tool]', method: 'POST', auth: 'Optional API key', desc: 'Proxy MCP tool call through registry', rate: '30/min (200 w/ key)' },
+                  { path: '/api/ingest', method: 'POST', auth: 'CRON_SECRET', desc: 'Trigger ingestion pipeline', rate: 'Admin only' },
+                  { path: '/api/ingest', method: 'GET', auth: 'CRON_SECRET', desc: 'Get last 10 ingest runs', rate: 'Admin only' },
+                  { path: '/api/admin/ingest', method: 'POST', auth: 'Admin session', desc: 'Trigger ingest from dashboard', rate: 'Admin only' },
+                  { path: '/api/cron/uptime-check', method: 'GET', auth: 'CRON_SECRET', desc: 'Probe all active server endpoints (every 15m)', rate: 'Cron only' },
+                  { path: '/api/cron/schema-drift', method: 'GET', auth: 'CRON_SECRET', desc: 'Detect tool schema changes (every 6h)', rate: 'Cron only' },
+                  { path: '/api/cron/reset-daily-calls', method: 'GET', auth: 'CRON_SECRET', desc: 'Reset calls_today counters (daily)', rate: 'Cron only' },
+                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'MCP-over-MCP server endpoint', rate: '60/min' },
+                  { path: '/api/auth/callback', method: 'GET', auth: 'OAuth flow', desc: 'Auth provider callback', rate: 'N/A' },
+                ].map(ep => (
+                  <tr key={ep.path + ep.method}>
+                    <TD mono color={C.blue}>{ep.path}</TD>
+                    <TD mono>{ep.method}</TD>
+                    <TD>{ep.auth}</TD>
+                    <TD>{ep.desc}</TD>
+                    <TD mono>{ep.rate}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Server Status Reference */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Server Status Lifecycle</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Status</TH><TH>Set By</TH><TH>Visible (UI)</TH><TH>Visible (AI)</TH><TH>Callable</TH><TH>Description</TH>
+              </tr></thead>
+              <tbody>
+                {[
+                  { s: 'active', by: 'Ingest (scan ok)', ui: '✅', ai: '✅', call: '✅', desc: 'Live and available to all users' },
+                  { s: 'pending_review', by: 'Ingest (high sev)', ui: '❌', ai: '❌', call: '❌', desc: 'Has high-severity issues, needs admin review' },
+                  { s: 'pending', by: 'Manual publish', ui: '❌', ai: '❌', call: '❌', desc: 'Awaiting initial scan' },
+                  { s: 'rejected', by: 'Ingest (critical)', ui: '❌', ai: '❌', call: '❌', desc: 'Failed security scan with critical issues' },
+                  { s: 'suspended', by: 'Schema drift cron', ui: '❌', ai: '❌', call: '❌', desc: 'Tools changed post-approval (rug-pull detected)' },
+                ].map(row => (
+                  <tr key={row.s}>
+                    <TD mono color={row.s === 'active' ? C.green : row.s === 'suspended' ? C.red : C.orange}>{row.s}</TD>
+                    <TD>{row.by}</TD>
+                    <TD>{row.ui}</TD>
+                    <TD>{row.ai}</TD>
+                    <TD>{row.call}</TD>
+                    <TD>{row.desc}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

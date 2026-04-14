@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveUser } from '@/lib/auth-server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
+import { SITE_URL } from '@/lib/site';
 
 const PublishSchema = z.object({
   name:             z.string().min(3).max(64).regex(/^[a-z0-9-]+$/),
@@ -23,15 +25,20 @@ export async function GET(req: NextRequest) {
   const supabase = createClient();
   const { searchParams } = new URL(req.url);
 
-  const q        = searchParams.get('q') || '';
-  const tag      = searchParams.get('tag') || '';
-  const sort     = searchParams.get('sort') || 'stars';
-  const verified = searchParams.get('verified') === 'true';
-  const source   = searchParams.get('source') || '';
-  const page     = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit    = Math.min(50, parseInt(searchParams.get('limit') || '12'));
-  const from     = (page - 1) * limit;
-  const to       = from + limit - 1;
+  const q         = searchParams.get('q') || '';
+  const tag       = searchParams.get('tag') || '';
+  const sort      = searchParams.get('sort') || 'stars';
+  const verified  = searchParams.get('verified') === 'true';
+  const source    = searchParams.get('source') || '';
+  const transport = searchParams.get('transport') || '';
+  const page      = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const requestedLimit = searchParams.get('page_size') || searchParams.get('limit') || '15';
+  const parsedLimit = Number.parseInt(requestedLimit, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(100, Math.max(1, parsedLimit))
+    : 15;
+  const from      = (page - 1) * limit;
+  const to        = from + limit - 1;
 
   let query = supabase
     .from('servers')
@@ -41,12 +48,14 @@ export async function GET(req: NextRequest) {
       latency_ms, uptime_pct, trust_score, scan_status, scan_issues,
       created_at, profiles!author_id ( username, avatar_url )
     `, { count: 'exact' })
-    .eq('status', 'active');
+    .in('status', ['active', 'pending_review']);
 
-  if (source)   query = query.eq('source', source);
-  if (q)        query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
-  if (tag)      query = query.contains('tags', [tag]);
-  if (verified) query = query.eq('verified', true);
+  if (source)    query = query.eq('source', source);
+  if (q)         query = query.or(`name.ilike.%${q}%,display_name.ilike.%${q}%,description.ilike.%${q}%`);
+  if (tag)       query = query.contains('tags', [tag]);
+  if (verified)  query = query.eq('verified', true);
+  if (transport === 'cloud') query = query.neq('transport', 'stdio');
+  if (transport === 'stdio') query = query.eq('transport', 'stdio');
 
   const sortMap: Record<string, { column: string; ascending: boolean }> = {
     stars:   { column: 'stars',       ascending: false },
@@ -56,38 +65,70 @@ export async function GET(req: NextRequest) {
     latency: { column: 'latency_ms',  ascending: true  },
   };
   const s = sortMap[sort] ?? sortMap.stars;
-  query = query.order(s.column, { ascending: s.ascending });
+  query = query.order(s.column, {
+    ascending: s.ascending,
+    nullsFirst: s.column === 'latency_ms' ? false : undefined,
+  });
+
+  // Stable secondary ordering avoids duplicate/missing rows across pages
+  // when many servers share the same primary sort value.
+  if (s.column !== 'trust_score') query = query.order('trust_score', { ascending: false });
+  if (s.column !== 'stars')       query = query.order('stars',       { ascending: false });
+  if (s.column !== 'total_calls') query = query.order('total_calls', { ascending: false });
+  query = query.order('name', { ascending: true });
 
   const { data, count, error } = await query.range(from, to);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const total = count ?? 0;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const fromItem = total === 0 ? 0 : from + 1;
+  const toItem = Math.min(to + 1, total);
+
   return NextResponse.json({
     servers: data ?? [],
-    total: count ?? 0,
+    total,
     page,
-    pages: Math.ceil((count ?? 0) / limit),
+    pages,
+    meta: {
+      page,
+      page_size: limit,
+      total,
+      pages,
+      from: fromItem,
+      to: toItem,
+      has_prev: page > 1,
+      has_next: page < pages,
+      sort,
+      filters: {
+        q,
+        tag,
+        verified,
+        source,
+        transport,
+      },
+    },
   });
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await resolveUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const rlCheck = await rateLimit(`publish:${user.id}`, LIMITS.publish);
-  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: 'Create a free API key at openmcp.dev for higher limits (200 calls/min)' }, { status: 429 });
+  if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: `Create a free API key at ${SITE_URL} for higher limits (200 calls/min)` }, { status: 429 });
 
   try {
     const body = PublishSchema.parse(await req.json());
+    const serversTable = supabase.from('servers') as any;
 
     // Name taken?
-    const { data: existing } = await supabase
-      .from('servers').select('id').eq('name', body.name).maybeSingle();
+    const { data: existing } = await serversTable.select('id').eq('name', body.name).maybeSingle();
     if (existing) return NextResponse.json({ error: 'Server name already taken' }, { status: 409 });
 
     // L8: Typosquatting check via SQL RPC
-    const { data: similar } = await supabase
-      .rpc('find_similar_names', { candidate: body.name });
+    const { data: similar } = await ((supabase as any)
+      .rpc('find_similar_names', { candidate: body.name }) as any);
     const highRisk = (similar ?? []).filter((s: any) => s.similarity > 0.8);
     if (highRisk.length > 0) {
       return NextResponse.json({
@@ -112,9 +153,7 @@ export async function POST(req: NextRequest) {
       uptimePct: 100, stars: 0, daysSinceChange: 0,
     });
 
-    const { data: server, error: insertErr } = await supabase
-      .from('servers')
-      .insert({
+    const { data: server, error: insertErr } = await serversTable.insert({
         name:             body.name,
         display_name:     body.display_name,
         description:      body.description,
@@ -141,7 +180,7 @@ export async function POST(req: NextRequest) {
 
     // Write scan result via service client (RLS: users can't write scan_results)
     const svc = createServiceClient();
-    await svc.from('scan_results').insert({
+    await (svc.from('scan_results') as any).insert({
       server_id: server.id,
       scan_type: 'static',
       passed:    scanResult.passed,

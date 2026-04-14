@@ -4,11 +4,23 @@
 
 -- ── Extensions ────────────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- L8: fuzzy name matching for typosquatting
 
 -- ── Types ─────────────────────────────────────────────────────────────────────
-CREATE TYPE server_status AS ENUM ('pending', 'active', 'rejected', 'suspended');
-CREATE TYPE scan_status   AS ENUM ('pending', 'passed', 'failed');
+DO $$
+BEGIN
+  CREATE TYPE server_status AS ENUM ('pending', 'active', 'rejected', 'suspended');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TYPE scan_status AS ENUM ('pending', 'passed', 'failed');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ── Profiles ──────────────────────────────────────────────────────────────────
 -- Extends auth.users — created automatically on signup via trigger
@@ -51,20 +63,10 @@ CREATE TABLE public.servers (
   scan_status      scan_status NOT NULL DEFAULT 'pending',
   scan_issues      JSONB NOT NULL DEFAULT '[]',
 
-  -- L8: generated column for typosquatting similarity checks
-  name_normalized  TEXT GENERATED ALWAYS AS (
-    regexp_replace(lower(name), '[^a-z0-9]', '', 'g')
-  ) STORED,
-
-  -- Full-text search vector (L1 discoverability + search quality)
-  search_vector    TSVECTOR GENERATED ALWAYS AS (
-    setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-    setweight(to_tsvector('english', coalesce(display_name, '')), 'A') ||
-    setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
-    setweight(to_tsvector('english', coalesce(long_description, '')), 'C') ||
-    setweight(to_tsvector('english', array_to_string(tags, ' ')), 'A') ||
-    setweight(to_tsvector('english', array_to_string(tools, ' ')), 'B')
-  ) STORED,
+  -- Derived fields are maintained by trigger rather than generated columns.
+  -- This avoids immutable-expression pitfalls in Supabase/Postgres migrations.
+  name_normalized  TEXT NOT NULL DEFAULT '',
+  search_vector    TSVECTOR NOT NULL DEFAULT ''::tsvector,
 
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -134,21 +136,21 @@ CREATE TABLE public.audit_log (
 -- ─────────────────────────────────────────────────────────────────────────────
 -- INDEXES
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE INDEX idx_servers_status   ON public.servers(status);
-CREATE INDEX idx_servers_trust    ON public.servers(trust_score DESC);
-CREATE INDEX idx_servers_stars    ON public.servers(stars DESC);
-CREATE INDEX idx_servers_tags     ON public.servers USING GIN(tags);
-CREATE INDEX idx_servers_tools    ON public.servers USING GIN(tools);
-CREATE INDEX idx_servers_fts      ON public.servers USING GIN(search_vector);
+CREATE INDEX IF NOT EXISTS idx_servers_status   ON public.servers(status);
+CREATE INDEX IF NOT EXISTS idx_servers_trust    ON public.servers(trust_score DESC);
+CREATE INDEX IF NOT EXISTS idx_servers_stars    ON public.servers(stars DESC);
+CREATE INDEX IF NOT EXISTS idx_servers_tags     ON public.servers USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_servers_tools    ON public.servers USING GIN(tools);
+CREATE INDEX IF NOT EXISTS idx_servers_fts      ON public.servers USING GIN(search_vector);
 
 -- L8: trigram indexes for typosquatting detection
-CREATE INDEX idx_servers_name_trgm ON public.servers USING GIN(name gin_trgm_ops);
-CREATE INDEX idx_servers_norm_trgm ON public.servers USING GIN(name_normalized gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_servers_name_trgm ON public.servers USING GIN(name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_servers_norm_trgm ON public.servers USING GIN(name_normalized gin_trgm_ops);
 
-CREATE INDEX idx_audit_server  ON public.audit_log(server_id, created_at DESC);
-CREATE INDEX idx_audit_created ON public.audit_log(created_at DESC);
-CREATE INDEX idx_scan_server   ON public.scan_results(server_id, created_at DESC);
-CREATE INDEX idx_snap_server   ON public.schema_snapshots(server_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_server  ON public.audit_log(server_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON public.audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scan_server   ON public.scan_results(server_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snap_server   ON public.schema_snapshots(server_id, captured_at DESC);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- L6: ROW LEVEL SECURITY
@@ -245,6 +247,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -255,13 +258,38 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.set_server_derived_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.name_normalized := regexp_replace(lower(coalesce(NEW.name, '')), '[^a-z0-9]', '', 'g');
+  NEW.search_vector :=
+    setweight(to_tsvector('english', coalesce(NEW.name, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(NEW.display_name, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(NEW.description, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(NEW.long_description, '')), 'C') ||
+    setweight(to_tsvector('english', array_to_string(coalesce(NEW.tags, '{}'::text[]), ' ')), 'A') ||
+    setweight(to_tsvector('english', array_to_string(coalesce(NEW.tools, '{}'::text[]), ' ')), 'B');
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS servers_updated_at ON public.servers;
 CREATE TRIGGER servers_updated_at
   BEFORE UPDATE ON public.servers
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+DROP TRIGGER IF EXISTS profiles_updated_at ON public.profiles;
 CREATE TRIGGER profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS servers_set_derived_fields ON public.servers;
+CREATE TRIGGER servers_set_derived_fields
+  BEFORE INSERT OR UPDATE OF name, display_name, description, long_description, tags, tools
+  ON public.servers
+  FOR EACH ROW EXECUTE FUNCTION public.set_server_derived_fields();
 
 -- L3: Capture schema snapshot whenever tools or version changes
 CREATE OR REPLACE FUNCTION public.capture_schema_snapshot()
@@ -275,6 +303,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS servers_schema_snapshot ON public.servers;
 CREATE TRIGGER servers_schema_snapshot
   AFTER INSERT OR UPDATE ON public.servers
   FOR EACH ROW EXECUTE FUNCTION public.capture_schema_snapshot();

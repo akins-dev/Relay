@@ -1,127 +1,215 @@
 'use client';
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState }    from 'react';
+import Link            from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/components/AuthProvider';
+import { useRouter }   from 'next/navigation';
+import { useAuth }     from '@/components/AuthProvider';
+import { cn }          from '@/lib/cn';
+import { Menu, X }     from 'lucide-react';
+import { BRAND }       from '@/lib/brand';
+
+const navLinks = [
+  { href: '/registry', label: 'Registry' },
+  { href: '/connect',  label: 'Connect'  },
+  { href: '/docs',     label: 'Docs'     },
+  { href: '/publish',  label: 'Publish'  },
+];
 
 export function Nav() {
   const { user, loading, logout } = useAuth();
-  const path = usePathname();
-  const active = (href: string) => path.startsWith(href);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const path   = usePathname();
+  const router = useRouter();
+  const adminUid = (process.env.NEXT_PUBLIC_ADMIN_UID ?? '').trim();
+  const isAdminUser = Boolean(user && adminUid && user.id === adminUid);
+  const isActive = (href: string) => path.startsWith(href);
+  const [open, setOpen] = useState(false);
 
-  const navLinks = [
-    { href: '/registry', label: 'Registry' },
-    { href: '/connect',  label: 'Connect'  },
-    { href: '/docs',     label: 'Docs'     },
-    { href: '/publish',  label: 'Publish'  },
-  ];
+  async function handleLogout() {
+    await logout();
+    setOpen(false);
+    router.push('/');
+  }
 
   return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 100,
-      background: 'rgba(253,252,251,0.95)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      borderBottom: '1px solid var(--border)',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 28px', height: '60px', maxWidth: '1200px', margin: '0 auto',
-      }}>
+    <nav className="sticky top-0 z-50 border-b border-[rgba(255,255,255,0.05)] bg-[rgba(15,23,42,0.6)] backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6 sm:px-8">
+
         {/* Logo */}
-        <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          <div style={{
-            width: '30px', height: '30px',
-            background: 'linear-gradient(135deg,#e8673a,#c9552e)',
-            borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '14px', fontWeight: 800, color: '#fff',
-            boxShadow: '0 0 16px rgba(232,103,58,0.25)',
-          }}>⬡</div>
-          <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', letterSpacing: '-0.03em' }}>
-            open<span style={{ color: 'var(--accent)' }}>MCP</span>
+        <Link href="/" className="flex shrink-0 items-center gap-3 no-underline">
+          <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[rgba(255,255,255,0.2)] bg-transparent text-[11px] font-black text-white shadow-sm">
+            ⇢
+          </div>
+          <span className="font-display text-[22px] font-semibold tracking-tight text-white">
+            {BRAND.name}
           </span>
-          <span className="badge badge-green" style={{ marginLeft: '2px', opacity: .8 }}>v0.1</span>
+          <span className="hidden rounded-full border border-transparent bg-[rgba(255,255,255,0.05)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8] sm:inline">
+            remote beta
+          </span>
         </Link>
 
-        {/* Desktop nav links */}
-        <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {/* Desktop links */}
+        <div className="hidden items-center gap-1 sm:flex">
           {navLinks.map(l => (
-            <Link key={l.href} href={l.href} style={{
-              textDecoration: 'none', padding: '6px 14px', borderRadius: '8px',
-              fontSize: '13px', fontWeight: active(l.href) ? 600 : 400,
-              color: active(l.href) ? 'var(--text)' : 'var(--text-3)',
-              background: active(l.href) ? 'var(--bg-2)' : 'transparent',
-              transition: 'color .15s, background .15s',
-            }}
-              onMouseEnter={e => { if (!active(l.href)) (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}
-              onMouseLeave={e => { if (!active(l.href)) (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; }}
-            >{l.label}</Link>
+            <Link
+              key={l.href}
+              href={l.href}
+              className={cn(
+                'rounded-full px-3.5 py-1.5 text-[13px] transition-colors',
+                isActive(l.href)
+                  ? 'bg-[rgba(255,255,255,0.08)] font-medium text-white'
+                  : 'font-normal text-[#94a3b8] hover:text-white hover:bg-[rgba(255,255,255,0.03)]'
+              )}
+            >
+              {l.label}
+            </Link>
           ))}
-
-          {/* GitHub */}
-          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener"
-            style={{ textDecoration: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '13px', color: 'var(--text-3)', transition: 'color .15s' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'}
-          >GitHub</a>
         </div>
 
         {/* Desktop auth */}
-        <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {!loading && (
-            user ? (
-              <>
-                <Link href="/dashboard" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Dashboard</Link>
-                <button onClick={() => logout().then(() => window.location.href = '/')} className="btn btn-ghost btn-sm">Sign out</button>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>Sign in</Link>
-                <Link href="/publish" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>Publish</Link>
-              </>
-            )
+        <div className="hidden items-center gap-2 sm:flex min-w-[160px] justify-end">
+          {loading ? (
+            // Skeleton prevents layout shift while session resolves
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-20 animate-pulse rounded-lg bg-white/5" />
+              <div className="h-7 w-24 animate-pulse rounded-full bg-white/5" />
+            </div>
+          ) : user ? (
+            <>
+              {isAdminUser && (
+                <Link
+                  href="/admin"
+                  className={cn(
+                    'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                    isActive('/admin')
+                      ? 'text-white font-medium'
+                      : 'text-[#94a3b8] hover:text-white'
+                  )}
+                >
+                  Admin
+                </Link>
+              )}
+              <Link
+                href="/dashboard"
+                className={cn(
+                  'rounded-lg px-3.5 py-1.5 text-[13px] transition-colors',
+                  isActive('/dashboard')
+                    ? 'text-white font-medium'
+                    : 'text-[#94a3b8] hover:text-white'
+                )}
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="rounded-full border border-white/10 px-4 py-1.5 text-[13px] font-medium text-[#94a3b8] transition-colors hover:border-white/20 hover:text-white"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="rounded-lg px-3.5 py-1.5 text-[13px] text-[#94a3b8] transition-colors hover:text-white"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/login?mode=register"
+                className="rounded-full bg-white px-4 py-1.5 text-[13px] font-medium text-[#0F172A] transition-colors hover:bg-neutral-200"
+              >
+                Get started
+              </Link>
+            </>
           )}
         </div>
 
         {/* Mobile hamburger */}
-        <button className="nav-mobile" onClick={() => setMenuOpen(m => !m)} style={{
-          background: 'none', border: '1px solid var(--border-2)', borderRadius: '8px',
-          padding: '8px 10px', cursor: 'pointer', color: 'var(--text-2)',
-          display: 'none', // shown via CSS
-        }}>
-          {menuOpen ? '✕' : '☰'}
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="flex items-center justify-center rounded-full p-2 text-[#94a3b8] transition-colors hover:bg-white/5 hover:text-white sm:hidden"
+          aria-label="Toggle menu"
+        >
+          {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {/* Mobile dropdown */}
-      {menuOpen && (
-        <div style={{
-          borderTop: '1px solid var(--border)',
-          background: 'var(--surface)',
-          padding: '12px 20px 20px',
-          display: 'flex', flexDirection: 'column', gap: '4px',
-        }}>
-          {navLinks.map(l => (
-            <Link key={l.href} href={l.href}
-              onClick={() => setMenuOpen(false)}
-              style={{
-                textDecoration: 'none', padding: '10px 12px', borderRadius: '8px',
-                fontSize: '14px', fontWeight: active(l.href) ? 600 : 400,
-                color: active(l.href) ? 'var(--text)' : 'var(--text-2)',
-                background: active(l.href) ? 'var(--bg-2)' : 'transparent',
-              }}
-            >{l.label}</Link>
-          ))}
-          <a href="https://github.com/the-17/openmcp" target="_blank" rel="noopener"
-            style={{ textDecoration: 'none', padding: '10px 12px', fontSize: '14px', color: 'var(--text-3)' }}
-          >GitHub</a>
-          <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />
-          {!loading && (user
-            ? <button onClick={() => { logout(); setMenuOpen(false); }} className="btn btn-ghost btn-sm">Sign out</button>
-            : <Link href="/login" onClick={() => setMenuOpen(false)} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', textAlign: 'center' }}>Sign in</Link>
-          )}
+      {/* Mobile drawer */}
+      {open && (
+        <div className="border-t border-white/5 bg-[rgba(15,23,42,0.95)] px-6 py-4 sm:hidden">
+          <div className="flex flex-col gap-1">
+            {navLinks.map(l => (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                  isActive(l.href)
+                    ? 'bg-white/5 font-semibold text-white'
+                    : 'text-[#94a3b8] hover:text-white'
+                )}
+              >
+                {l.label}
+              </Link>
+            ))}
+            <div className="my-2 h-px bg-white/5" />
+            {loading ? (
+              // Skeleton for mobile too
+              <div className="flex flex-col gap-1">
+                <div className="h-9 w-full animate-pulse rounded-lg bg-white/5" />
+                <div className="h-9 w-full animate-pulse rounded-lg bg-white/5" />
+              </div>
+            ) : user ? (
+              <>
+                {isAdminUser && (
+                  <Link
+                    href="/admin"
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                      isActive('/admin') ? 'text-white font-semibold' : 'text-[#94a3b8]'
+                    )}
+                  >
+                    Admin
+                  </Link>
+                )}
+                <Link
+                  href="/dashboard"
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                    isActive('/dashboard') ? 'text-white font-semibold' : 'text-[#94a3b8]'
+                  )}
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg px-3 py-2.5 text-left text-sm text-[#94a3b8] transition-colors hover:text-white"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-3 py-2.5 text-sm text-[#94a3b8]"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/login?mode=register"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg bg-white px-3 py-2.5 text-center text-sm font-medium text-[#0F172A]"
+                >
+                  Get started
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       )}
     </nav>

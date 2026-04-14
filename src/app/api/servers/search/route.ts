@@ -1,43 +1,128 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
+import { createHash } from 'crypto';
+import { SITE_URL } from '@/lib/site';
+import { BRAND } from '@/lib/brand';
 
-// ── Credential setup manual — injected into search results when auth is required ─
+// ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
 // Suggested secret names are derived from the server name for consistency.
-function buildCredentialSetup(serverName: string, authType: string) {
+/**
+ * Build credential setup instructions for a server that requires auth.
+ * Returned in every search result — gives agents everything needed to
+ * guide the user through vault configuration.
+ *
+ * The ${BRAND.vault} is the only credential storage mechanism.
+ * Users store their key once. The proxy injects it on every call.
+ * The user can view the secret name but never the value after storage.
+ */
+function buildCredentialSetup(serverName: string, authType: string, connectUrl?: string | null) {
   if (authType === 'none') return null;
 
-  // Derive canonical secret name for this server
   const base       = serverName.toUpperCase().replace(/-/g, '_').replace(/[^A-Z0-9_]/g, '');
   const apiKeyName = `${base}_API_KEY`;
-  const tokenName  = `${base}_TOKEN`;
+
+  if (authType === 'oauth') {
+    return {
+      requires_credential: true,
+      auth_type: 'oauth',
+      setup: {
+        description: `${serverName} uses OAuth. Connect your account once and ${BRAND.name} will use the access token automatically on future calls.`,
+        steps: [
+          `1. Open: ${connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`}`,
+          '2. Click "Connect your account"',
+          '3. Complete the provider sign-in and consent flow',
+          `4. Re-run the tool call — ${BRAND.name} will inject the OAuth token automatically`,
+        ],
+        connect_url: connectUrl ?? `${SITE_URL}/registry/${serverName}?connect=1`,
+      },
+      flow: `Agent calls tool -> ${BRAND.name} proxy -> retrieves your OAuth token -> injects Authorization header -> upstream API -> response. Raw token never appears in agent arguments.`,
+    };
+  }
+
+  if (authType === 'agentsecrets') {
+    // AgentSecrets deprecated — all credentials go through the centralized Vault
+    return {
+      requires_credential: true,
+      auth_type: 'api_key',
+      suggested_secret_name: apiKeyName,
+      setup: {
+        description: `${serverName} requires an API key. Store it once in the ${BRAND.vault} — the proxy injects it on every call automatically.`,
+        steps: [
+          `1. Get your API key from the ${serverName} service dashboard`,
+          `2. Open: ${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+          `3. Paste your key in the "Value" field and click "Store securely"`,
+          `4. Re-run the tool call — ${BRAND.name} will inject the key automatically`,
+        ],
+        dashboard_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+      },
+      flow: `Agent calls tool → ${BRAND.name} proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory.`,
+    };
+  }
+
+  if (authType === 'managed') {
+    return {
+      requires_credential: true,
+      auth_type: 'managed',
+      setup: {
+        description: `${serverName} may require credentials or an account connection at runtime. Follow the server-specific instructions if the first invocation returns an auth prompt.`,
+        steps: [
+          `1. Try the tool call once from ${serverName}`,
+          '2. If authentication is required, follow the returned setup instructions',
+          '3. Re-run the call after setup completes',
+        ],
+      },
+      flow: `${BRAND.name} will return structured auth guidance if the upstream server requires extra setup.`,
+    };
+  }
 
   return {
-    requires_user_auth: authType !== 'none',
-    auth_type: authType,
+    requires_credential: true,
+    auth_type:           authType,
+    suggested_secret_name: apiKeyName,
 
-    // ── PRIMARY: openMCP built-in vault ────────────────────────────────────
-    // User stores their key in openMCP once. Proxy injects it on every call.
-    // No local setup required. Works on all platforms (Claude Desktop, Cursor, etc.)
-    openmcp_vault: {
-      description: 'Store your credential in openMCP once. The proxy injects it automatically on every call — your agent never sees the raw value.',
-      how_it_works: [
-        '1. Go to: https://openmcp.dev/dashboard/secrets',
-        `2. Click "Add Secret"`,
-        `3. Server name: ${serverName}`,
-        `4. Secret name: ${apiKeyName}`,
-        `5. Value: your API key from the service dashboard`,
-        '6. Done — all future calls through openMCP inject it automatically',
+    // Complete setup instructions — agent presents these to the user
+    setup: {
+      description: `${serverName} requires an API key. Store it once in the ${BRAND.vault} — the proxy injects it on every future call automatically. You can view the secret name but not the value after saving.`,
+      steps: [
+        `1. Get your API key from the ${serverName} service dashboard`,
+        `2. Open: ${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
+        `3. Paste your key in the "Value" field and click "Store securely"`,
+        `4. Tell your agent to proceed — this call will work automatically from now on`,
       ],
-      direct_link: `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
-      suggested_secret_name: apiKeyName,
+      dashboard_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${apiKeyName}`,
     },
 
-    // After setup, the flow is:
-    what_happens: `Agent calls tool → openMCP proxy → resolves ${apiKeyName} from vault → injects as Authorization header → upstream server → API → response. Agent never sees the key.`,
+    // What happens after setup
+    flow: `Agent calls tool → ${BRAND.name} proxy → decrypts ${apiKeyName} from vault → injects as Authorization header → upstream API → response. Raw key never touches agent memory or request arguments.`,
   };
+}
+
+async function resolveApiKeyUser(req: NextRequest): Promise<string | null> {
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7);
+  if (!token.startsWith('sk_mcp_')) return null;
+
+  const keyHash = createHash('sha256').update(token).digest('hex');
+  const svc = createServiceClient();
+  const { data } = await svc
+    .from('api_keys')
+    .select('id, user_id')
+    .eq('key_hash', keyHash)
+    .single();
+
+  if (!data) return null;
+
+  svc.from('api_keys')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('id', data.id)
+    .catch(() => {});
+
+  return data.user_id;
 }
 
 export async function GET(req: NextRequest) {
@@ -50,11 +135,20 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = extractIp(req);
-  const rl  = await rateLimit(`search:${ip}`, LIMITS.search);
+  const apiKeyUserId = await resolveApiKeyUser(req);
+  const rlKey = apiKeyUserId ? `search:user:${apiKeyUserId}` : `search:ip:${ip}`;
+  const rlConfig = apiKeyUserId ? LIMITS.proxyAuth : LIMITS.search;
+  const rl  = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', hint: 'Create a free API key at openmcp.dev for higher limits' },
-      { status: 429, headers: { 'Retry-After': '60', 'X-RateLimit-Remaining': '0' } }
+      { error: 'Rate limit exceeded', hint: `Create a free API key at ${BRAND.domain} for higher limits` },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000))),
+          'X-RateLimit-Remaining': '0',
+        },
+      }
     );
   }
 
@@ -62,7 +156,7 @@ export async function GET(req: NextRequest) {
     const supabase = createClient();
 
     const { data: results, error } = await supabase
-      .rpc('search_servers', { query_text: q, result_limit: limit });
+      .rpc('search_servers', { query_text: q, result_limit: limit, include_stdio: true });
 
     if (error) {
       console.error('[search] RPC error:', error.message);
@@ -81,7 +175,8 @@ export async function GET(req: NextRequest) {
         id, name, display_name, description, version, tags, tools, tool_schemas,
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
-        auth_type, auth_setup_url,
+        auth_type, auth_setup_url, oauth_authorization_url,
+        transport, endpoint,
         profiles!author_id ( username )
       `)
       .in('id', ids)
@@ -90,8 +185,12 @@ export async function GET(req: NextRequest) {
     if (enrichErr) console.error('[search] Enrich error:', enrichErr.message);
 
     const rows = (enriched ?? results).map((s: any) => {
-      const authType     = s.auth_type ?? 'managed';
-      const secretsTutorial = buildCredentialSetup(s.name, authType);
+      const authType = s.oauth_authorization_url ? 'oauth' : (s.auth_type ?? 'managed');
+      const connectUrl = s.oauth_authorization_url ? `${SITE_URL}/registry/${s.name}?connect=1` : null;
+      const secretsTutorial = buildCredentialSetup(s.name, authType, connectUrl);
+      const transport = s.transport ?? 'http';
+      const isStdio = transport === 'stdio';
+      const proxyAvailable = !isStdio && !!s.endpoint;
 
       return {
         name:         s.name,
@@ -109,9 +208,14 @@ export async function GET(req: NextRequest) {
         tags:         s.tags ?? [],
         author:       s.profiles?.username ?? null,
 
+        // Transport + invocability
+        transport,
+        proxy_available: proxyAvailable,
+        ...(!proxyAvailable && {
+          cli_hint: `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`,
+        }),
+
         // Full tool schemas — agent MUST read inputSchema before calling
-        // inputSchema tells the agent what arguments to pass
-        // NEVER include API keys in arguments — the server handles its own credentials
         tools:        s.tools ?? [],
         tool_schemas: (s.tool_schemas?.length ?? 0) > 0
           ? s.tool_schemas
@@ -122,17 +226,20 @@ export async function GET(req: NextRequest) {
         auth_setup_url: s.auth_setup_url ?? null,
         credential_note: authType === 'none'
           ? 'This server is public — no credentials required.'
-          : 'Pass only business data as arguments. The server manages its own credentials. Never include API keys in tool arguments.',
+          : authType === 'oauth'
+            ? `Pass only business data as arguments. If needed, connect your account once and ${BRAND.name} will inject the OAuth token automatically.`
+            : `Pass only business data as arguments. Never include API keys in tool arguments. ${BRAND.name} handles credential injection outside the request body.`,
 
-        // Credential setup info — present this to the user if they
-        // need to configure credentials for this specific server
+        // Credential setup — vault-based, presented to agent for user guidance
         credential_setup: secretsTutorial,
 
-        // How to invoke
-        invoke: {
-          rest: `POST /api/proxy/${s.name}/{toolName}`,
-          mcp:  `invoke_tool({ server: "${s.name}", tool: "{toolName}", args: {} })`,
-        },
+        // How to invoke (only for proxy-available servers)
+        ...(proxyAvailable && {
+          invoke: {
+            rest: `POST /api/proxy/${s.name}/{toolName}`,
+            mcp:  `invoke_tool({ server: "${s.name}", tool: "{toolName}", args: {} })`,
+          },
+        }),
       };
     });
 

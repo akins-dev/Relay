@@ -23,15 +23,11 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresh session — do not add logic between here and getUser()
-  const { data: { user } } = await supabase.auth.getUser();
+  await supabase.auth.getUser();
 
-  // Protect dashboard
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
-  }
-
+  // Authentication enforcement is handled client-side in /dashboard/page.tsx
+  // and server-side inside individual API routes to prevent infinite Next.js 
+  // middleware redirect loops.
+  
   return supabaseResponse;
 }

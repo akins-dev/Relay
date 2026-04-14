@@ -1,24 +1,30 @@
-# ⬡ openMCP
+# ⬡ Relay
 
-**The secure, open-source MCP registry. Free forever.**
+**The secure, runtime discovery and invocation layer for MCP servers.**
 
-> "Agent development will never scale treating every tool integration as a 1:1 integration."
+> "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
-One line connects any AI agent to thousands of scanned MCP servers — discovered by intent, invoked through a 15-layer security proxy, zero pre-configuration.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-e8673a.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-e8673a.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E)](https://supabase.com)
 
 ---
 
-## Core vision
+## The Problem: The Context & Security Bottleneck
 
-Agents should not need to know which tools exist before they start. They should describe what they need and get it — securely, at runtime, without pre-configuration.
+Currently, AI agents are strictly bottlenecked by human pre-configuration. To interact with the outside world, a developer must manually discover, configure, and inject entire Model Context Protocol (MCP) tool schemas into an agent's context window **before** it ever runs. 
 
-openMCP is the registry layer: one endpoint, semantic discovery, full tool schemas returned, every server scanned across 15 security layers before listing, every call proxied through DLP and injection detection.
+As an agent's capabilities grow, injecting dozens of massive tool schemas wastes huge portions of the LLM's context window. This constraint drives up token costs, significantly increases latency, and degrades the agent's reasoning focus, which inevitably leads to severe hallucinations. Worse yet, giving an autonomous agent unmitigated access to unverified remote tools presents a massive security vector. The friction of the current static MCP ecosystem fundamentally limits autonomous workflows.
 
-**Not an auth platform.** Not a developer marketplace. The public, open, security-native discovery and proxy layer — the npm registry for MCP.
+## The Vision: Relay
+
+**Relay completely breaks the 30-tool context ceiling.**
+
+Relay is a secure runtime discovery tool that allows AI agents to query and discover tools purely by intent. Instead of manually selecting and pre-loading static toolsets, agents use Relay to dynamically discover exactly what they need, the moment they need to solve a user's problem. 
+
+This architectural shift grants agents access to thousands of MCPs instantly while permanently keeping their context window light (reducing the cognitive load and resulting hallucinations). The context window cost is forever reduced to exactly two meta-tools: `search` and `invoke`.
+
+Most importantly, Relay acts as the immutable bridging layer—ensuring strict data loss prevention (DLP), payload injection detection, and repository trust-scoring. Relay empowers true autonomous agentic scale without compromising security.
 
 ---
 
@@ -29,8 +35,8 @@ openMCP is the registry layer: one endpoint, semantic discovery, full tool schem
 ```json
 {
   "mcpServers": {
-    "openmcp": {
-      "url": "https://openmcp.dev/api/mcp-server"
+    "relay": {
+      "url": "https://relay.agentrail.dev/api/mcp-server"
     }
   }
 }
@@ -53,7 +59,7 @@ Invoke:  POST https://openmcp.dev/api/proxy/{serverName}/{toolName}
 # Discover by intent — returns full inputSchema per tool
 curl "https://openmcp.dev/api/servers/search?q=send+transactional+email"
 
-# Invoke through the 15-layer security proxy
+# Invoke through the secure proxy
 curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
   -H "Content-Type: application/json" \
   -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
@@ -61,173 +67,31 @@ curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
 
 ---
 
-## Credentials — use openMCP Vault
+## Credentials — openMCP Vault
 
-Most MCP servers require API keys. Never paste credentials into a config file or a conversation.
+Most MCP servers require API keys. Store them once in the openMCP Vault. The proxy decrypts and injects at call time — your agent never sees the raw value. You can view the secret name but not the value after saving.
 
-**openMCP Vault** securely stores API keys in your dashboard. The proxy resolves and injects them as Authorization headers at the transport layer. Agent memory never sees raw values.
+**One-time setup per service:**
 
-**Dynamic Credential Prompting:** Because agents discover servers dynamically, you don't need to configure keys upfront. When your agent calls a server missing a required credential, openMCP's proxy returns a structured 401 response. Your agent will read this response and proactively ask you for the specific API key it needs, providing a direct dashboard link to securely store it.
-
-You can manage all your API keys at https://openmcp.dev/dashboard/secrets.
-
----
-
-## Security
-
-Every server scanned before listing. Every proxy call inspected.
-
-**Publish-time (per ingested server):**
-- L1 Static scan — prompt injection, exfiltration patterns, deceptive tool descriptions
-- L3 Schema pinning — SHA-256 hash; any mutation auto-suspends the server
-- L8 Typosquatting — pg_trgm similarity blocks impersonation at publish time
-- S-14 npm CVE scan — package.json checked against npm advisory database
-
-**Runtime proxy (per call):**
-- L4 DLP — 11 credential patterns on request and response
-- S-12 Shell injection — 18 OS command patterns (43% of MCP CVEs are this class)
-- S-13 Indirect injection — instruction language in response data
-- L9 Sampling inspection — server-initiated LLM call hijacking
-- L10 PII detection — email, phone, SSN, card numbers in responses
-- L11 URL elicitation — SSRF, javascript:, file:// blocked
-- L12 Context isolation — session tokens leaking in responses
-
-**Infrastructure:**
-- L5 Trust score — 0–100 composite: scan quality + uptime + schema stability + community signals
-- L6 Supabase RLS — database-level enforcement on all tables
-- L7 OAuth 2.1 + PKCE — Supabase Auth, no localStorage tokens
-
-Current OWASP MCP Top 10 coverage: **~70%**. Target: 90%+ with WASM sandbox (L2).
-
-**What happens to threatening servers:**
-- Critical scan issue or critical CVE → `rejected` — never listed
-- High severity issues → listed with lower trust score + visible scan warning
-- Schema mutation detected by drift cron → auto-suspended, re-queued for scan
-- Runtime anomaly (DLP triggers, injection attempts) → flagged for human review
+1. Get your API key from the service dashboard
+2. Go to [openmcp.dev/dashboard/secrets](https://openmcp.dev/dashboard/secrets)
+3. Enter the server name, the suggested variable name (shown in any 401 response), and your key
+4. Done — every future call through openMCP injects it automatically
 
 ---
 
-## Setup
+## 📚 Core Documentation
 
-### 1. Clone and install
+As the repository scale has grown to handle enterprise-grade loads, detailed configuration instructions and design logic have been properly split into specialized manuals:
 
-```bash
-git clone https://github.com/the-17/openmcp
-cd openmcp
-bun install   # or: npm install
-```
+### 🛡️ [Security Guides & Trust Models](SECURITY.md)
+Contains the exact breakdowns for the 14-layer security system (L1 through S-14), encompassing Shell Injection protections, PII safeguards, and Context-Bleed defenses. It also defines how external Sub-Registries map to quantitative 0–100 Trust Scores.
 
-### 2. Supabase
+### 🏗️ [Architecture Deep Dive](ARCHITECTURE.md)
+Outlines the high-performance systems powering Relay's infrastructure, including the 0-Latency DB Poly-Cache, Event-Loop ReDoS protections, our custom Three-Tier Skip algorithm for hyper-fast MCP ingestion, and details about future SDK and CLI rollouts.
 
-Create a project at [supabase.com](https://supabase.com).
-
-**Option A: Supabase CLI (Recommended)**
-```bash
-supabase link --project-ref your-project-ref
-supabase db push
-```
-
-**Option B: SQL Editor**
-If you prefer the web UI, run these migrations in order in the Supabase SQL Editor:
-
-```text
-supabase/migrations/001_initial_schema.sql      ← full schema, RLS, FTS, RPCs
-supabase/migrations/002_seed_data.sql           ← 7 demo servers for local dev (sign up first)
-supabase/migrations/003_source_and_cve.sql      ← source provenance + CVE fields
-supabase/migrations/004_mcp_server_and_schemas.sql ← tool schemas + mcp_connections
-supabase/migrations/005_metering.sql            ← per-call metering + revenue views
-supabase/migrations/006_analytics.sql           ← analytics views (server health, platform KPIs)
-supabase/migrations/007_tool_policies.sql       ← user-controlled CRUD permission layer
-supabase/migrations/008_anomaly_detection.sql   ← suspicious traffic views
-```
-
-> **Note on 002:** Seed data is for local development only — it gives you 8 demo servers so the UI is not empty while developing. Once ingest runs, seeded servers are replaced by real data. You can skip 002 in production.
-
-### 3. Environment
-
-```bash
-cp .env.example .env.local
-```
-
-| Variable | Required | Description |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key (safe to expose) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (never expose) |
-| `CRON_SECRET` | Yes | Any random string — protects cron routes |
-| `SMITHERY_API_KEY` | Optional | Free at smithery.ai — needed for Smithery ingest |
-| `UPSTASH_REDIS_REST_URL` | Optional | Production rate limiting (console.upstash.com) |
-| `UPSTASH_REDIS_REST_TOKEN` | Optional | Required with above |
-
-### 4. Run
-
-```bash
-bun dev
-# → http://localhost:3000
-
-# Sign up at /login, then re-run 002_seed_data.sql in Supabase SQL Editor
-```
-
----
-
-## Ingest
-
-Ingest pulls from five sources, scans everything, and upserts into Supabase.
-
-```bash
-# Ingest all sources at once (recommended)
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer your-cron-secret" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "all"}'
-
-# Or trigger individual sources:
-# "official"  — MCP official registry (~87 servers, highest trust, no key needed)
-# "smithery"  — 7,300+ servers (SMITHERY_API_KEY required)
-# "glama"     — 14,274 servers (no key needed)
-# "pulsemcp"  — 11,800+ servers (no key needed)
-# "github"    — curated github.com/modelcontextprotocol/servers
-  -d '{"source": "official"}'
-```
-
-> **Production:** ingest runs automatically every night at 2am UTC via Vercel cron — you do not need to trigger it manually after deploy.
-
-Expected response:
-```json
-{
-  "success": true,
-  "results": {
-    "official":  { "fetched": 87,    "added": 82,    "updated": 3, "rejected": 2 },
-    "smithery":  { "fetched": 7300,  "added": 6100,  "rejected": 180 },
-    "glama":     { "fetched": 14274, "added": 11000, "rejected": 420 },
-    "pulsemcp":  { "fetched": 11800, "added": 9000,  "rejected": 310 },
-    "github":    { "fetched": 87,    "added": 80,    "rejected": 5 }
-  }
-}
-```
-
----
-
-## Tests
-
-```bash
-bun test
-# 40+ unit tests across all 15 security layers with real attack payloads
-```
-
----
-
-## Deploy
-
-```bash
-vercel --prod
-```
-
-Set all environment variables in Vercel dashboard. Crons run automatically on Vercel Pro:
-- Schema drift check: every 6h
-- Uptime check: every 15min
-- Daily call reset: midnight UTC
-- Ingest all sources: 2am UTC
+### 🛠️ [Setup & Developer Guide](DEVELOPMENT.md)
+Looking to host Relay locally, contribute to the Core API, or launch the Render NodeJS stdio-Sandbox? The Builder's Guide includes the full `bun run` processes, mandatory `.env` configurations, and Supabase SQL migration chains. It also includes the vital Pre-Production Checklist for operating your own live instance.
 
 ---
 
@@ -237,44 +101,18 @@ Set all environment variables in Vercel dashboard. Crons run automatically on Ve
 GET  /openmcp.md                              Agent skill file — fetch once, understand everything
 GET  /api/mcp                                 Registry info, security layer list, agent prompt template
 GET  /api/servers/search?q={intent}&limit=5   Semantic search — full inputSchema per tool returned
-GET  /api/servers?sort=trust&verified=true    Browse with filters
+GET  /api/servers?sort=trust&verified=true&page=2&page_size=24
+                                              Browse with filters + pagination
 GET  /api/servers/:name                       Server detail, scan history, CVE issues
 POST /api/proxy/:serverName/:toolName         15-layer security proxy — every call inspected
 POST /api/mcp-server                          Native MCP server (StreamableHTTP)
 GET  /api/mcp-server                          Native MCP server (SSE — for older clients)
 POST /api/ingest                              Trigger ingest (CRON_SECRET required)
+POST /api/admin/ingest                        Trigger ingest from the signed-in admin session
 ```
-
----
-
-## Trust scores
-
-Every server has a 0–100 trust score returned with every search result.
-
-| Component | Weight | What it measures |
-|---|---|---|
-| Scan quality | 30 | Static scan + CVE scan result quality |
-| Verified publisher | 25 | Publisher completed identity verification |
-| Uptime | 20 | 30-day uptime measured every 15 minutes |
-| Schema stability | 15 | Days since last schema change |
-| Community | 10 | Stars, call volume |
-
-**New servers:** get a discovery boost for 90 days — surfaced alongside top servers in their category with a "New" badge. Trust score stays honest; ranking gives them visibility.
-
-**Category balance:** if a category has 5+ servers above trust score 85, lower-scored servers in that niche are surfaced in search results. High-trust monopolies do not crowd out legitimate alternatives.
-
----
-
-## Open source
-
-MIT licensed. Fork it, self-host it, contribute back.
-
-The security claims are auditable — read the scanner in `src/lib/security.ts`. Not a promise, not a marketing statement. The code is right there.
-
-The moat is not the code. It is the accumulated trust scores, scan history, uptime records, and publisher relationships — none of which live in any repository.
 
 ---
 
 ## License
 
-MIT — Built by [The-17](https://github.com/the-17)
+Apache 2.0 License — Built by [The-17](https://github.com/the-17) & [Akins](https://github.com/akins-dev)

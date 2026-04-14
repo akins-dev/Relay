@@ -1,11 +1,12 @@
 /**
- * openMCP — API utilities
+ * API utilities
  *
  * Centralised patterns for route handlers:
  *   - Typed error responses
  *   - withRoute() wrapper — catches unhandled throws, strips stack traces in prod
  *   - extractIp() — safe IP extraction from Vercel/edge headers
  */
+import { BRAND } from '@/lib/brand';
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -41,7 +42,7 @@ export function withRoute(handler: RouteHandler): RouteHandler {
       // Never expose stack traces in production
       const isProd = process.env.NODE_ENV === 'production';
       const message = isProd ? 'Internal server error' : (err?.message ?? 'Unknown error');
-      if (!isProd) console.error('[openMCP] Unhandled route error:', err);
+      if (!isProd) console.error(`[${BRAND.slug}] Unhandled route error:`, err);
       return apiError(message, 500, { code: 'INTERNAL_ERROR' });
     }
   };

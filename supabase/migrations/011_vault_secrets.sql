@@ -4,23 +4,32 @@
 --
 -- ⚠️  CRITICAL — READ BEFORE RUNNING ⚠️
 -- ─────────────────────────────────────
--- Before running this migration, disable statement logging in Supabase:
+-- Before running this migration, confirm your Supabase project is NOT configured
+-- to log data statements that include SQL values:
 --
---   Supabase Dashboard → Database → Database Settings → Log Settings
---   Set "Statement log level" to: none (or ddl — ddl is safe, all is dangerous)
+--   Verify from SQL Editor with:
 --
---   WHY: When you INSERT into vault.secrets, Supabase logs the SQL statement.
---   That SQL contains the secret in plaintext. If statement logging is on,
---   every secret your users store will appear in your Supabase logs unencrypted.
---   This completely defeats the purpose of the vault.
+--     SELECT name, setting
+--     FROM pg_settings
+--     WHERE name IN ('log_statement', 'pgaudit.log', 'pgaudit.log_parameter');
 --
---   Supabase hosted projects default to DDL-only logging (safe).
---   Confirm yours before proceeding.
+--   Safe baseline for openMCP:
+--     log_statement = 'ddl' or 'none'
+--     pgaudit.log = 'none'
+--     pgaudit.log_parameter = 'off'
+--
+--   WHY: When your application stores a secret or OAuth token, the SQL statement
+--   can contain the plaintext value. If statement logging captures data
+--   statements, those secrets can land in Supabase logs unencrypted.
+--   That defeats the whole purpose of vault-backed storage.
+--
+--   IMPORTANT: This is an ongoing platform configuration requirement, not a
+--   one-time migration setting. The risk continues after this migration when
+--   real users store secrets through store_user_secret() and store_oauth_connection().
+--
+--   Supabase hosted projects usually default to DDL-only logging, which is
+--   acceptable here. Verify your actual project setting before proceeding.
 -- ─────────────────────────────────────────────────────────────────────────────
-
--- Enforce safe logging level for this session
--- (DDL = only schema changes logged, not data — this is safe)
-SET log_statement = 'ddl';
 
 -- ── Enable Vault extension ────────────────────────────────────────────────────
 -- Vault is enabled by default on Supabase hosted. This is a no-op if already on.
@@ -247,7 +256,8 @@ ALTER TABLE public.server_credential_hints ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "hints_public_read" ON public.server_credential_hints FOR SELECT TO anon, authenticated USING (TRUE);
 
 -- ── Verification: confirm vault is working ────────────────────────────────────
--- Run this query after migration to verify vault is operational:
+-- Run this query after migration to verify vault is operational.
+-- Use only fake test values here:
 --
 --   SELECT vault.create_secret('test-value', 'test-key', 'Migration verification test') AS vault_id;
 --   SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'test-key';

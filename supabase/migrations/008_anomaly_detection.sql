@@ -30,7 +30,6 @@ SELECT
 FROM public.audit_log
 WHERE created_at > NOW() - INTERVAL '1 hour'
   AND ip IS NOT NULL
-  AND ip != ''
 GROUP BY ip
 HAVING
   COUNT(*) > 20                          -- only IPs with meaningful volume

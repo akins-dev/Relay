@@ -1,10 +1,11 @@
 /**
- * openMCP — User Secrets API
+ * User Secrets API
  *
  * ⚠️  BEFORE USING THIS API IN PRODUCTION:
- * Disable Supabase statement logging first.
- * Dashboard → Database → Database Settings → Log Settings → Statement log level: none
- * Without this, secrets will appear in your Supabase logs in plaintext.
+ * Ensure your Supabase project does not log data statements with SQL values.
+ * Verify from SQL Editor via pg_settings: log_statement should be ddl or none,
+ * pgaudit.log should be none, and pgaudit.log_parameter should be off.
+ * This is a permanent project setting requirement, not just a migration-time step.
  *
  * POST   /api/secrets        — store a new secret
  * GET    /api/secrets        — list secrets (metadata only, never values)
@@ -29,7 +30,9 @@ const StoreSchema = z.object({
 // ── POST — store a secret ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   // Rate limit — secrets storage is low-frequency
@@ -78,7 +81,9 @@ export async function POST(req: NextRequest) {
 // ── GET — list secrets (metadata only) ───────────────────────────────────────
 export async function GET(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   const svc = createServiceClient();
@@ -105,7 +110,9 @@ export async function GET(req: NextRequest) {
 // ── DELETE — remove a secret ──────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
   if (!user) return apiError('Unauthorized', 401);
 
   const id = new URL(req.url).searchParams.get('id');

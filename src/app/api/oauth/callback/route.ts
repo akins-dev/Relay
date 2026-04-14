@@ -8,8 +8,8 @@
  * 4. Deletes used state
  * 5. Redirects user back to where they started
  *
- * ⚠️ IMPORTANT: Disable Supabase statement logging before this route
- * processes real user tokens. See migration 011 header.
+ * ⚠️ IMPORTANT: Ensure your Supabase project does not log data statements
+ * before this route processes real user tokens. See migration 011 header.
  */
 import { NextRequest, NextResponse }         from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';

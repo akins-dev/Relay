@@ -43,7 +43,7 @@
       ]
     },
     {
-      "source": "/openmcp.md",
+      "source": "/agents.md",
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",

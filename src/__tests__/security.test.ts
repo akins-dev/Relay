@@ -1,5 +1,5 @@
 /**
- * openMCP — Security Scanner Unit Tests
+ * Security Scanner Unit Tests
  *
  * Tests every detection function with real attack payloads.
  * Run: bun test  (or npx jest)
