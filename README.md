@@ -1,10 +1,8 @@
-# ⬡ openMCP
+# ⬡ Relay
 
-**The secure, open-source discovery and invocation layer for remote MCP servers.**
+**The secure, runtime discovery and invocation layer for MCP servers.**
 
-> "Agent development will never scale treating every tool integration as a 1:1 integration."
-
-Break the 30-tool limit. Any agent discovers remote MCP servers at runtime — by intent, through a security and trust layer, with zero pre-configuration.
+> "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-e8673a.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
@@ -12,9 +10,23 @@ Break the 30-tool limit. Any agent discovers remote MCP servers at runtime — b
 
 ---
 
-## Core vision
+## The Problem: The Context & Security Bottleneck
 
-Today's agents are bottlenecked at 30 tools, pre-loaded by a human before the agent ever runs, competing for context window space with every tool that gets added. openMCP removes that constraint for network-reachable MCP servers: agents describe what they need at runtime, get exactly those tools with full schemas, invoke through a security proxy, and never pre-load anything. The context window cost is always exactly two tools — search and invoke.
+Currently, AI agents are strictly bottlenecked by human pre-configuration. To interact with the outside world, a developer must manually discover, configure, and inject entire Model Context Protocol (MCP) tool schemas into an agent's context window **before** it ever runs. 
+
+As an agent's capabilities grow, injecting dozens of massive tool schemas wastes huge portions of the LLM's context window. This constraint drives up token costs, significantly increases latency, and degrades the agent's reasoning focus, which inevitably leads to severe hallucinations. Worse yet, giving an autonomous agent unmitigated access to unverified remote tools presents a massive security vector. The friction of the current static MCP ecosystem fundamentally limits autonomous workflows.
+
+## The Vision: Relay
+
+**Relay completely breaks the 30-tool context ceiling.**
+
+Relay is a secure runtime discovery tool that allows AI agents to query and discover tools purely by intent. Instead of manually selecting and pre-loading static toolsets, agents use Relay to dynamically discover exactly what they need, the moment they need to solve a user's problem. 
+
+This architectural shift grants agents access to thousands of MCPs instantly while permanently keeping their context window light (reducing the cognitive load and resulting hallucinations). The context window cost is forever reduced to exactly two meta-tools: `search` and `invoke`.
+
+Most importantly, Relay acts as the immutable bridging layer—ensuring strict data loss prevention (DLP), payload injection detection, and repository trust-scoring. Relay empowers true autonomous agentic scale without compromising security.
+
+---
 
 ## Open source
 
@@ -22,7 +34,7 @@ Apache 2.0 licensed. Fork it, self-host it, contribute back.
 
 The security claims are auditable — read the scanner in `src/lib/security.ts`. Not a promise, not a marketing statement. The code is right there.
 
-Today openMCP focuses on remote MCP servers with HTTP endpoints. Local `stdio` support is planned via `openMCP CLI`.
+Today Relay focuses on remote MCP servers with HTTP endpoints. Local `stdio` support is planned via the upcoming local CLI.
 
 **Not an auth platform.** Not a developer marketplace. The public, open, security-native discovery and proxy layer — the npm registry for MCP.
 
@@ -35,8 +47,8 @@ Today openMCP focuses on remote MCP servers with HTTP endpoints. Local `stdio` s
 ```json
 {
   "mcpServers": {
-    "openmcp": {
-      "url": "https://openmcp.dev/api/mcp-server"
+    "relay": {
+      "url": "https://relay.agentrail.dev/api/mcp-server"
     }
   }
 }
@@ -216,13 +228,13 @@ Admin-triggered ingests use `POST /api/admin/ingest`, which validates the signed
 
 ## Sandbox Service
 
-To support `stdio`-based servers properly via isolated Docker execution, openMCP utilizes a lightweight Node.js Express microservice located in the `/sandbox` folder.
+To support `stdio`-based servers properly via isolated Docker execution, Relay utilizes a lightweight Node.js Express microservice located in the `/sandbox` folder.
 
-If a repository is ingested without a configured Sandbox, openMCP will safely fall back to parsing its `README.md` for tool hints. However, it will not natively extract active JSON schemas until you set up the sandbox.
+If a repository is ingested without a configured Sandbox, Relay will safely fall back to parsing its `README.md` for tool hints. However, it will not natively extract active JSON schemas until you set up the sandbox.
 
 **Deployment & Usage:**
 1. See `sandbox/README.md` for a complete step-by-step guide to deploying this microservice to Render.com natively using Docker.
-2. Once deployed, update your primary openMCP frontend `.env`:
+2. Once deployed, update your primary Relay frontend `.env`:
    - `SANDBOX_URL=https://your-sandbox-deployment.onrender.com`
    - `SANDBOX_AUTH_TOKEN=your-randomly-generated-secret`
 3. **Important:** If you configure the sandbox *after* you have already ingested servers, you **must flush your active servers** from the database before re-triggering ingestion! Since the Three-Tier Ingestion Skip algorithm perfectly tracks upstream hash mutations, it will instantly `[SKIP:fresh]` unchanged servers without pinging the Sandbox if you do not delete them first.
