@@ -155,6 +155,7 @@ To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effort
 > - `NEXT_PUBLIC_SUPABASE_URL`
 > - `SUPABASE_SERVICE_ROLE_KEY`
 > - `SMITHERY_API_KEY` (if ingestion requires it)
+> - `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` (required for Render Sandbox parsing)
 
 ---
 

@@ -41,6 +41,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+          SANDBOX_URL: ${{ secrets.SANDBOX_URL }}
+          SANDBOX_AUTH_TOKEN: ${{ secrets.SANDBOX_AUTH_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             if [ "${{ github.event.inputs.job }}" == "uptime" ]; then

@@ -116,6 +116,7 @@ To bypass Vercel Hobby tier timeout limits (10s–60s) on background execution t
 > - `NEXT_PUBLIC_SUPABASE_URL`
 > - `SUPABASE_SERVICE_ROLE_KEY`
 > - `SMITHERY_API_KEY` (Optional: if Smithery ingestion requires it)
+> - `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` (Optional: required for Render Sandbox)
 
 ```
 
