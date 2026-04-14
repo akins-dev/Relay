@@ -207,7 +207,10 @@ async function handleSearchTools(
             ? { name: t }
             : { name: t.name, description: t.description, inputSchema: t.inputSchema }
         )),
-    usage: `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
+    proxy_available: s.proxy_available ?? true,
+    usage: s.proxy_available === false 
+      ? `This is a local stdio process. Run locally using: npx -y @relay/cli invoke ${s.name} <tool_name>`
+      : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
     credential_note: 'Pass only business data as tool arguments. Never include API keys. The server manages its own credentials.',
     is_new: s.is_new ?? false,
   }));

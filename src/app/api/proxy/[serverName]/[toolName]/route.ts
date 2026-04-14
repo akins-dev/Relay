@@ -91,13 +91,23 @@ export async function POST(
   // ── Server lookup — also fetches auth_type for 401 handling ─────────────────
   const { data: server, error: serverErr } = await supabase
     .from('servers')
-    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url, oauth_authorization_url')
+    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url, oauth_authorization_url, proxy_available')
     .eq('name', serverName)
     .eq('status', 'active')
     .single();
 
   if (serverErr || !server) {
     return NextResponse.json({ error: `Server '${serverName}' not found` }, { status: 404 });
+  }
+
+  // ── Stdio check — guide agent to CLI ────────────────────────────────────────
+  if (server.proxy_available === false) {
+    return NextResponse.json({
+      error: `Server '${serverName}' is a local stdio process and cannot be executed via Cloud Proxy.`,
+      resolution: `You must spawn this tool locally using the Relay CLI.`,
+      cli_command: `npx -y @relay/cli invoke ${serverName} ${toolName}`,
+      is_stdio: true
+    }, { status: 400 });
   }
 
   // ── SSRF guard — validate endpoint before every call ────────────────────────
