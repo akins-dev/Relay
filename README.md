@@ -6,7 +6,7 @@
 
 Break the 30-tool limit. Any agent discovers remote MCP servers at runtime — by intent, through a security and trust layer, with zero pre-configuration.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-e8673a.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-e8673a.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E)](https://supabase.com)
 
@@ -16,7 +16,11 @@ Break the 30-tool limit. Any agent discovers remote MCP servers at runtime — b
 
 Today's agents are bottlenecked at 30 tools, pre-loaded by a human before the agent ever runs, competing for context window space with every tool that gets added. openMCP removes that constraint for network-reachable MCP servers: agents describe what they need at runtime, get exactly those tools with full schemas, invoke through a security proxy, and never pre-load anything. The context window cost is always exactly two tools — search and invoke.
 
-openMCP is the registry layer: one endpoint, semantic discovery, full tool schemas returned, every server scanned across 15 security layers before listing, every call proxied through DLP and injection detection.
+## Open source
+
+Apache 2.0 licensed. Fork it, self-host it, contribute back.
+
+The security claims are auditable — read the scanner in `src/lib/security.ts`. Not a promise, not a marketing statement. The code is right there.
 
 Today openMCP focuses on remote MCP servers with HTTP endpoints. Local `stdio` support is planned via `openMCP CLI`.
 
@@ -179,6 +183,8 @@ cp .env.example .env.local
 | `UPSTASH_REDIS_REST_URL` | Optional | Production rate limiting (console.upstash.com) |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Required with above |
 | `NEXT_PUBLIC_ADMIN_UID` | Optional | Supabase Auth user ID allowed to open `/admin` and trigger admin-only ingest |
+
+**Startup Validation:** The application uses Zod to automatically validate `.env` files upon boot. If any required variables are missing (e.g. `SUPABASE_SERVICE_ROLE_KEY` or `CRON_SECRET`), the Next.js process will instantly gracefully crash with a detailed error log indicating exactly which fields you forgot to set!
 
 ### 4. Run
 
@@ -463,4 +469,4 @@ To keep docs in sync when making changes from any computer:
 
 ## License
 
-MIT — Built by [The-17](https://github.com/the-17)
+Apache 2.0 License — Built by [The-17](https://github.com/the-17) & [Akins](https://github.com/akins-dev)

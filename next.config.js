@@ -61,6 +61,9 @@ const nextConfig = {
   },
   serverExternalPackages: ['@upstash/redis', '@upstash/ratelimit'],
   logging: { fetches: { fullUrl: isDev } },
+  experimental: {
+    instrumentationHook: true,
+  },
 };
 
 module.exports = withSentryConfig(nextConfig, {
