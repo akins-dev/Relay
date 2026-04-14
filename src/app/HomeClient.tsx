@@ -215,7 +215,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 <div className="text-brand-signal font-mono text-xs font-bold uppercase tracking-wider">01. Discovery</div>
                 <h3 className="text-white text-xl font-medium tracking-tight">Search by intent</h3>
                 <p className="text-brand-steel text-[15px] leading-relaxed">
-                  We are the industry's first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
+                  We are the industry&apos;s first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
                 </p>
              </AnimatedSection>
              <AnimatedSection delay={0.2} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
@@ -266,7 +266,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           </div>
           <div className="mt-6 lg:mt-0 lg:w-1/2 relative z-10">
             <pre className="whitespace-pre-wrap font-mono text-[12px] sm:text-[13px] leading-7 sm:leading-8 text-brand-steel bg-[#030712] p-4 sm:p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-[inset_0_2px_20px_rgba(0,0,0,0.5)] overflow-x-auto">
-              <span className="text-brand-white">1.</span> search_tools("create issue"){'\n'}
+              <span className="text-brand-white">1.</span> search_tools(&quot;create issue&quot;){'\n'}
               <span className="text-brand-white">2.</span> Registry returns matching schemas{'\n'}
               <span className="text-brand-white">3.</span> invoke_tool{`({ server, tool, args })`}{'\n'}
               <span className="text-brand-white">4.</span> Policy, auth, and DLP proxy runs{'\n'}

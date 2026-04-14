@@ -74,11 +74,14 @@ module.exports = withSentryConfig(nextConfig, {
   // Only upload source maps in CI/production — skip in dev to keep builds fast
   silent: true,
   hideSourceMaps: true,
-  disableLogger: true,
-
   // Automatic instrumentation of Next.js routes
-  autoInstrumentServerFunctions: true,
-  autoInstrumentMiddleware: true,
+  webpack: {
+    autoInstrumentServerFunctions: true,
+    autoInstrumentMiddleware: true,
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 
   // Tunnel Sentry requests through our own domain
   // Avoids ad-blockers blocking sentry.io requests

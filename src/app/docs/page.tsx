@@ -387,7 +387,7 @@ export default function DocsPage() {
             </P>
             <Callout>
               <p className="font-serif text-[15px] italic leading-relaxed text-white/80">
-                "Agent development will never scale treating every tool integration as a 1:1 integration."
+                &quot;Agent development will never scale treating every tool integration as a 1:1 integration.&quot;
               </p>
             </Callout>
             <P>
@@ -483,7 +483,7 @@ export default function DocsPage() {
             </P>
             <Callout>
               <p className="text-[14px] leading-relaxed text-brand-steel">
-                <strong className="text-white">Protecting yourself from sensitive operations:</strong> {BRAND.name}'s proxy already blocks shell
+                <strong className="text-white">Protecting yourself from sensitive operations:</strong> {BRAND.name}&apos;s proxy already blocks shell
                 injection (18 patterns), credential DLP (11 patterns), and indirect prompt injection (12 patterns)
                 on every call. For additional control — limiting which tools an agent can call, blocking specific
                 domains, setting per-user rate limits — see the user controls section in your dashboard after
@@ -627,7 +627,7 @@ export default function DocsPage() {
 
           <section id="known-limitations" className="py-12 scroll-mt-24">
             <h2 className="mb-6 font-display text-[1.6rem] sm:text-[2rem] font-medium tracking-tight text-white">
-              What's coming
+              What&apos;s coming
             </h2>
             <P>{BRAND.name} is in active development. Here is what is shipping next.</P>
             <div className="flex flex-col gap-4 mb-12">
