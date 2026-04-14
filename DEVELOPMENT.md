@@ -151,6 +151,11 @@ To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effort
 - Daily call reset: midnight UTC
 - Ingest all sources: 2am UTC
 
+> **⚠️ GitHub Actions Setup Required:** Your repository must be **Public** (to unlock unlimited free execution minutes and avoid the 2000-min cap). In your GitHub repository, under **Settings > Secrets and variables > Actions > New repository secret**, explicitly set:
+> - `NEXT_PUBLIC_SUPABASE_URL`
+> - `SUPABASE_SERVICE_ROLE_KEY`
+> - `SMITHERY_API_KEY` (if ingestion requires it)
+
 ---
 
 ## ⚠️ Pre-Production Checklist

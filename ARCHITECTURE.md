@@ -111,6 +111,12 @@ To bypass Vercel Hobby tier timeout limits (10s–60s) on background execution t
 - Bypasses HTTP API gateway timeouts completely.
 - Directly manipulates the Supabase connection pools.
 - Completely free for public repositories.
+
+> **⚠️ Required Setup:** For the GitHub Actions cron to function properly, your repository must be **Public** (to receive unlimited free Action minutes and avoid the 2000-minute free-tier cap). Additionally, you must explicitly add the following values under **Settings > Secrets and variables > Actions > New repository secret**:
+> - `NEXT_PUBLIC_SUPABASE_URL`
+> - `SUPABASE_SERVICE_ROLE_KEY`
+> - `SMITHERY_API_KEY` (Optional: if Smithery ingestion requires it)
+
 ```
 
 ### What Works Well ✅
