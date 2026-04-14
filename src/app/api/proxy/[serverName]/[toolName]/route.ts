@@ -8,10 +8,11 @@
  *   Upstream call (bounded response) → DLP/PII/Leak/Indirect (resp) →
  *   Metering → Audit
  */
-import { NextRequest, NextResponse }         from 'next/server';
+import { NextRequest, NextResponse, unstable_after as after } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
+import { getCache, withCache }               from '@/lib/cache';
 import { signToken, verifyToken, isSafeUrl, readBoundedResponse, corsHeaders } from '@/lib/utils';
 import { createHash }                        from 'crypto';
 import { SITE_URL }                          from '@/lib/site';
@@ -43,20 +44,26 @@ async function resolveApiKeyUser(
   if (!token.startsWith('sk_mcp_')) return { userId: null, keyId: null };
 
   const keyHash = createHash('sha256').update(token).digest('hex');
-  const { data } = await svc
-    .from('api_keys')
-    .select('id, user_id')
-    .eq('key_hash', keyHash)
-    .single();
+  const cacheKey = `apiKey:${keyHash}`;
 
-  if (!data) return { userId: null, keyId: null };
+  return withCache(cacheKey, 300, async () => {
+    const { data } = await svc
+      .from('api_keys')
+      .select('id, user_id')
+      .eq('key_hash', keyHash)
+      .single();
 
-  svc.from('api_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id)
-    .catch(() => {});
+    if (!data) return { userId: null, keyId: null };
 
-  return { userId: data.user_id, keyId: data.id };
+    after(() => {
+      svc.from('api_keys')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', data.id)
+        .catch(() => {});
+    });
+
+    return { userId: data.user_id, keyId: data.id };
+  });
 }
 
 export async function POST(
@@ -89,14 +96,18 @@ export async function POST(
   }
 
   // ── Server lookup — also fetches auth_type for 401 handling ─────────────────
-  const { data: server, error: serverErr } = await supabase
-    .from('servers')
-    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url, oauth_authorization_url, proxy_available')
-    .eq('name', serverName)
-    .eq('status', 'active')
-    .single();
+  const serverCacheKey = `server:${serverName}`;
+  const server = await withCache(serverCacheKey, 60, async () => {
+    const { data } = await supabase
+      .from('servers')
+      .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url, oauth_authorization_url, proxy_available')
+      .eq('name', serverName)
+      .eq('status', 'active')
+      .single();
+    return data;
+  });
 
-  if (serverErr || !server) {
+  if (!server) {
     return NextResponse.json({ error: `Server '${serverName}' not found` }, { status: 404 });
   }
 
@@ -138,14 +149,20 @@ export async function POST(
 
   // ── Tool policy ──────────────────────────────────────────────────────────────
   if (callerUserId) {
-    const { data: policy } = await svc.rpc('check_tool_policy', {
-      p_user_id: callerUserId, p_server: serverName, p_tool: toolName,
+    const policyCacheKey = `policy:${callerUserId}:${serverName}:${toolName}`;
+    const policy = await withCache(policyCacheKey, 300, async () => {
+      const { data } = await svc.rpc('check_tool_policy', {
+        p_user_id: callerUserId, p_server: serverName, p_tool: toolName,
+      });
+      return data;
     });
 
     if (policy === 'blocked') {
-      await audit(svc, { server_id: server.id, action: 'policy_blocked', tool_name: toolName,
-        request_size: 0, response_size: 0, latency_ms: Date.now() - start,
-        status_code: 403, dlp_triggered: false, dlp_issues: [`Blocked: ${toolName}`], ip, user_agent: ua(req) });
+      after(() => {
+        audit(svc, { server_id: server.id, action: 'policy_blocked', tool_name: toolName,
+          request_size: 0, response_size: 0, latency_ms: Date.now() - start,
+          status_code: 403, dlp_triggered: false, dlp_issues: [`Blocked: ${toolName}`], ip, user_agent: ua(req) });
+      });
       return NextResponse.json(
         { error: `Tool '${toolName}' is blocked by your policy`, hint: 'Update at /dashboard/policies' },
         { status: 403 }
@@ -166,9 +183,11 @@ export async function POST(
   // ── L4: DLP — block credentials in request ───────────────────────────────────
   const reqDlp = dlpScan(rawBody);
   if (reqDlp.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'dlp_blocked_request', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: reqDlp, ip, user_agent: ua(req) });
+    after(() => {
+      audit(svc, { server_id: server.id, action: 'dlp_blocked_request', tool_name: toolName,
+        request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
+        status_code: 400, dlp_triggered: true, dlp_issues: reqDlp, ip, user_agent: ua(req) });
+    });
     return NextResponse.json({
       error: 'Request blocked — credential in tool arguments',
       pattern: reqDlp[0],
@@ -184,18 +203,22 @@ export async function POST(
   // ── L9: Sampling injection ───────────────────────────────────────────────────
   const samplingIssues = samplingDlpScan(rawBody);
   if (samplingIssues.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'sampling_injection_blocked', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: samplingIssues, ip, user_agent: ua(req) });
+    after(() => {
+      audit(svc, { server_id: server.id, action: 'sampling_injection_blocked', tool_name: toolName,
+        request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
+        status_code: 400, dlp_triggered: true, dlp_issues: samplingIssues, ip, user_agent: ua(req) });
+    });
     return NextResponse.json({ error: 'Request blocked — sampling injection pattern', issues: samplingIssues }, { status: 400 });
   }
 
   // ── S-12: Shell injection ────────────────────────────────────────────────────
   const shellIssues = shellInjectionScan(rawBody);
   if (shellIssues.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'shell_injection_blocked', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: shellIssues, ip, user_agent: ua(req) });
+    after(() => {
+      audit(svc, { server_id: server.id, action: 'shell_injection_blocked', tool_name: toolName,
+        request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
+        status_code: 400, dlp_triggered: true, dlp_issues: shellIssues, ip, user_agent: ua(req) });
+    });
     return NextResponse.json({ error: 'Request blocked — shell injection pattern', issues: shellIssues }, { status: 400 });
   }
 
@@ -222,15 +245,23 @@ export async function POST(
   if (callerUserId) {
     // Try OAuth token first (for oauth auth_type servers)
     if (isOAuthServer) {
-      const { data: oauthToken } = await svc.rpc('get_oauth_token', {
-        p_user_id: callerUserId, p_server_name: serverName,
+      const oauthKey = `oauth:${callerUserId}:${serverName}`;
+      const oauthToken = await withCache(oauthKey, 60, async () => {
+        const { data } = await svc.rpc('get_oauth_token', {
+          p_user_id: callerUserId, p_server_name: serverName,
+        });
+        return data;
       });
       if (oauthToken) upstreamHeaders['Authorization'] = `Bearer ${oauthToken}`;
     } else {
       // Try all static key variants from vault
       for (const secretName of secretVariants(serverName)) {
-        const { data: val } = await svc.rpc('get_user_secret', {
-          p_user_id: callerUserId, p_server_name: serverName, p_secret_name: secretName,
+        const vaultKey = `vault:${callerUserId}:${serverName}:${secretName}`;
+        const val = await withCache(vaultKey, 300, async () => {
+          const { data } = await svc.rpc('get_user_secret', {
+            p_user_id: callerUserId, p_server_name: serverName, p_secret_name: secretName,
+          });
+          return data;
         });
         if (val) { upstreamHeaders['Authorization'] = `Bearer ${val}`; break; }
       }
@@ -347,9 +378,11 @@ export async function POST(
 
 
   } catch (err: any) {
-    await audit(svc, { server_id: server.id, action: 'proxy_error', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 502, dlp_triggered: false, dlp_issues: [], ip, user_agent: ua(req) });
+    after(() => {
+      audit(svc, { server_id: server.id, action: 'proxy_error', tool_name: toolName,
+        request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
+        status_code: 502, dlp_triggered: false, dlp_issues: [], ip, user_agent: ua(req) });
+    });
     return NextResponse.json({ error: 'Upstream error', message: err.message }, { status: 502 });
   }
 
@@ -363,22 +396,24 @@ export async function POST(
   const allIssues      = [...new Set([...resDlp, ...piiIssues, ...leakIssues, ...indirectIssues])];
 
   // ── Stats + metering — non-blocking, errors suppressed (observability only) ──
-  const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
-  svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).catch(() => {});
-  svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
-  const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-openmcp-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
-  svc.from('metering_events').insert({
-    server_id: server.id, user_id: callerUserId ?? null, tool_name: toolName,
-    interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length,
-    latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0,
-  }).catch(() => {});
+  after(() => {
+    const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
+    svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).catch(() => {});
+    svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
+    const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-openmcp-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
+    svc.from('metering_events').insert({
+      server_id: server.id, user_id: callerUserId ?? null, tool_name: toolName,
+      interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length,
+      latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0,
+    }).catch(() => {});
 
-  // ── Audit log ────────────────────────────────────────────────────────────────
-  await audit(svc, {
-    server_id: server.id, action: allIssues.length > 0 ? 'proxy_dlp_warning_response' : 'proxy_call',
-    tool_name: toolName, request_size: rawBody.length, response_size: responseBody.length,
-    latency_ms: latency, status_code: upstreamStatus,
-    dlp_triggered: allIssues.length > 0, dlp_issues: allIssues, ip, user_agent: ua(req),
+    // ── Audit log ────────────────────────────────────────────────────────────────
+    audit(svc, {
+      server_id: server.id, action: allIssues.length > 0 ? 'proxy_dlp_warning_response' : 'proxy_call',
+      tool_name: toolName, request_size: rawBody.length, response_size: responseBody.length,
+      latency_ms: latency, status_code: upstreamStatus,
+      dlp_triggered: allIssues.length > 0, dlp_issues: allIssues, ip, user_agent: ua(req),
+    });
   });
 
   // ── Response ─────────────────────────────────────────────────────────────────

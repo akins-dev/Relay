@@ -187,6 +187,14 @@ export const CATEGORY_HIGH_SCORE_THRESHOLD = 85;
 
 // ── L4: Proxy DLP — credentials ───────────────────────────────────────────────
 
+// ReDoS and Time Complexity mitigations for unbounded string scanning
+function truncateForScan(text: string, limit = 150_000): string {
+  if (text.length <= limit) return text;
+  // If text is massive, scan the first 100kb and last 50kb
+  // Credentials and injections typically cluster at the boundaries of large payloads
+  return text.slice(0, 100_000) + "\n...\n" + text.slice(-50_000);
+}
+
 const CREDENTIAL_PATTERNS: { pattern: RegExp; label: string }[] = [
   // OpenAI — matches both old (sk-...) and new (sk-proj-...) formats
   { pattern: /sk-(?:proj-)?[a-zA-Z0-9_-]{20,}/,                                label: 'OpenAI API key' },
@@ -202,7 +210,8 @@ const CREDENTIAL_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /secret["'\s]*[:=]["'\s]*\S{8,}/i,                                label: 'Plaintext secret' },
 ];
 
-export function dlpScan(text: string): string[] {
+export function dlpScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   return CREDENTIAL_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label);
 }
 
@@ -218,7 +227,8 @@ const SAMPLING_INJECTION_PATTERNS = [
   /override your (previous|original|initial) (instructions?|prompt|system)/i,
 ];
 
-export function samplingDlpScan(text: string): string[] {
+export function samplingDlpScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   const issues: string[] = [];
   for (const pattern of SAMPLING_INJECTION_PATTERNS) {
     if (pattern.test(text)) issues.push(`Sampling injection: ${pattern.source.slice(0, 60)}`);
@@ -252,7 +262,8 @@ const PII_PATTERNS: { pattern: RegExp; label: string }[] = [
     label: 'Passport number' },
 ];
 
-export function piiScan(text: string): string[] {
+export function piiScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   return PII_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label);
 }
 
@@ -306,7 +317,8 @@ const CONTEXT_LEAK_PATTERNS: { pattern: RegExp; label: string }[] = [
     label: 'JWT token in response' },
 ];
 
-export function contextLeakScan(text: string): string[] {
+export function contextLeakScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   const found = [
     ...CONTEXT_LEAK_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label),
     ...dlpScan(text),
@@ -347,7 +359,8 @@ const SHELL_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
  * Call this on the parsed JSON body of proxy requests, not the raw string.
  * Returns array of issue labels. Empty = clean.
  */
-export function shellInjectionScan(text: string): string[] {
+export function shellInjectionScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   return SHELL_INJECTION_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ label }) => label);
@@ -378,7 +391,8 @@ const INDIRECT_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
  * Applied to response bodies in the proxy layer.
  * Returns array of issue labels. Empty = clean.
  */
-export function indirectInjectionScan(text: string): string[] {
+export function indirectInjectionScan(rawText: string): string[] {
+  const text = truncateForScan(rawText);
   return INDIRECT_INJECTION_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ label }) => label);

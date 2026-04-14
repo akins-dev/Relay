@@ -209,7 +209,9 @@ async function listTools(endpoint: string, timeoutMs = 8_000): Promise<MCPToolSc
 
   // MCP supports cursor-based pagination on tools/list (nextCursor)
   // Servers with many tools (e.g. filesystem servers) return pages of results.
+  let iterations = 0;
   do {
+    iterations++;
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -235,8 +237,8 @@ async function listTools(endpoint: string, timeoutMs = 8_000): Promise<MCPToolSc
     } catch {
       break;
     }
-    // Safety cap: max 500 tools total (avoids unbounded loops on malicious servers)
-  } while (cursor && allTools.length < 500);
+    // Safety cap: max 500 tools total and max 20 HTTP requests (O(1) upper bound to prevent infinite pagination sinkholes)
+  } while (cursor && allTools.length < 500 && iterations < 20);
 
   return allTools;
 }

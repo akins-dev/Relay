@@ -53,11 +53,12 @@ Agents connect directly to the Relay Cloud proxy without complex custom code. We
 | Feature | Smithery | Glama | Official Registry | **Relay** |
 |---|---|---|---|---|
 | Server discovery | ✅ | ✅ | ✅ | ✅ |
-| Active agent proxying | ❌ | ❌ | ❌ | ✅ Native MCP + HTTP |
+| Active agent proxying | ❌ | ✅ (Gateway) | ❌ | ✅ HTTP + stdio bridge |
+| Context-shielded proxy| ❌ | ❌ | ❌ | ✅ 2-tool dynamic discovery |
 | Security scanning | ❌ | Partial | ❌ | ✅ Multi-layer L1–L14 |
-| Credential injection | ❌ | ❌ | ❌ | ✅ Vault-encrypted |
-| Tool policy control | ❌ | ❌ | ❌ | ✅ Allow/Confirm/Block |
-| Proxy layer | Partial (stdio bridge) | ❌ | ❌ | ✅ |
+| Credential injection | ❌ | ✅ | ❌ | ✅ Vault-encrypted |
+| Tool policy control | ❌ | ✅ (Per-tool) | ❌ | ✅ Allow/Confirm/Block |
+| Proxy layer | Partial (stdio bridge) | ✅ | ❌ | ✅ |
 | Trust scores | ❌ | Basic | ❌ | ✅ EWMA + multi-signal |
 | Resources + Prompts proxy | ❌ | ❌ | ❌ | ✅ |
 | MCP spec compliance | Partial | ❌ | ✅ | ✅ (initialize handshake) |
