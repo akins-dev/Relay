@@ -46,6 +46,7 @@ export interface IngestServer {
   glama_id?:        string;
   verified?:        boolean;
   transport?:       'stdio' | 'sse' | 'streamable_http' | 'unknown';
+  upstream_updated_at?: string; // ISO 8601 — when upstream source last modified this server
 }
 
 /**
@@ -261,6 +262,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
         official_id:  s.id ?? s.qualifiedName ?? rawName,
         verified:     s.isVerified ?? (meta.status === 'active'),
         transport,
+        upstream_updated_at: s.updatedAt ?? meta.updatedAt ?? s.createdAt ?? undefined,
       });
     }
 
@@ -319,6 +321,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
         source:       'smithery',
         smithery_id:  s.qualifiedName ?? undefined,
         verified:     s.security?.scanPassed ?? false,
+        upstream_updated_at: s.updatedAt ?? s.createdAt ?? undefined,
       });
     }
 
@@ -448,6 +451,7 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
           glama_id:     s.id ?? undefined,
           verified:     false,
           transport,
+          upstream_updated_at: s.updatedAt ?? undefined,
         });
       }
 
@@ -457,7 +461,8 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
       if (!hasNext || !cursor) break;
 
       await new Promise(r => setTimeout(r, 300)); // polite rate limiting
-    } catch {
+    } catch (e: any) {
+      console.error(`[ingest:glama] Error on page:`, e.message);
       break;
     }
   }
@@ -522,6 +527,18 @@ export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' |
 
 // ── Upsert pipeline ───────────────────────────────────────────────────────────
 
+/**
+ * Human-readable relative time for logging.
+ * e.g. "3.2h ago", "2d ago", "just now"
+ */
+function agoStr(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'just now';
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${(ms / 3_600_000).toFixed(1)}h ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
+}
+
 export async function upsertServers(
   servers: IngestServer[],
   svc: any
@@ -529,6 +546,7 @@ export async function upsertServers(
   const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
   const tag = '[ingest:upsert]';
   const skipReasons: Record<string, number> = {};
+  const sourceStart = Date.now();
 
   // Resolve system author_id ONCE
   const { data: systemProfile } = await svc
@@ -542,9 +560,10 @@ export async function upsertServers(
   }
 
   // Batch pre-fetch all existing servers to eliminate N+1 DB lookups
+  // Includes upstream_updated_at for three-tier skip comparison
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at');
+    .select('id, name, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
 
   if (prefetchErr) {
     console.error(`${tag} Pre-fetch FAILED: ${prefetchErr.message}. Will treat all servers as new.`);
@@ -566,18 +585,31 @@ export async function upsertServers(
 
   console.log(`${tag} Pre-fetched ${existingByName.size} existing servers. Processing ${servers.length} incoming...`);
 
-  for (const s of servers) {
+  // CVE scan deduplication: same GitHub repo shouldn't be scanned multiple times
+  const scannedRepos = new Map<string, any[]>();
+
+  for (let idx = 0; idx < servers.length; idx++) {
+    const s = servers[idx];
+    const progress = `[${idx + 1}/${servers.length}]`;
     try {
       // Guard: name required
-      if (!s.name) { result.skipped++; skipReasons['no_name'] = (skipReasons['no_name'] ?? 0) + 1; continue; }
+      if (!s.name) {
+        result.skipped++;
+        skipReasons['no_name'] = (skipReasons['no_name'] ?? 0) + 1;
+        continue;
+      }
 
       // Normalise name first so logging is readable
       s.name = slugify(s.name).slice(0, 64);
-      if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) { result.skipped++; skipReasons['invalid_name'] = (skipReasons['invalid_name'] ?? 0) + 1; continue; }
+      if (!s.name || !/^[a-z0-9-]+$/.test(s.name)) {
+        result.skipped++;
+        skipReasons['invalid_name'] = (skipReasons['invalid_name'] ?? 0) + 1;
+        continue;
+      }
 
       // SSRF protection
       if (s.endpoint && !isSafeUrl(s.endpoint)) {
-        console.warn(`${tag} [SKIP:unsafe-url] ${s.name} endpoint rejected`);
+        console.warn(`${tag} ${progress} [SKIP:unsafe-url] ${s.name} — endpoint rejected by SSRF guard`);
         result.skipped++;
         skipReasons['unsafe_url'] = (skipReasons['unsafe_url'] ?? 0) + 1;
         continue;
@@ -597,7 +629,7 @@ export async function upsertServers(
         continue;
       }
 
-      // Lookup existing record via any matching ID
+      // ── Lookup existing record via any matching ID ──────────────────────────
       let existing: any = null;
       if (s.smithery_id)                    existing = existingBySmithery.get(s.smithery_id);
       if (!existing && s.official_id)       existing = existingByOfficial.get(s.official_id);
@@ -605,7 +637,29 @@ export async function upsertServers(
       if (!existing && s.github_url)        existing = existingByGithub.get(s.github_url.replace(/\.git$/, '').toLowerCase());
       if (!existing)                        existing = existingByName.get(s.name);
 
-      // Upstream hash — lightweight change detection
+      // ── THREE-TIER SKIP ALGORITHM ──────────────────────────────────────────
+      //
+      // TIER 1 — Instant skip via upstream timestamp (O(1), zero hash)
+      // If the upstream source provides an updated_at and it's older than or
+      // equal to our last scan, the server hasn't changed — skip immediately.
+      // This eliminates hash computation for ~80% of servers on re-ingests.
+      //
+      if (existing && s.upstream_updated_at && existing.last_scanned_at) {
+        const upstreamMs = new Date(s.upstream_updated_at).getTime();
+        const scannedMs  = new Date(existing.last_scanned_at).getTime();
+        if (upstreamMs <= scannedMs) {
+          result.skipped++;
+          skipReasons['fresh'] = (skipReasons['fresh'] ?? 0) + 1;
+          // Log every 50th skip to avoid log flood, but always log first 5
+          if (idx < 5 || (idx + 1) % 50 === 0) {
+            console.log(`${tag} ${progress} [SKIP:fresh] ${s.name} — upstream unchanged (updated ${agoStr(s.upstream_updated_at)}, scanned ${agoStr(existing.last_scanned_at)})`);
+          }
+          continue;
+        }
+      }
+
+      // TIER 2 — Hash-based skip for sources without timestamps (O(T log T))
+      // Fallback when upstream_updated_at is unavailable.
       const upstreamHash = createHash('sha256')
         .update([
           JSON.stringify(s.tools.slice().sort()),
@@ -619,12 +673,16 @@ export async function upsertServers(
         ? (Date.now() - new Date(existing.last_scanned_at).getTime()) / 3_600_000
         : Infinity;
 
-      // Skip: hash unchanged and scanned recently
       if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
         result.skipped++;
         skipReasons['unchanged'] = (skipReasons['unchanged'] ?? 0) + 1;
+        if (idx < 5 || (idx + 1) % 50 === 0) {
+          console.log(`${tag} ${progress} [SKIP:unchanged] ${s.name} — hash match, scanned ${hoursSinceScan.toFixed(1)}h ago`);
+        }
         continue;
       }
+
+      // TIER 3 — Full pipeline: server is new or changed ─────────────────────
 
       // Fetch MCP primitives — skip live probe for stdio servers (no HTTP endpoint).
       // Stdio servers only get README-parsed tool hints; live probing requires the CLI bridge.
@@ -662,20 +720,20 @@ export async function upsertServers(
           });
           
           if (req.ok) {
-            const result = await req.json();
-            if (result.success && result.data) {
-              toolSchemas = result.data.tools || [];
-              mcpResources = result.data.resources || [];
-              mcpPrompts = result.data.prompts || [];
+            const sandboxResult = await req.json();
+            if (sandboxResult.success && sandboxResult.data) {
+              toolSchemas = sandboxResult.data.tools || [];
+              mcpResources = sandboxResult.data.resources || [];
+              mcpPrompts = sandboxResult.data.prompts || [];
               mcpCompliant = true;
               protocolVersion = '2024-11-05';
-              console.log(`${tag} Sandbox extracted ${toolSchemas.length} tools for ${s.name}`);
+              console.log(`${tag} ${progress} Sandbox extracted ${toolSchemas.length} tools for ${s.name}`);
             }
           } else {
-             console.warn(`${tag} Sandbox rejected ${s.name} with status ${req.status}`);
+             console.warn(`${tag} ${progress} Sandbox rejected ${s.name} with status ${req.status}`);
           }
         } catch (e) {
-          console.warn(`${tag} Sandbox probe failed for ${s.name}:`, e);
+          console.warn(`${tag} ${progress} Sandbox probe failed for ${s.name}:`, e);
         }
       } else if (toolSchemas.length === 0 && s.github_url) {
         // Stdio/no-endpoint server (NO Sandbox): parse README for tool hints only
@@ -699,10 +757,17 @@ export async function upsertServers(
         tags:        s.tags,
       });
 
-      // S-14: npm CVE scan
+      // S-14: npm CVE scan — deduplicated by GitHub repo URL
+      // Multiple servers can share the same repo; scanning once per repo saves HTTP calls.
+      const repoKey = s.github_url?.replace(/\.git$/, '').toLowerCase();
       let cveIssues: any[] = [];
-      if (s.github_url) {
-        cveIssues = await scanNpmDependencies(s.github_url);
+      if (repoKey) {
+        if (scannedRepos.has(repoKey)) {
+          cveIssues = scannedRepos.get(repoKey)!;
+        } else {
+          cveIssues = await scanNpmDependencies(s.github_url!);
+          scannedRepos.set(repoKey, cveIssues);
+        }
       }
 
       // CRITICAL FIX: Only hard-reject CRITICAL issues.
@@ -715,7 +780,7 @@ export async function upsertServers(
         const reason = scanResult.issues.find(i => i.severity === 'critical')?.description
           ?? cveIssues.find(i => i.severity === 'critical')?.cve
           ?? 'critical issue';
-        console.warn(`${tag} [REJECT:critical] ${s.name} — ${reason}`);
+        console.warn(`${tag} ${progress} [REJECT:critical] ${s.name} — ${reason}`);
         result.rejected++;
         continue;
       }
@@ -767,6 +832,7 @@ export async function upsertServers(
         shell_issues:     [] as any,
         trust_score:      trustScore,
         last_scanned_at:  new Date().toISOString(),
+        upstream_updated_at: s.upstream_updated_at ?? null,
       };
 
       let serverId: string | null = existing?.id ?? null;
@@ -779,11 +845,11 @@ export async function upsertServers(
           .eq('id', existing.id);
 
         if (updateErr) {
-          console.error(`${tag} [ERROR:update] ${s.name} — ${updateErr.message}`);
+          console.error(`${tag} ${progress} [ERROR:update] ${s.name} — ${updateErr.message}`);
           result.errors.push(`${s.name}: update failed — ${updateErr.message}`);
           continue;
         }
-        console.log(`${tag} [UPDATE] ${s.name} trust:${trustScore} status:${status}`);
+        console.log(`${tag} ${progress} [UPDATE] ${s.name} — trust:${trustScore} status:${status} tools:${s.tools.length}`);
         result.updated++;
 
       } else {
@@ -802,11 +868,11 @@ export async function upsertServers(
           const { data: raceWinner } = await svc
             .from('servers').select('id').eq('name', s.name).maybeSingle();
           if (raceWinner?.id) {
-            console.warn(`${tag} [WARN:race-recovered] ${s.name}`);
+            console.warn(`${tag} ${progress} [WARN:race-recovered] ${s.name}`);
             serverId = raceWinner.id;
             result.updated++;
           } else {
-            console.error(`${tag} [ERROR:upsert] ${s.name} — ${upsertErr.message}`);
+            console.error(`${tag} ${progress} [ERROR:upsert] ${s.name} — ${upsertErr.message}`);
             result.errors.push(`${s.name}: ${upsertErr.message}`);
             continue;
           }
@@ -818,7 +884,7 @@ export async function upsertServers(
               .from('servers').select('id').eq('name', s.name).maybeSingle();
             serverId = fallback?.id ?? null;
           }
-          console.log(`${tag} [ADD] ${s.name} trust:${trustScore} status:${status}`);
+          console.log(`${tag} ${progress} [ADD] ${s.name} — trust:${trustScore} status:${status} tools:${s.tools.length}`);
           result.added++;
         }
       }
@@ -838,13 +904,14 @@ export async function upsertServers(
       }
 
     } catch (e: any) {
-      console.error(`${tag} [ERROR:exception] ${s.name ?? '?'} — ${e.message}`);
+      console.error(`${tag} ${progress} [ERROR:exception] ${s.name ?? '?'} — ${e.message}`);
       result.errors.push(`${s.name ?? '?'}: ${e.message}`);
     }
   }
 
+  const elapsed = ((Date.now() - sourceStart) / 1000).toFixed(1);
   const skipDetail = Object.entries(skipReasons).map(([k, v]) => `${k}:${v}`).join(' ');
-  console.log(`${tag} Done — added:${result.added} updated:${result.updated} skipped:${result.skipped} rejected:${result.rejected} errors:${result.errors.length}${skipDetail ? ` (skip breakdown: ${skipDetail})` : ''}`);
+  console.log(`${tag} Done in ${elapsed}s — added:${result.added} updated:${result.updated} skipped:${result.skipped} rejected:${result.rejected} errors:${result.errors.length}${skipDetail ? ` (skip breakdown: ${skipDetail})` : ''}`);
   return result;
 }
 

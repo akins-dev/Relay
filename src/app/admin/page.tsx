@@ -44,8 +44,21 @@ interface IngestRun {
   id: string; source: string; started_at: string; finished_at: string;
   servers_found: number; servers_added: number; servers_rejected: number;
 }
+interface CronJobRun {
+  id: string; job_name: string; started_at: string; finished_at: string;
+  status: string; result: any; error: string | null; duration_seconds: number;
+}
+interface DriftEvent {
+  name: string; display_name: string; source: string; status: string;
+  trust_score: number; drifted_at: string; issues: any; details: string;
+}
+interface UptimeIssue {
+  name: string; display_name: string; source: string; endpoint: string;
+  transport: string; uptime_pct: number; latency_ms: number;
+  trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
+}
 
-type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats';
+type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations';
 const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
@@ -61,6 +74,9 @@ export default function AdminPage() {
   const [suspIPs,    setSuspIPs]    = useState<SuspiciousIP[]>([]);
   const [topServers, setTopServers] = useState<TopServer[]>([]);
   const [ingestRuns, setIngestRuns] = useState<IngestRun[]>([]);
+  const [cronJobs,   setCronJobs]   = useState<CronJobRun[]>([]);
+  const [driftEvents,setDriftEvents]= useState<DriftEvent[]>([]);
+  const [uptimeIssues,setUptimeIssues]= useState<UptimeIssue[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
   const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
@@ -92,13 +108,16 @@ export default function AdminPage() {
     const svc = supabase;
 
     try {
-      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes] = await Promise.all([
+      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes] = await Promise.all([
         svc.from('platform_kpis').select('*').single(),
         svc.from('ingest_quality').select('*'),
         svc.from('security_threats').select('*').limit(30),
         svc.from('suspicious_ips').select('*').limit(100),
         svc.from('top_servers_by_usage').select('*').limit(100),
         svc.from('ingest_runs').select('*').order('started_at', { ascending: false }).limit(100),
+        svc.from('cron_job_health').select('*'),
+        svc.from('drift_events').select('*').limit(50),
+        svc.from('uptime_issues').select('*').limit(50),
       ]) as any[];
 
       if (kpisRes.error) throw new Error(kpisRes.error.message);
@@ -109,6 +128,9 @@ export default function AdminPage() {
       if (suspRes.data)    setSuspIPs(suspRes.data as any);
       if (topRes.data)     setTopServers(topRes.data as any);
       if (runsRes.data)    setIngestRuns(runsRes.data as any);
+      if (cronRes?.data)   setCronJobs(cronRes.data as any);
+      if (driftRes?.data)  setDriftEvents(driftRes.data as any);
+      if (uptimeRes?.data) setUptimeIssues(uptimeRes.data as any);
       setLastRefresh(new Date());
     } catch (error: any) {
       setAdminError(error.message ?? 'Could not load admin dashboard');
@@ -300,13 +322,14 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px' }}>
-        {(['overview','ingest','security','servers','threats'] as Tab[]).map(t => (
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px', overflowX: 'auto' }}>
+        {(['overview','operations','ingest','security','servers','threats'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
             marginBottom: '-1px', fontSize: '13px', fontWeight: tab === t ? 600 : 400,
             color: tab === t ? 'var(--text)' : 'var(--text-3)', textTransform: 'capitalize',
+            whiteSpace: 'nowrap',
           }}>{t}</button>
         ))}
       </div>
@@ -566,6 +589,156 @@ export default function AdminPage() {
               </div>
             )
           }
+        </div>
+      )}
+      {/* ── OPERATIONS ────────────────────────────────────────────────────── */}
+      {tab === 'operations' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+          {/* Cron Job Health */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Background Job Health</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Job</TH><TH>Last Run</TH><TH>Status</TH><TH>Duration</TH><TH>Result</TH>
+              </tr></thead>
+              <tbody>
+                {(cronJobs.length > 0 ? cronJobs : [
+                  { id: '-', job_name: 'uptime_check', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'schema_drift', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'reset_daily_calls', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                  { id: '-', job_name: 'ingest', started_at: '', finished_at: '', status: 'no data', result: null, error: null, duration_seconds: 0 },
+                ]).map(job => (
+                  <tr key={job.job_name}>
+                    <TD mono color={C.blue}>{job.job_name}</TD>
+                    <TD>{job.started_at ? ago(job.started_at) : '—'}</TD>
+                    <TD color={job.status === 'success' ? C.green : job.status === 'error' ? C.red : job.status === 'running' ? C.orange : C.grey}>
+                      {job.status === 'success' ? '✓ success' : job.status === 'error' ? '✗ error' : job.status === 'running' ? '⟳ running' : job.status}
+                    </TD>
+                    <TD mono>{job.duration_seconds ? `${job.duration_seconds}s` : '—'}</TD>
+                    <TD>{job.error ? <span style={{ color: C.red }}>{job.error}</span> : job.result ? JSON.stringify(job.result).slice(0, 80) : '—'}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Schema Drift Events */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Schema Drift Events <span style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 400 }}>(tools changed post-approval → suspended)</span></h3>
+            {driftEvents.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>No schema drift events detected. All servers are stable.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>Server</TH><TH>Source</TH><TH>Drifted</TH><TH>Status</TH><TH>Details</TH>
+                  </tr></thead>
+                  <tbody>
+                    {driftEvents.map(ev => (
+                      <tr key={ev.name + ev.drifted_at}>
+                        <TD mono color={C.red}>{ev.name}</TD>
+                        <TD>{ev.source}</TD>
+                        <TD>{ago(ev.drifted_at)}</TD>
+                        <TD color={ev.status === 'suspended' ? C.red : C.orange}>{ev.status}</TD>
+                        <TD>{ev.details?.slice(0, 100) ?? '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* Uptime Issues */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Uptime Issues <span style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 400 }}>(&lt;95% uptime or &gt;5s latency)</span></h3>
+            {uptimeIssues.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>All active servers meet uptime and latency thresholds.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>Server</TH><TH>Source</TH><TH>Transport</TH><TH>Uptime</TH><TH>Latency</TH><TH>Trust</TH><TH>Last Scan</TH>
+                  </tr></thead>
+                  <tbody>
+                    {uptimeIssues.slice(0, tablePageSize).map(s => (
+                      <tr key={s.name}>
+                        <TD mono color={C.blue}>{s.name}</TD>
+                        <TD>{s.source}</TD>
+                        <TD>{s.transport}</TD>
+                        <TD color={s.uptime_pct < 90 ? C.red : C.orange}>{s.uptime_pct != null ? `${Number(s.uptime_pct).toFixed(1)}%` : '—'}</TD>
+                        <TD color={s.latency_ms > 5000 ? C.red : undefined}>{s.latency_ms ? `${s.latency_ms}ms` : '—'}</TD>
+                        <TD>{s.trust_score ?? '—'}</TD>
+                        <TD>{s.last_scanned_at ? ago(s.last_scanned_at) : '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* API Endpoint Catalog */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>API Endpoint Catalog</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Endpoint</TH><TH>Method</TH><TH>Auth</TH><TH>Description</TH><TH>Rate Limit</TH>
+              </tr></thead>
+              <tbody>
+                {[
+                  { path: '/api/servers', method: 'GET', auth: 'None', desc: 'List & filter all active servers', rate: '60/min' },
+                  { path: '/api/servers/search', method: 'GET', auth: 'None', desc: 'Full-text + tag + tool search', rate: '60/min' },
+                  { path: '/api/servers/stats', method: 'GET', auth: 'None', desc: 'Global registry statistics', rate: '120/min' },
+                  { path: '/api/servers/[name]', method: 'GET', auth: 'None', desc: 'Server details by name', rate: '60/min' },
+                  { path: '/api/proxy/[server]/[tool]', method: 'POST', auth: 'Optional API key', desc: 'Proxy MCP tool call through registry', rate: '30/min (200 w/ key)' },
+                  { path: '/api/ingest', method: 'POST', auth: 'CRON_SECRET', desc: 'Trigger ingestion pipeline', rate: 'Admin only' },
+                  { path: '/api/ingest', method: 'GET', auth: 'CRON_SECRET', desc: 'Get last 10 ingest runs', rate: 'Admin only' },
+                  { path: '/api/admin/ingest', method: 'POST', auth: 'Admin session', desc: 'Trigger ingest from dashboard', rate: 'Admin only' },
+                  { path: '/api/cron/uptime-check', method: 'GET', auth: 'CRON_SECRET', desc: 'Probe all active server endpoints (every 15m)', rate: 'Cron only' },
+                  { path: '/api/cron/schema-drift', method: 'GET', auth: 'CRON_SECRET', desc: 'Detect tool schema changes (every 6h)', rate: 'Cron only' },
+                  { path: '/api/cron/reset-daily-calls', method: 'GET', auth: 'CRON_SECRET', desc: 'Reset calls_today counters (daily)', rate: 'Cron only' },
+                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'MCP-over-MCP server endpoint', rate: '60/min' },
+                  { path: '/api/auth/callback', method: 'GET', auth: 'OAuth flow', desc: 'Auth provider callback', rate: 'N/A' },
+                ].map(ep => (
+                  <tr key={ep.path + ep.method}>
+                    <TD mono color={C.blue}>{ep.path}</TD>
+                    <TD mono>{ep.method}</TD>
+                    <TD>{ep.auth}</TD>
+                    <TD>{ep.desc}</TD>
+                    <TD mono>{ep.rate}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Server Status Reference */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Server Status Lifecycle</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Status</TH><TH>Set By</TH><TH>Visible (UI)</TH><TH>Visible (AI)</TH><TH>Callable</TH><TH>Description</TH>
+              </tr></thead>
+              <tbody>
+                {[
+                  { s: 'active', by: 'Ingest (scan ok)', ui: '✅', ai: '✅', call: '✅', desc: 'Live and available to all users' },
+                  { s: 'pending_review', by: 'Ingest (high sev)', ui: '❌', ai: '❌', call: '❌', desc: 'Has high-severity issues, needs admin review' },
+                  { s: 'pending', by: 'Manual publish', ui: '❌', ai: '❌', call: '❌', desc: 'Awaiting initial scan' },
+                  { s: 'rejected', by: 'Ingest (critical)', ui: '❌', ai: '❌', call: '❌', desc: 'Failed security scan with critical issues' },
+                  { s: 'suspended', by: 'Schema drift cron', ui: '❌', ai: '❌', call: '❌', desc: 'Tools changed post-approval (rug-pull detected)' },
+                ].map(row => (
+                  <tr key={row.s}>
+                    <TD mono color={row.s === 'active' ? C.green : row.s === 'suspended' ? C.red : C.orange}>{row.s}</TD>
+                    <TD>{row.by}</TD>
+                    <TD>{row.ui}</TD>
+                    <TD>{row.ai}</TD>
+                    <TD>{row.call}</TD>
+                    <TD>{row.desc}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

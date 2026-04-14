@@ -38,6 +38,11 @@ export async function GET(req: NextRequest) {
   const svc = createServiceClient();
   const results = { checked: 0, up: 0, down: 0, errors: 0 };
 
+  // Track cron job run for admin dashboard
+  const { data: cronRun } = await svc.from('cron_job_runs').insert({
+    job_name: 'uptime_check', status: 'running',
+  }).select('id').single().catch(() => ({ data: null }));
+
   const { data: servers, error } = await svc
     .from('servers')
     .select('id, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at')
@@ -45,6 +50,11 @@ export async function GET(req: NextRequest) {
     .not('endpoint', 'is', null);
 
   if (error) {
+    if (cronRun?.id) {
+      await svc.from('cron_job_runs').update({
+        finished_at: new Date().toISOString(), status: 'error', error: error.message,
+      }).eq('id', cronRun.id).catch(() => {});
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -117,6 +127,13 @@ export async function GET(req: NextRequest) {
 
       if (up) results.up++; else results.down++;
     }));
+  }
+
+  // Record completion in cron_job_runs
+  if (cronRun?.id) {
+    await svc.from('cron_job_runs').update({
+      finished_at: new Date().toISOString(), status: 'success', result: results,
+    }).eq('id', cronRun.id).catch(() => {});
   }
 
   return NextResponse.json({

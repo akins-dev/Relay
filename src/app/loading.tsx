@@ -42,9 +42,6 @@ export default function Loading() {
           </circle>
         </svg>
       </div>
-      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#06B6D4] animate-pulse drop-shadow-[0_0_10px_rgba(6,182,212,0.5)]">
-        Discovering Runtime Context...
-      </div>
     </div>
   );
 }

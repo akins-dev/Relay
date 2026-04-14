@@ -51,43 +51,63 @@ export async function POST(req: NextRequest) {
 
   try {
     if (source === 'all' || source === 'official') {
-      console.log('[ingest] Fetching official registry...');
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: Official MCP Registry');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
       const servers = await fetchOfficialServers();
-      console.log(`[ingest] Official registry returned ${servers.length} servers. Upserting...`);
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
       results.official = await upsertServers(servers, svc);
       results.official.fetched = servers.length;
+      console.log(`[ingest] ✓ Official complete: +${results.official.added} added, ~${results.official.updated} updated, ${results.official.skipped} skipped, ${results.official.rejected} rejected\n`);
     }
 
     if (source === 'all' || source === 'smithery') {
-      console.log('[ingest] Fetching Smithery...');
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: Smithery');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
       const servers = await fetchSmitheryServers();
-      console.log(`[ingest] Smithery returned ${servers.length} servers. Upserting...`);
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
       results.smithery = await upsertServers(servers, svc);
       results.smithery.fetched = servers.length;
+      console.log(`[ingest] ✓ Smithery complete: +${results.smithery.added} added, ~${results.smithery.updated} updated, ${results.smithery.skipped} skipped, ${results.smithery.rejected} rejected\n`);
     }
 
     if (source === 'all' || source === 'glama') {
-      console.log('[ingest] Fetching Glama...');
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: Glama');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
       const servers = await fetchGlamaServers();
-      console.log(`[ingest] Glama returned ${servers.length} servers. Upserting...`);
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
       results.glama = await upsertServers(servers, svc);
       results.glama.fetched = servers.length;
+      console.log(`[ingest] ✓ Glama complete: +${results.glama.added} added, ~${results.glama.updated} updated, ${results.glama.skipped} skipped, ${results.glama.rejected} rejected\n`);
     }
 
     if (source === 'all' || source === 'pulsemcp') {
-      console.log('[ingest] Fetching PulseMCP...');
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: PulseMCP');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
       const servers = await fetchPulseMCPServers();
-      console.log(`[ingest] PulseMCP returned ${servers.length} servers. Upserting...`);
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
       results.pulsemcp = await upsertServers(servers, svc);
       results.pulsemcp.fetched = servers.length;
+      console.log(`[ingest] ✓ PulseMCP complete: +${results.pulsemcp.added} added, ~${results.pulsemcp.updated} updated, ${results.pulsemcp.skipped} skipped, ${results.pulsemcp.rejected} rejected\n`);
     }
 
     if (source === 'all' || source === 'github') {
-      console.log('[ingest] Fetching GitHub servers...');
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: GitHub MCP Servers');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
       const servers = await fetchGitHubServers();
-      console.log(`[ingest] GitHub returned ${servers.length} servers. Upserting...`);
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
       results.github = await upsertServers(servers, svc);
       results.github.fetched = servers.length;
+      console.log(`[ingest] ✓ GitHub complete: +${results.github.added} added, ~${results.github.updated} updated, ${results.github.skipped} skipped, ${results.github.rejected} rejected\n`);
     }
 
     // Update ingest run record

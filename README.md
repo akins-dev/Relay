@@ -151,6 +151,12 @@ supabase/migrations/009_transport_and_stdio_filter.sql ← transport metadata + 
 supabase/migrations/010_auth_transparency_and_audit_public.sql ← auth metadata + public transparency views
 supabase/migrations/011_vault_secrets.sql       ← vault-backed secret storage (read header before running)
 supabase/migrations/012_oauth_connections.sql   ← per-user OAuth connections stored in vault
+supabase/migrations/013_mcp_compliance_fields.sql ← MCP compliance fields
+supabase/migrations/014_mcp_primitives_fields.sql ← MCP primitives (resources, prompts)
+supabase/migrations/015_final_schema_fixes.sql  ← schema alignment fixes
+supabase/migrations/016_fix_global_stats.sql    ← global_stats RPC fix
+supabase/migrations/017_dedup_by_github_url.sql ← cross-source dedup by GitHub URL
+supabase/migrations/018_operations_tracking.sql ← cron job tracking, upstream timestamps, admin ops views
 ```
 
 > **Note on 002:** Seed data is for local development only — it gives you 8 demo servers so the UI is not empty while developing. Once ingest runs, seeded servers are replaced by real data. You can skip 002 in production.
@@ -306,6 +312,62 @@ Set all environment variables in Vercel dashboard. Crons run automatically on Ve
 
 ---
 
+## ⚠️ Pre-Production Checklist
+
+**MUST DO before going live.** This checklist ensures the registry starts clean with real data.
+
+### 1. Delete all development/test servers
+
+```sql
+-- Run in Supabase SQL Editor:
+DELETE FROM public.scan_results;
+DELETE FROM public.schema_snapshots;
+DELETE FROM public.cron_job_runs;
+DELETE FROM public.ingest_runs;
+DELETE FROM public.servers;
+```
+
+### 2. Re-ingest from all sources (fresh)
+
+```bash
+# Ingest one source at a time to monitor each:
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "official"}'
+
+# Then: smithery, glama, pulsemcp, github (one at a time)
+```
+
+### 3. Run render server for stdio descriptions
+
+```bash
+# TODO: Configure and run the render server to fetch
+# stdio server descriptions. See sandbox/README.md.
+# After sandbox is deployed:
+#   1. Set SANDBOX_URL in .env
+#   2. Set SANDBOX_AUTH_TOKEN in .env
+#   3. Re-ingest to enrich stdio servers with tool schemas
+```
+
+### 4. Verify admin dashboard
+
+- Go to `/admin` → Operations tab
+- Confirm all cron jobs show "no data" (they'll populate over time)
+- Trigger a test ingest from the Ingest tab
+- Verify the Operations tab updates
+
+### 5. Environment variables audit
+
+Ensure all required env vars are set in Vercel:
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET` (random, strong)
+- `NEXT_PUBLIC_ADMIN_UID` (your Supabase Auth user ID)
+- `SMITHERY_API_KEY` (get free at smithery.ai)
+- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (production rate limiting)
+
+---
+
 ## API Reference
 
 ```
@@ -342,13 +404,56 @@ Every server has a 0–100 trust score returned with every search result.
 
 ---
 
-## Open source
+## Architecture Decisions
 
-MIT licensed. Fork it, self-host it, contribute back.
+### Three-Tier Skip Algorithm (Ingestion)
 
-The security claims are auditable — read the scanner in `src/lib/security.ts`. Not a promise, not a marketing statement. The code is right there.
+The ingestion pipeline uses a three-tier skip strategy to minimize wasted work:
 
-The moat is not the code. It is the accumulated trust scores, scan history, uptime records, and publisher relationships — none of which live in any repository.
+| Tier | Trigger | Cost | What it checks |
+|------|---------|------|----------------|
+| **T1: Fresh** | `upstream_updated_at ≤ last_scanned_at` | **O(1)** — timestamp comparison | Upstream source hasn't changed since our last scan |
+| **T2: Unchanged** | Hash match + scanned < 24h ago | **O(T log T)** — hash computation | Tools, version, endpoint, github_url unchanged |
+| **T3: Full** | New or changed server | **O(T + D + P×F)** — full pipeline | MCP probe, security scan, CVE scan, upsert |
+
+Where: T = tools count, D = npm dependencies, P = security patterns, F = fields scanned.
+
+**Space complexity:** O(5E + R) where E = existing servers, R = unique repos.
+
+**Result:** ~80% of servers skip at Tier 1 on re-ingests, eliminating hash computation entirely.
+
+### Security Layers
+
+| When | Layers | Catches mid-cycle changes? |
+|------|--------|---------------------------|
+| **Ingest** | L1 static scan, S-14 CVE scan | ❌ Only at ingest time |
+| **Cron (6h)** | L3 schema drift | ✅ Detects tool rug-pulls |
+| **Cron (15m)** | Uptime + trust recomputation | ✅ Detects server outages |
+| **Proxy (every call)** | L4 DLP, S-12 shell injection, S-13 indirect injection, L9 sampling, L10 PII, L11 URL, L12 context | ✅ Runtime defense |
+
+### Server Status Lifecycle
+
+| Status | Set By | Visible? | Callable? |
+|--------|--------|----------|----------|
+| `active` | Ingest (scan ok) | ✅ | ✅ |
+| `pending_review` | Ingest (high severity) | ❌ | ❌ |
+| `rejected` | Ingest (critical) | ❌ | ❌ |
+| `suspended` | Schema drift cron | ❌ | ❌ |
+| `pending` | Manual publish | ❌ | ❌ |
+
+Only `active` servers are visible to any user (human or AI) and callable through the proxy.
+
+### CVE Scan Deduplication
+
+Multiple servers can share the same GitHub repository. The pipeline deduplicates CVE scans by repo URL, scanning each unique repo only once per ingest run.
+
+### Documentation Sync
+
+To keep docs in sync when making changes from any computer:
+1. All architectural decisions are in this README (single source of truth)
+2. The admin Operations tab has a live API catalog and status reference
+3. Migration files are self-documenting with inline comments
+4. Run `npm run build` after any change — TypeScript catches interface drift
 
 ---
 
