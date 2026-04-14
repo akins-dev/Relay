@@ -210,14 +210,16 @@ Admin-triggered ingests use `POST /api/admin/ingest`, which validates the signed
 
 ## Sandbox Service
 
-To support stdio-based servers properly via isolated Docker execution, openMCP utilizes a lightweight Node.js Express microservice located in the `/sandbox` folder.
+To support `stdio`-based servers properly via isolated Docker execution, openMCP utilizes a lightweight Node.js Express microservice located in the `/sandbox` folder.
 
-**Deployment:**
-1. This is a separate service that must be deployed independently (e.g. Render.com, Fly.io, AWS ECS) using the provided `sandbox/Dockerfile`.
-2. Secure the sandbox deploying with a secret token.
-3. Update your main openMCP `.env` to include:
-   - `SANDBOX_URL=https://your-sandbox-deployment.app`
+If a repository is ingested without a configured Sandbox, openMCP will safely fall back to parsing its `README.md` for tool hints. However, it will not natively extract active JSON schemas until you set up the sandbox.
+
+**Deployment & Usage:**
+1. See `sandbox/README.md` for a complete step-by-step guide to deploying this microservice to Render.com natively using Docker.
+2. Once deployed, update your primary openMCP frontend `.env`:
+   - `SANDBOX_URL=https://your-sandbox-deployment.onrender.com`
    - `SANDBOX_AUTH_TOKEN=your-randomly-generated-secret`
+3. **Important:** If you configure the sandbox *after* you have already ingested servers, you **must flush your active servers** from the database before re-triggering ingestion! Since the Three-Tier Ingestion Skip algorithm perfectly tracks upstream hash mutations, it will instantly `[SKIP:fresh]` unchanged servers without pinging the Sandbox if you do not delete them first.
 
 ---
 
@@ -304,7 +306,12 @@ bun test
 vercel --prod
 ```
 
-Set all environment variables in Vercel dashboard. Crons run automatically on Vercel Pro:
+Set all environment variables in Vercel dashboard.
+
+**Cron Job Notice (Vercel Hobby vs Pro):**
+By default, Vercel Hobby has a 10s-60s max execution limit. This means heavy cron jobs like Ingestion, Schema Drift checking (which polls thousands of active endpoints), and Uptime checks *will* fail if running strictly on Hobby via API routes.
+To bypass this, openMCP runs perfectly on **GitHub Actions CLI scripts** to effortlessly hit the Supabase database and bypass any serverless wall-clocks infinitely for zero cost! (Check `.github/workflows`).
+
 - Schema drift check: every 6h
 - Uptime check: every 15min
 - Daily call reset: midnight UTC
@@ -339,16 +346,13 @@ curl -X POST http://localhost:3000/api/ingest \
 # Then: smithery, glama, pulsemcp, github (one at a time)
 ```
 
-### 3. Run render server for stdio descriptions
+### 3. Deploy the Render Sandbox (Optional but highly recommended)
 
-```bash
-# TODO: Configure and run the render server to fetch
-# stdio server descriptions. See sandbox/README.md.
-# After sandbox is deployed:
-#   1. Set SANDBOX_URL in .env
-#   2. Set SANDBOX_AUTH_TOKEN in .env
-#   3. Re-ingest to enrich stdio servers with tool schemas
-```
+If you are scraping sources with `stdio` servers (like Smithery or GitHub official), you need the Sandbox to run the underlying code securely.
+1. Deploy the `/sandbox` folder to Render natively (See `sandbox/README.md`)
+2. Add `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` to your `.env`
+3. If you previously ingested without the sandbox, run `DELETE FROM public.servers;` again to wipe the database cleanly so the Three-Tier optimization algorithm doesn't aggressively skip them. 
+4. Trigger Ingestion. Your logs will now read: `Sandbox extracted X tools for server-name`.
 
 ### 4. Verify admin dashboard
 
