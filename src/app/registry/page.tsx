@@ -185,7 +185,7 @@ export default function RegistryPage() {
               Registry
             </h1>
             <p className="mt-2 text-brand-steel text-[15px]">
-              {total > 0 ? `${total.toLocaleString()} server${total !== 1 ? 's' : ''}` : 'Discover MCP servers'}
+              {total > 0 ? `${total.toLocaleString()} active server${total !== 1 ? 's' : ''}` : 'Discover MCP servers'}
               {totalCalls ? ` · ${(totalCalls / 1000).toFixed(0)}K calls today` : ''}
             </p>
           </div>
