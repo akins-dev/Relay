@@ -48,3 +48,6 @@ jobs:
         run: |
           npx jest --ci --coverage --coverageThreshold='{"./src/lib/security.ts":{"lines":90}}' \
             --testPathPattern=security
+
+      - name: Validate Next.js Build
+        run: npx next build
