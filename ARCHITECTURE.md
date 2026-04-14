@@ -40,17 +40,20 @@ AI Agent (Claude / GPT / Gemini / local agent)
     └── Official   (registry.modelcontextprotocol.io, metadata only)
 ```
 
-### Discovery: Static vs Runtime — Clarified
+### Discovery: Explicit Runtime Connection
 
-**Static discovery:** human → browses registry → copies endpoint URL → pastes into agent config
-**Runtime discovery:** agent → fetches `/.well-known/mcp.json` → discovers all proxy endpoints → auto-connects
+Agents connect directly to the Relay Cloud proxy without complex custom code. We support three primary connection workflows out of the box:
 
-We implement runtime discovery. The others don't. This is a genuine moat.
+1. **Option 1: Native MCP Server** — Add the Relay `/api/mcp-server` URL directly into standard clients like Claude Desktop or Cursor for native `search_tools` and `invoke_tool`.
+2. **Option 2: System Prompt (AGENTS.md)** — Point an LLM directly to our Markdown skill file to teach it how to search and invoke dynamically over HTTP.
+3. **Option 3: REST API** — Standard cURL/fetch integration for custom framework builders.
+
+*(Note: We also implement the experimental `/.well-known/mcp.json` protocol for next-generation fully autonomous agents capable of self-assembling registries, but the 3 methods above are the explicit standards used to connect today.)*
 
 | Feature | Smithery | Glama | Official Registry | **Relay** |
 |---|---|---|---|---|
 | Server discovery | ✅ | ✅ | ✅ | ✅ |
-| Runtime agent discovery | ❌ | ❌ | ❌ | ✅ `/.well-known/mcp.json` |
+| Active agent proxying | ❌ | ❌ | ❌ | ✅ Native MCP + HTTP |
 | Security scanning | ❌ | Partial | ❌ | ✅ Multi-layer L1–L14 |
 | Credential injection | ❌ | ❌ | ❌ | ✅ Vault-encrypted |
 | Tool policy control | ❌ | ❌ | ❌ | ✅ Allow/Confirm/Block |
@@ -83,12 +86,11 @@ We implement runtime discovery. The others don't. This is a genuine moat.
 │  │  S-14: CVE         L5: Trust Score            SSRF guard   ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                 │
-│  ┌─────────────────────────────────────────────────────────────┐│
 │  │              Agent Integration Points                       ││
-│  │  /.well-known/mcp.json  (machine auto-discovery)           ││
-│  │  /agents.md             (LLM skill file)                   ││
-│  │  /api/mcp-server        (native MCP — search + invoke)     ││
-│  │  /docs                  (human documentation)              ││
+│  │  /api/mcp-server        (Option 1) Native MCP Server       ││
+│  │  /agents.md             (Option 2) LLM system prompt       ││
+│  │  /api/servers           (Option 3) Standard REST API       ││
+│  │  /.well-known/mcp.json  (Experimental machine discovery)   ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
           │                            │
@@ -112,7 +114,7 @@ We implement runtime discovery. The others don't. This is a genuine moat.
 5. **Policy system** — Allow/Confirm/Block per tool pattern is the right UX.
 6. **Rate limiting** — Per-user vs per-IP tiering (200 req/min authed, 20 anonymous).
 7. **Native MCP interface** — `search_tools` + `invoke_tool` eliminates REST integration work for agents.
-8. **Three discovery surfaces** — `/.well-known/mcp.json` (machines), `/agents.md` (LLMs), `/docs` (humans). Each serves a different audience correctly.
+8. **Three primary integration surfaces** — Native MCP Server (clients), `agents.md` (LLMs), and REST API (frameworks) cover every possible approach.
 9. **Protocol compliance** — MCP initialize handshake, all 3 primitives (tools/resources/prompts), JSON-RPC.
 
 ---
