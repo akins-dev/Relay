@@ -1,5 +1,7 @@
-import { runSchemaDrift } from '../lib/cron/schema-drift';
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
 
+import { runSchemaDrift } from '../lib/cron/schema-drift';
 async function main() {
   console.log('[cron] Starting schema-drift...');
   const result = await runSchemaDrift();

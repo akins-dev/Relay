@@ -1,5 +1,7 @@
-import { runResetDailyCalls } from '../lib/cron/reset-calls';
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
 
+import { runResetDailyCalls } from '../lib/cron/reset-calls';
 async function main() {
   console.log('[cron] Starting reset-daily-calls...');
   const result = await runResetDailyCalls();

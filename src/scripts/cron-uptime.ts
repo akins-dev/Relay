@@ -1,5 +1,7 @@
-import { runUptimeCheck } from '../lib/cron/uptime';
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
 
+import { runUptimeCheck } from '../lib/cron/uptime';
 async function main() {
   console.log('[cron] Starting uptime check...');
   const result = await runUptimeCheck();

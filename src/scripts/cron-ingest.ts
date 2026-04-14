@@ -1,5 +1,7 @@
-import { runIngest } from '../lib/cron/ingest';
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
 
+import { runIngest } from '../lib/cron/ingest';
 async function main() {
   const args = process.argv.slice(2);
   const allowedSources = ['all', 'official', 'smithery', 'glama', 'pulsemcp', 'github'] as const;
