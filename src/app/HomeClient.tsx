@@ -408,12 +408,12 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             </>
           </AnimatedParagraph>
 
-          <AnimatedParagraph
+          {/* <AnimatedParagraph
              className="mt-4 sm:mt-6 text-sm sm:text-base leading-6 text-brand-trust mx-auto max-w-3xl relative z-10 font-mono tracking-tight"
              delay={0.3}
           >
             {BRAND.name} is the first registry to have mathematically perfect data for stdio servers regardless of whether the developer wrote a good Readme.
-          </AnimatedParagraph>
+          </AnimatedParagraph> */}
         </AnimatedSection>
       </section>
 
