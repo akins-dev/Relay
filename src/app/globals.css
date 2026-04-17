@@ -154,6 +154,11 @@ a {
   transform: translateY(-1px);
 }
 
+.btn:focus-visible {
+  outline: 2px solid #cbd5e1;
+  outline-offset: 2px;
+}
+
 .btn-primary {
   background: #f8fafc;
   color: #020617;

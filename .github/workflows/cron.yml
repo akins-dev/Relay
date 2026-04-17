@@ -44,6 +44,8 @@ jobs:
           SANDBOX_URL: ${{ secrets.SANDBOX_URL }}
           SANDBOX_AUTH_TOKEN: ${{ secrets.SANDBOX_AUTH_TOKEN }}
         run: |
+          set -euo pipefail
+
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             if [ "${{ github.event.inputs.job }}" == "uptime" ]; then
               bun run src/scripts/cron-uptime.ts
@@ -54,9 +56,8 @@ jobs:
             elif [ "${{ github.event.inputs.job }}" == "reset" ]; then
               bun run src/scripts/cron-reset-calls.ts
             fi
-            exit 0
           fi
-          
+
           # Scheduled executions
           if [ "${{ github.event.schedule }}" == "*/15 * * * *" ]; then
              echo "Running Uptime Check..."
@@ -66,6 +67,5 @@ jobs:
              bun run src/scripts/cron-schema-drift.ts
           elif [ "${{ github.event.schedule }}" == "0 0 * * *" ]; then
              echo "Running Reset Calls & Ingest..."
-             bun run src/scripts/cron-reset-calls.ts
-             bun run src/scripts/cron-ingest.ts
+             bun run src/scripts/cron-reset-calls.ts && bun run src/scripts/cron-ingest.ts
           fi

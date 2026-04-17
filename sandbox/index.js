@@ -5,8 +5,12 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 const app = express();
 app.use(express.json());
 
-// A simple auth token checks to prevent public abuse of the container
-const AUTH_TOKEN = process.env.SANDBOX_AUTH_TOKEN || "dev-sandbox-token";
+// Auth token — REQUIRED in all environments. No insecure fallbacks.
+const AUTH_TOKEN = process.env.SANDBOX_AUTH_TOKEN;
+if (!AUTH_TOKEN) {
+  console.error('[sandbox] FATAL: SANDBOX_AUTH_TOKEN env var is required');
+  process.exit(1);
+}
 
 app.post('/extract', async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -16,8 +20,19 @@ app.post('/extract', async (req, res) => {
 
   const { command, args, env } = req.body;
   
-  if (!command) {
-    return res.status(400).json({ error: "Command is required" });
+  if (!command || typeof command !== 'string') {
+    return res.status(400).json({ error: "Command is required and must be a string" });
+  }
+
+  // Validate args is an array of strings
+  if (args !== undefined && (!Array.isArray(args) || !args.every(a => typeof a === 'string'))) {
+    return res.status(400).json({ error: "args must be an array of strings" });
+  }
+
+  // Validate env is an object of string key-value pairs
+  if (env !== undefined && (typeof env !== 'object' || env === null || Array.isArray(env) ||
+      !Object.entries(env).every(([k, v]) => typeof k === 'string' && typeof v === 'string'))) {
+    return res.status(400).json({ error: "env must be an object of string key-value pairs" });
   }
 
   console.log(`[extract] Spawning: ${command} ${args ? args.join(' ') : ''}`);
@@ -37,8 +52,14 @@ app.post('/extract', async (req, res) => {
   );
 
   try {
-    // 1. Start the subprocess and connect
-    await client.connect(transport);
+    // 1. Start the subprocess and connect (with 30s timeout)
+    const connectTimeout = AbortSignal.timeout(30_000);
+    await Promise.race([
+      client.connect(transport),
+      new Promise((_, reject) => connectTimeout.addEventListener('abort', () =>
+        reject(new Error('Connection timed out after 30s'))
+      ))
+    ]);
 
     // 2. Extract tools
     let tools = [];

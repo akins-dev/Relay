@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link            from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { Button }      from '@/components/ui/button';
 import { Input }       from '@/components/ui/input';
 import { cn }          from '@/lib/cn';
@@ -166,7 +167,7 @@ export default function SecretsPage() {
 
       {/* Success banner */}
       {success && (
-        <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13px] text-green-800">
+        <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-[13px] text-green-400">
           <Shield size={14} className="shrink-0" />
           {success}
         </div>
@@ -183,7 +184,7 @@ export default function SecretsPage() {
           </div>
 
           {error && (
-            <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+            <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-400">
               <AlertCircle size={13} className="shrink-0" />
               {error}
             </div>

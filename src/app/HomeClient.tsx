@@ -77,6 +77,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
   const smoothX = useSpring(mouseX, { damping: 40, stiffness: 150 });
   const smoothY = useSpring(mouseY, { damping: 40, stiffness: 150 });
 
+  // useMotionTemplate MUST be called at top level — not inside style={{}}
+  const glowBackground = useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`;
+
   function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
     const { left, top } = currentTarget.getBoundingClientRect();
     mouseX.set(clientX - left);
@@ -100,7 +103,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         <motion.div
            className="pointer-events-none absolute inset-0 z-0 opacity-40 mix-blend-screen"
            style={{
-             background: useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`
+             background: glowBackground
            }}
         />
 
@@ -443,7 +446,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             <a
               href={BRAND.githubUrl}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="btn btn-ghost btn-lg w-full sm:w-auto"
             >
               View the Source
@@ -479,7 +482,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             <a
               href={BRAND.githubUrl}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="hover:text-white transition-colors"
             >
               GitHub

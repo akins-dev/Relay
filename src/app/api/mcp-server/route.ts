@@ -309,7 +309,7 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
   }
 
   if (!upstream.ok) {
-    return mcpError(id, -32000, `Proxy error ${status}: ${body.slice(0, 300)}`);
+    return mcpError(id, -32000, `Proxy error ${status}: ${body.replace(/<[^>]*>/g, '').slice(0, 200)}`);
   }
 
   let result: any = body;

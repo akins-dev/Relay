@@ -16,12 +16,13 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: z.infer<typeof CreateKeySchema>;
-  try { body = CreateKeySchema.parse(await req.json().catch(() => ({}))); }
+  try { body = CreateKeySchema.parse(await req.json()); }
   catch (e) { return zodError(e); }
   const { name } = body;
   
   const svc = createServiceClient();
-  const { count } = await svc.from('api_keys').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+  const { count, error: countErr } = await svc.from('api_keys').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+  if (countErr) return NextResponse.json({ error: 'Failed to check key count' }, { status: 500 });
   if ((count ?? 0) >= 10) return NextResponse.json({ error: 'Maximum 10 API keys' }, { status: 429 });
 
   const rawKey    = `sk_mcp_${randomBytes(24).toString('hex')}`;

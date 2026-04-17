@@ -608,7 +608,7 @@ export default function DocsPage() {
           <Section id="faq" title="FAQ">
             <div className="flex flex-col gap-6">
               {[
-                [`Is ${BRAND.name} really free?', 'Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.`],
+                [`Is ${BRAND.name} really free?`, `Yes. The core registry, semantic search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.`],
                 ['Do I need to register to use it?', 'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
                 [`How do credentials work if my MCP needs an API key?`, `API keys are stored in the ${BRAND.name} Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.`],
                 [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. ${BRAND.name} is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.`],
@@ -666,7 +666,7 @@ export default function DocsPage() {
             <div className="flex flex-wrap gap-3">
               <Link href="/connect" className="btn btn-primary px-6">Connect your agent</Link>
               <Link href="/registry" className="btn btn-ghost px-6">Browse registry</Link>
-              <a href={BRAND.githubUrl} target="_blank" rel="noopener" className="btn btn-ghost px-6">GitHub</a>
+              <a href={BRAND.githubUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost px-6">GitHub</a>
             </div>
           </section>
         </main>

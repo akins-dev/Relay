@@ -19,7 +19,7 @@ RETURNS JSON LANGUAGE sql STABLE SECURITY DEFINER AS $$
       'official',  COUNT(*) FILTER (WHERE source = 'official'),
       'smithery',  COUNT(*) FILTER (WHERE source = 'smithery'),
       'glama',     COUNT(*) FILTER (WHERE source = 'glama'),
-      'pulsemcp',  COUNT(*) FILTER (WHERE source = 'direct'),
+      'pulsemcp',  COUNT(*) FILTER (WHERE source = 'pulsemcp'),
       'github',    COUNT(*) FILTER (WHERE source = 'github'),
       'direct',    COUNT(*) FILTER (WHERE source = 'direct')
     )

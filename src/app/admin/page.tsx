@@ -7,8 +7,10 @@ import { useAuth } from '@/components/AuthProvider';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { paginateItems } from '@/lib/pagination';
 
-// ── Your admin user ID — change this to your Supabase auth UID ───────────────
-// Get it from Supabase → Authentication → Users → your row → User UID
+// ── Admin UID — cosmetic UI gating only ──────────────────────────────────────
+// This is used to show/hide the admin link in the UI. It has NO security impact —
+// actual API authorization uses the server-only ADMIN_API_TOKEN via safeCompare.
+// Get your UID from Supabase → Authentication → Users → your row → User UID
 const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID ?? '';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
