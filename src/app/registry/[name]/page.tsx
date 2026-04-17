@@ -58,7 +58,7 @@ export default function ServerDetailPage() {
         .then(setAnalytics)
         .catch(() => {});
     }
-  }, [tab, server]);
+  }, [tab, server, analytics]);
 
   async function startOAuth() {
     if (!user) { window.location.href = '/login'; return; }
@@ -89,8 +89,8 @@ export default function ServerDetailPage() {
     setListPages((current) => ({ ...current, [key]: page }));
   }
 
-  const resources: any[] = (server as any)?.resources ?? [];
-  const prompts:   any[] = (server as any)?.prompts   ?? [];
+  const resources: any[] = useMemo(() => (server as any)?.resources ?? [], [server]);
+  const prompts:   any[] = useMemo(() => (server as any)?.prompts   ?? [], [server]);
   
   const pagedTools = useMemo(() => paginateItems(server?.tools ?? [], listPages.tools, 12), [server?.tools, listPages.tools]);
   const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
@@ -497,7 +497,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                 <div style={{ padding: '14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: '12px', color: 'var(--yellow)', marginBottom: '8px', fontWeight: 600 }}>⬡ {BRAND.cli} is not yet available</div>
                   <div style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5 }}>
-                    When it launches, you'll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code>
+                    When it launches, you&apos;ll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code>
                   </div>
                 </div>
                 {server.github_url && (

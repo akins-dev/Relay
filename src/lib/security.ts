@@ -208,6 +208,9 @@ const CREDENTIAL_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/,                      label: 'SendGrid API key' },
   { pattern: /password["'\s]*[:=]["'\s]*\S{8,}/i,                              label: 'Plaintext password' },
   { pattern: /secret["'\s]*[:=]["'\s]*\S{8,}/i,                                label: 'Plaintext secret' },
+  // Additional service-specific patterns
+  { pattern: /AC[a-f0-9]{32}/,                                                  label: 'Twilio Account SID' },
+  { pattern: /key-[a-f0-9]{32}/,                                                label: 'Mailgun API key' },
 ];
 
 export function dlpScan(rawText: string): string[] {

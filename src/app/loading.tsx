@@ -2,7 +2,7 @@ export default function Loading() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6">
       <div className="relative flex items-center justify-center w-48 h-20">
-        <svg viewBox="0 0 120 40" className="w-full h-full overflow-visible">
+        <svg viewBox="0 0 120 40" className="w-full h-full overflow-visible" aria-hidden="true">
           {/* Connection lines */}
           <line x1="20" y1="16" x2="60" y2="16" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
           <line x1="60" y1="16" x2="100" y2="16" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />

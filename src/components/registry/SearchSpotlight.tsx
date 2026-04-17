@@ -159,7 +159,9 @@ export function SearchSpotlight({ onSearch, defaultValue = '' }: SearchSpotlight
           autoComplete="off"
           spellCheck={false}
           aria-label="Search servers"
+          role="combobox"
           aria-expanded={open}
+          aria-controls={open ? "spotlight-listbox" : undefined}
           aria-haspopup="listbox"
         />
         {hasQuery && (
@@ -178,6 +180,7 @@ export function SearchSpotlight({ onSearch, defaultValue = '' }: SearchSpotlight
       {open && hits.length > 0 && (
         <div
           ref={panelRef}
+          id="spotlight-listbox"
           role="listbox"
           aria-label="Search results"
           className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-white/10 bg-[rgba(15,23,42,0.96)] shadow-2xl backdrop-blur-xl"
@@ -278,7 +281,7 @@ export function SearchSpotlight({ onSearch, defaultValue = '' }: SearchSpotlight
             >
               <span>
                 See all results for{' '}
-                <span className="font-semibold text-white">"{debouncedQuery}"</span>
+                <span className="font-semibold text-white">&quot;{debouncedQuery}&quot;</span>
               </span>
               <span className="flex items-center gap-1">
                 Press Enter <kbd className="ml-1 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">↵</kbd>
@@ -292,7 +295,7 @@ export function SearchSpotlight({ onSearch, defaultValue = '' }: SearchSpotlight
       {open && !loading && hits.length === 0 && debouncedQuery && (
         <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 rounded-xl border border-white/10 bg-[rgba(15,23,42,0.96)] px-4 py-4 text-center shadow-2xl backdrop-blur-xl">
           <p className="text-[13px] text-[#64748b]">
-            No results for <span className="font-semibold text-white">"{debouncedQuery}"</span> — press Enter to search the full registry.
+            No results for <span className="font-semibold text-white">&quot;{debouncedQuery}&quot;</span> — press Enter to search the full registry.
           </p>
         </div>
       )}

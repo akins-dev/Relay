@@ -20,9 +20,9 @@ const PERMISSION_GROUPS = [
 type Action = 'allow' | 'confirm' | 'block';
 
 const ACTIONS: Record<Action, { label: string; desc: string; activeClass: string; dotColor: string }> = {
-  allow:   { label: 'Allow',   desc: 'Agent calls freely',        activeClass: 'border-green-200 bg-green-50 text-green-700',   dotColor: 'bg-green-500'  },
-  confirm: { label: 'Confirm', desc: 'Agent pauses, asks you',    activeClass: 'border-amber-200 bg-amber-50 text-amber-700',   dotColor: 'bg-amber-400'  },
-  block:   { label: 'Block',   desc: 'Call rejected immediately',  activeClass: 'border-red-200 bg-red-50 text-red-700',         dotColor: 'bg-red-500'    },
+  allow:   { label: 'Allow',   desc: 'Agent calls freely',        activeClass: 'border-green-500/30 bg-green-500/10 text-green-400',   dotColor: 'bg-green-500'  },
+  confirm: { label: 'Confirm', desc: 'Agent pauses, asks you',    activeClass: 'border-amber-500/30 bg-amber-500/10 text-amber-400',   dotColor: 'bg-amber-400'  },
+  block:   { label: 'Block',   desc: 'Call rejected immediately',  activeClass: 'border-red-500/30 bg-red-500/10 text-red-400',         dotColor: 'bg-red-500'    },
 };
 
 // Helper to get Bearer auth headers
@@ -166,9 +166,9 @@ export default function PoliciesPage() {
                 key={group.id}
                 className={cn(
                   'flex flex-wrap items-center gap-4 rounded-xl border px-5 py-4 transition-colors',
-                  current === 'allow'   && 'border-green-200/60 bg-green-50/30',
-                  current === 'confirm' && 'border-amber-200/60 bg-amber-50/30',
-                  current === 'block'   && 'border-red-200/60 bg-red-50/30',
+                  current === 'allow'   && 'border-green-500/20 bg-green-500/5',
+                  current === 'confirm' && 'border-amber-500/20 bg-amber-500/5',
+                  current === 'block'   && 'border-red-500/20 bg-red-500/5',
                 )}
               >
                 {/* Group info */}

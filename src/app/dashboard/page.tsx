@@ -132,7 +132,7 @@ function DashboardContent() {
     if (urlTab && urlTab !== tab) {
       setTab(urlTab);
     }
-  }, [urlTab]);
+  }, [urlTab, tab]);
 
   const handleTabClick = (newTab: TabId) => {
     setTab(newTab);
@@ -402,7 +402,7 @@ function DashboardContent() {
                       </code>
                     </div>
                     <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                      <span className="text-[12px] font-medium text-muted-foreground/70">
+                       <span className="text-[12px] font-medium text-muted-foreground/70">
                         {key.last_used_at
                           ? <span className="flex items-center gap-1.5"><Activity size={12} className="text-green-400"/> Used {new Date(key.last_used_at).toLocaleDateString()}</span>
                           : <span className="flex items-center gap-1.5 opacity-60"><Lock size={12}/> Never used</span>}

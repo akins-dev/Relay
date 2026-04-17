@@ -95,6 +95,7 @@ export function ChatAgentSimulation() {
     const start = setTimeout(play, 500);
     const blink = setInterval(() => setCursor(c => !c), 530);
     return () => { clearAll(); clearTimeout(start); clearInterval(blink); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const visibleChat = visibleItems.filter(item => item.beat.target === 'chat');

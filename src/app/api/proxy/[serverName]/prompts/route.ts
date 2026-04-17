@@ -18,7 +18,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveUser }                       from '@/lib/auth-server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp, apiError }               from '@/lib/api';
-import { isSafeUrl }                         from '@/lib/utils';
+import { isSafeUrl, readBoundedResponse } from '@/lib/utils';
 import { indirectInjectionScan, dlpScan }    from '@/lib/security';
 import { BRAND }                             from '@/lib/brand';
 
@@ -69,7 +69,9 @@ export async function GET(
       signal:  AbortSignal.timeout(10_000),
     });
     if (!res.ok) return apiError('Upstream prompts/list failed', res.status as any);
-    const data = await res.json();
+    const { body: rawBody, truncated } = await readBoundedResponse(res);
+    if (truncated) return apiError('Upstream response too large', 502);
+    const data = JSON.parse(rawBody);
     return NextResponse.json({ prompts: data?.result?.prompts ?? [] });
   } catch (e: any) {
     return apiError(`Upstream error: ${e.message}`, 502);

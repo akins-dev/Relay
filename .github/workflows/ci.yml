@@ -28,10 +28,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: TypeScript typecheck
         run: npx tsc --noEmit
@@ -44,7 +48,10 @@ jobs:
         env:
           NODE_ENV: test
 
-      - name: Coverage gate (security.ts must be 100%)
+      - name: Coverage gate (security.ts must be >=90%)
         run: |
           npx jest --ci --coverage --coverageThreshold='{"./src/lib/security.ts":{"lines":90}}' \
             --testPathPattern=security
+
+      - name: Validate Next.js Build
+        run: npx next build

@@ -1,19 +1,29 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/utils';
 
 export const maxDuration = 300; // Allow up to 5 minutes execution time for backfills on Vercel
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    // Server-only admin auth — never use client-exposed env vars for API authorization
+    const adminToken = process.env.ADMIN_API_TOKEN;
+    if (!adminToken) {
+      return NextResponse.json({ error: 'ADMIN_API_TOKEN is not configured' }, { status: 500 });
+    }
     const authHeader = req.headers.get('authorization');
-    const token = authHeader?.split(' ')[1];
-    if (token !== process.env.NEXT_PUBLIC_ADMIN_UID) {
+    const token = authHeader?.split(' ')[1] ?? '';
+    if (!safeCompare(token, adminToken)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!process.env.SANDBOX_URL) {
       return NextResponse.json({ error: 'SANDBOX_URL is not configured' }, { status: 500 });
+    }
+
+    if (!process.env.SANDBOX_AUTH_TOKEN) {
+      return NextResponse.json({ error: 'SANDBOX_AUTH_TOKEN is not configured' }, { status: 500 });
     }
 
     const supabase = createClient();
@@ -48,12 +58,13 @@ export async function POST(req: Request) {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json', 
-            'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
+            'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}` 
           },
           body: JSON.stringify({
             command: 'npx',
             args: ['-y', '@smithery/cli@latest', 'run', target]
-          })
+          }),
+          signal: AbortSignal.timeout(60_000),
         });
 
         if (!reqSandbox.ok) {

@@ -47,36 +47,36 @@ Your agent gets two tools: `search_tools(intent)` and `invoke_tool(server, tool,
 ### Option 2 — System prompt / AGENTS.md
 
 ```
-You have access to openMCP at https://openmcp.dev.
-Read https://openmcp.dev/openmcp.md before your first tool call.
-Search:  GET https://openmcp.dev/api/servers/search?q={intent}
-Invoke:  POST https://openmcp.dev/api/proxy/{serverName}/{toolName}
+You have access to Relay at https://Relay.dev.
+Read https://Relay.dev/Relay.md before your first tool call.
+Search:  GET https://Relay.dev/api/servers/search?q={intent}
+Invoke:  POST https://Relay.dev/api/proxy/{serverName}/{toolName}
 ```
 
 ### Option 3 — REST API
 
 ```bash
 # Discover by intent — returns full inputSchema per tool
-curl "https://openmcp.dev/api/servers/search?q=send+transactional+email"
+curl "https://Relay.dev/api/servers/search?q=send+transactional+email"
 
 # Invoke through the secure proxy
-curl -X POST "https://openmcp.dev/api/proxy/sendgrid-mail/send_email" \
+curl -X POST "https://Relay.dev/api/proxy/sendgrid-mail/send_email" \
   -H "Content-Type: application/json" \
   -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
 ```
 
 ---
 
-## Credentials — openMCP Vault
+## Credentials — Relay Vault
 
-Most MCP servers require API keys. Store them once in the openMCP Vault. The proxy decrypts and injects at call time — your agent never sees the raw value. You can view the secret name but not the value after saving.
+Most MCP servers require API keys. Store them once in the Relay Vault. The proxy decrypts and injects at call time — your agent never sees the raw value. You can view the secret name but not the value after saving.
 
 **One-time setup per service:**
 
 1. Get your API key from the service dashboard
-2. Go to [openmcp.dev/dashboard/secrets](https://openmcp.dev/dashboard/secrets)
+2. Go to [Relay.dev/dashboard/secrets](https://Relay.dev/dashboard/secrets)
 3. Enter the server name, the suggested variable name (shown in any 401 response), and your key
-4. Done — every future call through openMCP injects it automatically
+4. Done — every future call through Relay injects it automatically
 
 ---
 
@@ -98,7 +98,7 @@ Looking to host Relay locally, contribute to the Core API, or launch the Render 
 ## API Reference
 
 ```
-GET  /openmcp.md                              Agent skill file — fetch once, understand everything
+GET  /Relay.md                                Agent skill file — fetch once, understand everything
 GET  /api/mcp                                 Registry info, security layer list, agent prompt template
 GET  /api/servers/search?q={intent}&limit=5   Semantic search — full inputSchema per tool returned
 GET  /api/servers?sort=trust&verified=true&page=2&page_size=24
@@ -115,4 +115,4 @@ POST /api/admin/ingest                        Trigger ingest from the signed-in 
 
 ## License
 
-Apache 2.0 License — Built by [The-17](https://github.com/the-17) & [Akins](https://github.com/akins-dev)
+Apache 2.0 License — Built by [Akinbobola Emmanuel](https://github.com/akins-dev)

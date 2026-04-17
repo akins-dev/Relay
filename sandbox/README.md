@@ -8,7 +8,7 @@ This service is used **exclusively during the ingestion pipeline (`/api/ingest`)
 
 When the openMCP registry ingests a server marked with the `stdio` transport, it means the server isn't an HTTP endpoint—it is a piece of code that must be executed via the command line (e.g., `npx -y github.com/user/repo`). 
 
-Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without risking severe security or architecture limitations, openMCP offloads this task to to this Sandbox. 
+Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without risking severe security or architecture limitations, openMCP offloads this task to this Sandbox. 
 
 1. `ingest.ts` sends a secure HTTP POST to the Sandbox with the CLI command. 
 2. The Sandbox spawns the subprocess and attaches native `stdin/stdout`.

@@ -307,11 +307,14 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       const name = slugify(s.qualifiedName ?? s.displayName ?? '');
       if (!name) continue;
 
+      const rawEndpoint = s.connections?.[0]?.url ?? s.url ?? '';
+      const isStdio = s.connections?.[0]?.type === 'stdio' || !rawEndpoint;
+
       servers.push({
         name,
         display_name: s.displayName ?? name,
         description:  s.description ?? '',
-        endpoint:     s.connections?.[0]?.url ?? s.url ?? `https://server.smithery.ai/${s.qualifiedName}`,
+        endpoint:     isStdio ? '' : rawEndpoint, // do not fabricate HTTP endpoints for stdio servers
         version:      '1.0.0',
         github_url:   s.repository ?? undefined,
         license:      'MIT',
@@ -321,6 +324,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
         source:       'smithery',
         smithery_id:  s.qualifiedName ?? undefined,
         verified:     s.security?.scanPassed ?? false,
+        transport:    isStdio ? 'stdio' : undefined,
         upstream_updated_at: s.updatedAt ?? s.createdAt ?? undefined,
       });
     }
@@ -619,8 +623,23 @@ export async function upsertServers(
       // Discovery (search/browse) and proxying are independent concerns.
       // Stdio servers are stored with proxy_available=false so users can
       // find them and invoke them via the CLI or a future container bridge.
-      const transport = s.transport ?? detectTransport(s.endpoint, s.github_url);
+      const detected = detectTransport(s.endpoint, s.github_url);
+      const transport = (s.transport === 'stdio' || detected === 'stdio') 
+        ? 'stdio' 
+        : (s.transport && s.transport !== 'unknown' ? s.transport : detected);
       const proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+
+      if (idx < 15) { // Log first 15 to keep it clean
+        console.log(`\n[DEBUG-TRACE] ${s.name}`);
+        console.log(`  |- endpoint: "${s.endpoint}"`);
+        console.log(`  |- github_url: "${s.github_url}"`);
+        console.log(`  |- s.transport (upstream): ${s.transport}`);
+        console.log(`  |- detected (detectTransport): ${detected}`);
+        console.log(`  |- final transport: ${transport}`);
+        console.log(`  |- proxyAvailable: ${proxyAvailable}`);
+        console.log(`  |- env.SANDBOX_URL: ${process.env.SANDBOX_URL ? process.env.SANDBOX_URL : 'MISSING'}`);
+        console.log(`  |- s.smithery_id: ${s.smithery_id}`);
+      }
 
       // Skip only if there is genuinely nothing to store (no name, no endpoint, no github)
       if (!s.endpoint && !s.github_url && transport === 'stdio') {
@@ -693,6 +712,7 @@ export async function upsertServers(
       let mcpCompliant = false;
 
       if (proxyAvailable && s.endpoint) {
+        if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET A (HTTP PROBE)`);
         // HTTP-accessible server: do full MCP probe with initialize handshake
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url);
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
@@ -702,42 +722,63 @@ export async function upsertServers(
         mcpPrompts      = primitives.prompts;
         protocolVersion = primitives.protocolVersion;
         mcpCompliant    = primitives.mcpCompliant;
-      } else if (transport === 'stdio' && process.env.SANDBOX_URL && (s.github_url || s.smithery_id)) {
-        // Stdio server with Sandbox integration configured
-        try {
-          // Use Smithery's universal runner as a reliable way to execute any GitHub MCP repo
-          const target = s.smithery_id || s.github_url;
-          const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json', 
-              'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
-            },
-            body: JSON.stringify({
-              command: 'npx',
-              args: ['-y', '@smithery/cli@latest', 'run', target]
-            })
-          });
-          
-          if (req.ok) {
-            const sandboxResult = await req.json();
-            if (sandboxResult.success && sandboxResult.data) {
-              toolSchemas = sandboxResult.data.tools || [];
-              mcpResources = sandboxResult.data.resources || [];
-              mcpPrompts = sandboxResult.data.prompts || [];
-              mcpCompliant = true;
-              protocolVersion = '2024-11-05';
-              console.log(`${tag} ${progress} Sandbox extracted ${toolSchemas.length} tools for ${s.name}`);
+      } else if (transport === 'stdio') {
+        if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET B (STDIO BRANCH)`);
+        // Stdio server processing tree
+        if (!process.env.SANDBOX_URL) {
+          if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox] SANDBOX_URL not set`);
+        } else if (!s.github_url && !s.smithery_id) {
+          if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-source] stdio but no github_url or smithery_id`);
+        } else {
+          if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Preparing Sandbox Req...`);
+          // Stdio server with Sandbox integration configured
+          try {
+            const isSmithy = Boolean(s.smithery_id);
+            const runTarget = isSmithy
+              ? ['-y', '@smithery/cli@latest', 'run', s.smithery_id]
+              : ['-y', 'tsx', `${s.github_url}`];
+
+            const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
+              },
+              body: JSON.stringify({
+                command: 'npx',
+                args: runTarget
+              })
+            });
+            
+            if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox fetch status: ${req.status}`);
+            
+            if (req.ok) {
+              const sandboxResult = await req.json();
+              if (sandboxResult.success && sandboxResult.data) {
+                if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
+                toolSchemas = sandboxResult.data.tools || [];
+                mcpResources = sandboxResult.data.resources || [];
+                mcpPrompts = sandboxResult.data.prompts || [];
+                mcpCompliant = true;
+                protocolVersion = '2024-11-05';
+              } else {
+                if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox returned success=false. Body:`, JSON.stringify(sandboxResult));
+              }
+            } else {
+               if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox rejected with status ${req.status}. Body: ${await req.text().catch(()=>'error reading body')}`);
             }
-          } else {
-             console.warn(`${tag} ${progress} Sandbox rejected ${s.name} with status ${req.status}`);
+          } catch (e: any) {
+            if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox probe FAILED with Exception: ${e.message}`);
           }
-        } catch (e) {
-          console.warn(`${tag} ${progress} Sandbox probe failed for ${s.name}:`, e);
         }
-      } else if (toolSchemas.length === 0 && s.github_url) {
-        // Stdio/no-endpoint server (NO Sandbox): parse README for tool hints only
-        toolSchemas = await parseReadmeSchemas(s.github_url);
+        
+        // README Fallback for any stdio server that sandbox couldn't parse
+        if (toolSchemas.length === 0 && s.github_url) {
+          if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET C (README FALLBACK)`);
+          toolSchemas = await parseReadmeSchemas(s.github_url);
+        }
+      } else {
+        if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> SKIPPING EXTRACTION COMPLETELY`);
       }
 
       if (s.tools.length === 0 && toolSchemas.length > 0) {

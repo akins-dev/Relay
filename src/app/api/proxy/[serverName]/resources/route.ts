@@ -79,7 +79,9 @@ export async function GET(
       signal:  AbortSignal.timeout(15_000),
     });
     if (!res.ok) return apiError('Upstream resources/list failed', res.status as any);
-    const data = await res.json();
+    const { body: rawBody, truncated } = await readBoundedResponse(res);
+    if (truncated) return apiError('Upstream response too large', 502);
+    const data = JSON.parse(rawBody);
     return NextResponse.json({
       resources:  data?.result?.resources  ?? [],
       templates:  data?.result?.resourceTemplates ?? [],

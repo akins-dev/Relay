@@ -104,6 +104,20 @@ Agents connect directly to the Relay Cloud proxy without complex custom code. We
    │  - RLS      │            │  - PulseMCP      │
    └─────────────┘            │  - GitHub        │
                               └──────────────────┘
+
+### Background Task Executor (GitHub Actions)
+To bypass Vercel Hobby tier timeout limits (10s–60s) on background execution tasks, Relay natively utilizes **GitHub Actions (`.github/workflows/cron.yml`)** as an unlimited-minute, massive-scale cron executor.
+- Runs purely via `bun run src/scripts/cron-*.ts`
+- Bypasses HTTP API gateway timeouts completely.
+- Directly manipulates the Supabase connection pools.
+- Completely free for public repositories.
+
+> **⚠️ Required Setup:** For the GitHub Actions cron to function properly, your repository must be **Public** (to receive unlimited free Action minutes and avoid the 2000-minute free-tier cap). Additionally, you must explicitly add the following values under **Settings** → (scroll down left sidebar to) **Secrets and variables** → **Actions** → **New repository secret**:
+> - `NEXT_PUBLIC_SUPABASE_URL`
+> - `SUPABASE_SERVICE_ROLE_KEY`
+> - `SMITHERY_API_KEY` (Optional: if Smithery ingestion requires it)
+> - `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` (Optional: required for Render Sandbox)
+
 ```
 
 ### What Works Well ✅

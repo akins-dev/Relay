@@ -5,8 +5,8 @@
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/the-17/openmcp
-cd openmcp
+git clone https://github.com/akins-dev/Relay
+cd Relay
 bun install   # or: npm install
 ```
 
@@ -144,12 +144,18 @@ Set all environment variables in Vercel dashboard.
 
 **Cron Job Notice (Vercel Hobby vs Pro):**
 By default, Vercel Hobby has a 10s-60s max execution limit. This means heavy cron jobs like Ingestion, Schema Drift checking (which polls thousands of active endpoints), and Uptime checks *will* fail if running strictly on Hobby via API routes.
-To bypass this, openMCP runs perfectly on **GitHub Actions CLI scripts** to effortlessly hit the Supabase database and bypass any serverless wall-clocks infinitely for zero cost! (Check `.github/workflows`).
+To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effortlessly hit the Supabase database and bypass any serverless wall-clocks infinitely for zero cost! (Check `.github/workflows`).
 
 - Schema drift check: every 6h
 - Uptime check: every 15min
 - Daily call reset: midnight UTC
 - Ingest all sources: 2am UTC
+
+> **⚠️ GitHub Actions Setup Required:** Your repository must be **Public** (to unlock unlimited free execution minutes and avoid the 2000-min cap). In your GitHub repository, under **Settings** → (scroll down left sidebar to) **Secrets and variables** → **Actions** → **New repository secret**, explicitly set:
+> - `NEXT_PUBLIC_SUPABASE_URL`
+> - `SUPABASE_SERVICE_ROLE_KEY`
+> - `SMITHERY_API_KEY` (if ingestion requires it)
+> - `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` (required for Render Sandbox parsing)
 
 ---
 

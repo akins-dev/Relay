@@ -387,7 +387,7 @@ export default function ConnectPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
-            <a href={BRAND.agentMdRoute} target="_blank" rel="noopener" className="btn btn-ghost btn-lg">
+            <a href={BRAND.agentMdRoute} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-lg">
               Read the skill file
             </a>
             <Link href="/registry" className="btn btn-primary btn-lg gap-2">

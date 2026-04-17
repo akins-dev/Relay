@@ -77,6 +77,9 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
   const smoothX = useSpring(mouseX, { damping: 40, stiffness: 150 });
   const smoothY = useSpring(mouseY, { damping: 40, stiffness: 150 });
 
+  // useMotionTemplate MUST be called at top level — not inside style={{}}
+  const glowBackground = useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`;
+
   function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
     const { left, top } = currentTarget.getBoundingClientRect();
     mouseX.set(clientX - left);
@@ -100,7 +103,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         <motion.div
            className="pointer-events-none absolute inset-0 z-0 opacity-40 mix-blend-screen"
            style={{
-             background: useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`
+             background: glowBackground
            }}
         />
 
@@ -215,7 +218,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 <div className="text-brand-signal font-mono text-xs font-bold uppercase tracking-wider">01. Discovery</div>
                 <h3 className="text-white text-xl font-medium tracking-tight">Search by intent</h3>
                 <p className="text-brand-steel text-[15px] leading-relaxed">
-                  We are the industry's first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
+                  We are the industry&apos;s first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
                 </p>
              </AnimatedSection>
              <AnimatedSection delay={0.2} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
@@ -266,7 +269,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
           </div>
           <div className="mt-6 lg:mt-0 lg:w-1/2 relative z-10">
             <pre className="whitespace-pre-wrap font-mono text-[12px] sm:text-[13px] leading-7 sm:leading-8 text-brand-steel bg-[#030712] p-4 sm:p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-[inset_0_2px_20px_rgba(0,0,0,0.5)] overflow-x-auto">
-              <span className="text-brand-white">1.</span> search_tools("create issue"){'\n'}
+              <span className="text-brand-white">1.</span> search_tools(&quot;create issue&quot;){'\n'}
               <span className="text-brand-white">2.</span> Registry returns matching schemas{'\n'}
               <span className="text-brand-white">3.</span> invoke_tool{`({ server, tool, args })`}{'\n'}
               <span className="text-brand-white">4.</span> Policy, auth, and DLP proxy runs{'\n'}
@@ -408,12 +411,12 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             </>
           </AnimatedParagraph>
 
-          <AnimatedParagraph
+          {/* <AnimatedParagraph
              className="mt-4 sm:mt-6 text-sm sm:text-base leading-6 text-brand-trust mx-auto max-w-3xl relative z-10 font-mono tracking-tight"
              delay={0.3}
           >
             {BRAND.name} is the first registry to have mathematically perfect data for stdio servers regardless of whether the developer wrote a good Readme.
-          </AnimatedParagraph>
+          </AnimatedParagraph> */}
         </AnimatedSection>
       </section>
 
@@ -443,7 +446,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             <a
               href={BRAND.githubUrl}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="btn btn-ghost btn-lg w-full sm:w-auto"
             >
               View the Source
@@ -479,7 +482,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
             <a
               href={BRAND.githubUrl}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="hover:text-white transition-colors"
             >
               GitHub

@@ -22,6 +22,12 @@ RUN npm install
 # Copy application code
 COPY . .
 
+# Create non-root user — spawning arbitrary npx/pip as root is a privilege escalation risk
+RUN groupadd --gid 1001 sandbox && \
+    useradd --uid 1001 --gid sandbox --shell /bin/bash --create-home sandbox && \
+    chown -R sandbox:sandbox /app
+USER sandbox
+
 # Expose port
 EXPOSE 3000
 

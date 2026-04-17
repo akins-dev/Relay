@@ -46,17 +46,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (!userId) {
-    const allCookies = cookies().getAll();
-    console.error('[auth/me] Unauthorized. Cookies present:', allCookies.map(c => c.name).join(', '));
-    console.error('[auth/me] getUser error:', userErr);
+    // Log debug info server-side only — never send to client
+    console.error('[auth/me] Unauthorized. getUser error:', userErr?.message);
     
-    return NextResponse.json({ 
-      error: 'Unauthorized', 
-      debug: { 
-        cookies_found: allCookies.map(c => c.name),
-        userErr_msg: userErr?.message 
-      }
-    }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Use service client for reads to bypass any RLS edge cases
@@ -83,9 +76,11 @@ export async function GET(req: NextRequest) {
   let profile = profileRes.data;
   if (!profile) {
     const username = userEmail?.split('@')[0] ?? 'user';
+    // Use upsert to handle race conditions where two concurrent requests
+    // both see no profile and try to insert simultaneously
     const { data: created } = await svc
       .from('profiles')
-      .insert({ id: userId, username })
+      .upsert({ id: userId, username }, { onConflict: 'id', ignoreDuplicates: true })
       .select('id, username, avatar_url, created_at')
       .single();
     profile = created;
