@@ -14,7 +14,7 @@ export async function GET() {
     description: [
       `Open-source discovery, trust, and invocation layer for the MCP ecosystem.`,
       'Ingests from five sources: official MCP registry, Smithery, Glama, PulseMCP, GitHub. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
-      'Every server is scanned through 15 security layers before listing. Runtime proxy adds 7 additional layers on every call.',
+      'Every server is scanned through 14 security layers before listing. Runtime proxy adds 5 additional layers on every call.',
       'Agents invoke remote MCP tools through the proxy — request blocking, response scanning, and audit trails on every call.',
     ].join(' '),
     why: {
@@ -68,8 +68,8 @@ export async function GET() {
     agent_usage: {
       system_prompt: [
         `You have access to ${BRAND.name} — a security-verified registry of thousands of MCP servers.`,
-        'Every server is scanned across 15 layers before listing. Every proxy call is inspected.',
-        `Read ${SITE_URL}${BRAND.agentMdRoute} for full documentation before your first tool call.`,
+        'Every server is scanned across 14 layers before listing. Every proxy call is inspected.',
+        `Read ${new URL(BRAND.agentMdRoute, SITE_URL).href} for full documentation before your first tool call.`,
         'Search: GET /api/servers/search?q={your intent}&limit=5',
         'Invoke: POST /api/proxy/{serverName}/{toolName}',
         'If a tool call returns 401: the server needs a credential. The response includes setup_url pointing to your dashboard.',

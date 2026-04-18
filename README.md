@@ -44,11 +44,11 @@ Most importantly, Relay acts as the immutable bridging layer—ensuring strict d
 
 Your agent gets two tools: `search_tools(intent)` and `invoke_tool(server, tool, args)`.
 
-### Option 2 — System prompt / AGENTS.md
+### Option 2 — System prompt / agents.md
 
 ```
 You have access to Relay at https://Relay.dev.
-Read https://Relay.dev/Relay.md before your first tool call.
+Read https://Relay.dev/agents.md before your first tool call.
 Search:  GET https://Relay.dev/api/servers/search?q={intent}
 Invoke:  POST https://Relay.dev/api/proxy/{serverName}/{toolName}
 ```
@@ -98,13 +98,13 @@ Looking to host Relay locally, contribute to the Core API, or launch the Render 
 ## API Reference
 
 ```
-GET  /Relay.md                                Agent skill file — fetch once, understand everything
+GET  /agents.md                               Agent skill file — fetch once, understand everything
 GET  /api/mcp                                 Registry info, security layer list, agent prompt template
 GET  /api/servers/search?q={intent}&limit=5   Semantic search — full inputSchema per tool returned
 GET  /api/servers?sort=trust&verified=true&page=2&page_size=24
                                               Browse with filters + pagination
 GET  /api/servers/:name                       Server detail, scan history, CVE issues
-POST /api/proxy/:serverName/:toolName         15-layer security proxy — every call inspected
+POST /api/proxy/:serverName/:toolName         14-layer security proxy — every call inspected
 POST /api/mcp-server                          Native MCP server (StreamableHTTP)
 GET  /api/mcp-server                          Native MCP server (SSE — for older clients)
 POST /api/ingest                              Trigger ingest (CRON_SECRET required)

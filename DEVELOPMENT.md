@@ -129,7 +129,7 @@ Expected response includes a JSON breakdown of successful indexing and rejection
 
 ```bash
 bun test
-# 40+ unit tests across all 15 security layers with real attack payloads
+# 40+ unit tests across all 14 security layers with real attack payloads
 ```
 
 ---
