@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import {
+  fetchVendorServers,
   fetchOfficialServers,
   fetchSmitheryServers,
   fetchGitHubServers,
@@ -13,7 +14,7 @@ import {
   summarizeIngestResults,
 } from '@/lib/ingest-response';
 
-export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pulsemcp'|'github' = 'all') {
+export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pulsemcp'|'github'|'vendor' = 'all') {
   const svc = createServiceClient();
   const ingestRuns = svc.from('ingest_runs') as any;
   const startedAt = new Date().toISOString();
@@ -25,6 +26,18 @@ export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pul
   }).select('id').single();
 
   try {
+    if (source === 'all' || source === 'vendor') {
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: Verified Vendor Registry');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
+      const servers = await fetchVendorServers();
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
+      results.vendor = await upsertServers(servers, svc);
+      results.vendor.fetched = servers.length;
+      console.log(`[ingest] ✓ Vendor complete: +${results.vendor.added} added, ~${results.vendor.updated} updated, ${results.vendor.skipped} skipped, ${results.vendor.rejected} rejected\n`);
+    }
+
     if (source === 'all' || source === 'official') {
       console.log('\n══════════════════════════════════════════════');
       console.log('[ingest] ▶ SOURCE: Official MCP Registry');

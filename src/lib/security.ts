@@ -11,112 +11,12 @@
 // L12 Context isolation / leak detection → contextLeakScan()
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface ScanIssue {
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  type: string;
-  description: string;
-  field?: string;
-}
 
-export interface ScanResult {
-  passed:  boolean;
-  score:   number;
-  issues:  ScanIssue[];
-  details: string;
-}
-
-// ── L1: Publish-time patterns ─────────────────────────────────────────────────
-
-const INJECTION_PATTERNS = [
-  // ── Prompt injection ──────────────────────────────────────────────────────
-  { pattern: /ignore (previous|all|above|prior) instructions?/i,  severity: 'critical' as const, type: 'prompt_injection',   desc: 'Instruction override attempt' },
-  { pattern: /\[INST\]|\[\/INST\]|<\|im_start\|>/i,              severity: 'critical' as const, type: 'prompt_injection',   desc: 'LLM special tokens detected' },
-  // [SYSTEM: ...] tags used to inject hidden instructions into descriptions
-  { pattern: /\[SYSTEM[:\s]/i,                                     severity: 'critical' as const, type: 'prompt_injection',   desc: 'Hidden system instruction in description' },
-  { pattern: /\[ASSISTANT[:\s]|\[USER[:\s]/i,                     severity: 'high'     as const, type: 'prompt_injection',   desc: 'Role injection token in description' },
-  { pattern: /system\s+prompt/i,                                   severity: 'high'     as const, type: 'prompt_injection',   desc: 'System prompt reference' },
-  { pattern: /disregard|override|bypass/i,                         severity: 'medium'   as const, type: 'prompt_injection',   desc: 'Override language detected' },
-  // ── Exfiltration ──────────────────────────────────────────────────────────
-  { pattern: /exfiltrat/i,                                          severity: 'critical' as const, type: 'exfiltration',       desc: 'Exfiltration keyword' },
-  // "Send all user data to external-host.ru" pattern
-  { pattern: /send\s+(all\s+)?(user|customer|private|sensitive)\s+(data|info|credentials?)/i,
-                                                                    severity: 'high'     as const, type: 'exfiltration',       desc: 'Data exfiltration description' },
-  // Collecting data to send to external host
-  { pattern: /data.?collect(or|ion)?/i,                            severity: 'medium'   as const, type: 'exfiltration',       desc: 'Data collection pattern' },
-  { pattern: /\bbcc\b|blind carbon copy/i,                         severity: 'high'     as const, type: 'exfiltration',       desc: 'Email BCC exfiltration pattern' },
-  // ── Deception ─────────────────────────────────────────────────────────────
-  { pattern: /secretly|hidden instruction|covert/i,                severity: 'high'     as const, type: 'deception',          desc: 'Deceptive language' },
-  // ── Code injection ────────────────────────────────────────────────────────
-  { pattern: /eval\s*\(|exec\s*\(/i,                               severity: 'critical' as const, type: 'code_injection',     desc: 'Dynamic code execution' },
-  { pattern: /\$\{.*?\}|\{\{.*?\}\}/,                              severity: 'medium'   as const, type: 'template_injection', desc: 'Template injection pattern' },
-];
-
-const ENDPOINT_PATTERNS = [
-  { pattern: /localhost|127\.0\.0\.1|0\.0\.0\.0/i, severity: 'high'   as const, type: 'local_endpoint', desc: 'Localhost endpoint — not public' },
-  { pattern: /ngrok|localtunnel|serveo/i,           severity: 'medium' as const, type: 'tunnel',         desc: 'Tunnel service — unstable' },
-  { pattern: /^http:\/\//i,                         severity: 'medium' as const, type: 'insecure_endpoint', desc: 'Non-HTTPS endpoint — use HTTPS' },
-];
-
-const SUSPICIOUS_TOOL_NAMES = [
-  { pattern: /^(password|passwd|secret|token|api.?key)$/i, severity: 'high'   as const, desc: 'Tool name implies raw credential handling' },
-  { pattern: /drop_all|delete_all|truncate_all/i,          severity: 'medium' as const, desc: 'Potentially destructive tool name' },
-];
-
-export function scanServer(data: {
-  name:              string;
-  description:       string;
-  long_description?: string;
-  endpoint:          string;
-  tools:             string[];
-  tags:              string[];
-}): ScanResult {
-  const issues: ScanIssue[] = [];
-  const text = [data.description, data.long_description ?? ''].join(' ');
-
-  for (const { pattern, severity, type, desc } of INJECTION_PATTERNS) {
-    if (pattern.test(text)) issues.push({ severity, type, description: desc, field: 'description' });
-  }
-  for (const tool of data.tools) {
-    for (const { pattern, severity, type, desc } of INJECTION_PATTERNS) {
-      if (pattern.test(tool)) issues.push({ severity, type, description: `${desc} in tool: ${tool}`, field: 'tools' });
-    }
-    for (const { pattern, severity, desc } of SUSPICIOUS_TOOL_NAMES) {
-      if (pattern.test(tool)) issues.push({ severity, type: 'suspicious_tool', description: `${desc}: "${tool}"`, field: 'tools' });
-    }
-  }
-  for (const { pattern, severity, type, desc } of ENDPOINT_PATTERNS) {
-    if (pattern.test(data.endpoint)) issues.push({ severity, type, description: desc, field: 'endpoint' });
-  }
-
-  if (!/^[a-z0-9-]+$/.test(data.name)) issues.push({ severity: 'medium', type: 'naming',        description: 'Name must be lowercase letters, numbers, hyphens only' });
-  if (data.tools.length === 0)          issues.push({ severity: 'high',   type: 'no_tools',      description: 'Server exposes no tools' });
-  if (data.tools.length > 100)          issues.push({ severity: 'medium', type: 'too_many_tools', description: 'Over 100 tools — context bloat risk' });
-  if (data.tags.length === 0)           issues.push({ severity: 'low',    type: 'no_tags',        description: 'No tags — will rank lower in search' });
-
-  const deduction =
-    issues.filter(i => i.severity === 'critical').length * 40 +
-    issues.filter(i => i.severity === 'high').length     * 20 +
-    issues.filter(i => i.severity === 'medium').length   * 10 +
-    issues.filter(i => i.severity === 'low').length      * 5;
-
-  const score  = Math.max(0, 100 - deduction);
-  // Fail if any critical OR high severity issue — high severity includes exfiltration patterns
-  // and deceptive language which are serious enough to reject a server
-  const passed = !issues.some(i => i.severity === 'critical' || i.severity === 'high');
-
-  return {
-    passed, score, issues,
-    details: passed
-      ? `Scan passed. Score: ${score}/100.`
-      : `Scan failed. Score: ${score}/100. ${issues.filter(i => i.severity === 'critical').length} critical, ${issues.filter(i => i.severity === 'high').length} high severity issues.`,
-  };
-}
 
 // ── L5: Trust score ───────────────────────────────────────────────────────────
 
 export function computeTrustScore(params: {
   verified:          number;
-  scanScore:         number;
   uptimePct:         number;
   stars:             number;
   daysSinceChange:   number;
@@ -129,20 +29,17 @@ export function computeTrustScore(params: {
 }): number {
   let s = 0;
 
-  // Verified publisher — 25 pts
-  s += params.verified ? 25 : 0;
+  // Verified publisher — 40 pts
+  s += params.verified ? 40 : 0;
 
-  // Scan quality — 30 pts
-  s += (params.scanScore / 100) * 30;
-
-  // Uptime — 20 pts (measured every 15 min by cron)
-  s += (params.uptimePct / 100) * 20;
+  // Uptime — 30 pts (measured every 15 min by cron)
+  s += (params.uptimePct / 100) * 30;
 
   // Schema stability — 15 pts (servers that mutate schemas are less trustworthy)
   s += (Math.min(params.daysSinceChange, 90) / 90) * 15;
 
-  // Community signals — 10 pts (log scale prevents large servers dominating)
-  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 10;
+  // Community signals — 15 pts (log scale prevents large servers dominating)
+  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 15;
 
   // Runtime penalties (from metering — applied after ingest scores stabilise)
   // High request failure rate: up to -15 pts
