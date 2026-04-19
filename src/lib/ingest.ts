@@ -40,13 +40,13 @@ export interface IngestServer {
   tags:             string[];
   tools:            string[];
   tool_schemas:     ToolSchema[];
-  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' | 'direct' | 'vendor';
+  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' | 'direct' | 'vendor' | 'claudemcp' | 'mcpso';
   smithery_id?:     string;
   official_id?:     string;
   glama_id?:        string;
   verified?:        boolean;
   transport?:       'stdio' | 'sse' | 'streamable_http' | 'unknown';
-  upstream_updated_at?: string; // ISO 8601 — when upstream source last modified this server
+  upstream_updated_at?: string;
 }
 
 /**
@@ -518,8 +518,136 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
 }
 
 
-/**
- * Detect MCP server transport type from endpoint URL.
+// ── ClaudeMCP ─────────────────────────────────────────────────────────────────
+// claudemcp.com/servers — curated directory, scrape-based (no public API).
+// Uses the JSON data endpoint that the page fetches client-side.
+
+export async function fetchClaudeMCPServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    // claudemcp.com serves a JSON list at this endpoint (confirmed via network inspection)
+    const res = await fetch('https://claudemcp.com/api/servers', {
+      headers: { 'User-Agent': 'Agentrail-ingest/0.1', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      // Fallback: attempt to parse the static JSON data embedded in the page
+      const pageRes = await fetch('https://claudemcp.com/servers', {
+        headers: { 'User-Agent': 'Agentrail-ingest/0.1' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!pageRes.ok) {
+        console.warn('[ingest:claudemcp] Both API and page fetch failed — skipping');
+        return [];
+      }
+      const html = await pageRes.text();
+      // Extract JSON from __NEXT_DATA__ script tag
+      const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      if (!match) return [];
+      try {
+        const nextData = JSON.parse(match[1]);
+        const items: any[] = nextData?.props?.pageProps?.servers ?? [];
+        return parseClaudeMCPItems(items);
+      } catch {
+        return [];
+      }
+    }
+
+    const data = await res.json();
+    const items: any[] = data?.servers ?? data ?? [];
+    return parseClaudeMCPItems(items);
+  } catch (e: any) {
+    console.warn('[ingest:claudemcp] Error:', e.message);
+    return [];
+  }
+}
+
+function parseClaudeMCPItems(items: any[]): IngestServer[] {
+  const servers: IngestServer[] = [];
+  for (const s of items) {
+    const name = slugify(s.name ?? s.slug ?? s.id ?? '');
+    if (!name) continue;
+    const endpoint = s.endpoint ?? s.url ?? s.serverUrl ?? '';
+    const isStdio  = !endpoint || s.transport === 'stdio' || s.type === 'local';
+    servers.push({
+      name,
+      display_name:  s.name ?? name,
+      description:   s.description ?? s.shortDescription ?? '',
+      endpoint:      isStdio ? '' : endpoint,
+      version:       s.version ?? '1.0.0',
+      github_url:    s.githubUrl ?? s.repository ?? s.github ?? undefined,
+      homepage_url:  s.websiteUrl ?? s.homepage ?? undefined,
+      license:       s.license ?? 'MIT',
+      tags:          s.tags ?? s.categories ?? [],
+      tools:         s.tools?.map((t: any) => t.name ?? t) ?? [],
+      tool_schemas:  [],
+      source:        'claudemcp',
+      verified:      s.verified ?? s.featured ?? false,
+      transport:     isStdio ? 'stdio' : (s.transport ?? undefined),
+      upstream_updated_at: s.updatedAt ?? s.lastUpdated ?? undefined,
+    });
+  }
+  return servers;
+}
+
+// ── MCP.so ────────────────────────────────────────────────────────────────────
+// mcp.so — curated MCP server directory with a discoverable API.
+
+export async function fetchMcpSoServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  let page = 1;
+
+  while (true) {
+    try {
+      const res = await fetch(`https://mcp.so/api/servers?page=${page}&limit=100`, {
+        headers: { 'User-Agent': 'Agentrail-ingest/0.1', 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) break;
+
+      const data = await res.json();
+      const items: any[] = data?.data ?? data?.servers ?? data ?? [];
+      if (!Array.isArray(items) || items.length === 0) break;
+
+      for (const s of items) {
+        const name = slugify(s.name ?? s.slug ?? '');
+        if (!name) continue;
+        const endpoint = s.endpoint ?? s.url ?? '';
+        const isStdio  = !endpoint || s.transport === 'stdio';
+        servers.push({
+          name,
+          display_name:  s.name ?? name,
+          description:   s.description ?? '',
+          endpoint:      isStdio ? '' : endpoint,
+          version:       s.version ?? '1.0.0',
+          github_url:    s.githubUrl ?? s.github ?? undefined,
+          homepage_url:  s.websiteUrl ?? undefined,
+          license:       s.license ?? 'MIT',
+          tags:          s.tags ?? s.categories ?? [],
+          tools:         s.tools?.map((t: any) => t.name ?? t) ?? [],
+          tool_schemas:  [],
+          source:        'mcpso',
+          verified:      s.verified ?? s.official ?? false,
+          transport:     isStdio ? 'stdio' : undefined,
+          upstream_updated_at: s.updatedAt ?? undefined,
+        });
+      }
+
+      if (items.length < 100) break;
+      page++;
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e: any) {
+      console.warn('[ingest:mcp.so] Error on page', page, ':', e.message);
+      break;
+    }
+  }
+
+  console.log(`[ingest:mcp.so] Fetched ${servers.length} servers`);
+  return servers;
+}
+
+
  * This determines whether the server is invokable through the openMCP proxy.
  *
  * stdio: local process — cannot be reached over HTTP, excluded from agent search
@@ -851,16 +979,22 @@ export async function upsertServers(
         continue;
       }
 
+      // Compute scan quality score from CVE results for the trust formula
+      const ingestScanScore = hasCriticalCve ? 0 : hasHighSeverity ? 50 : 100;
+
       let trustScore = computeTrustScore({
         verified:        s.verified ? 1 : 0,
         uptimePct:       100,
         stars:           0,
         daysSinceChange: 0,
+        scanScore:       ingestScanScore,
       });
 
-      // Override trust score for verified official vendors
+      // Override verified flag for trusted sources — but still run the full
+      // trust score formula. Verified sources already get the 40-point bonus.
+      // Do NOT hard-code 100 — a compromised official registry entry would
+      // get a perfect score with no quality checks applied.
       if (s.source === 'vendor' || s.source === 'official') {
-        trustScore = 100;
         s.verified = true;
       }
 

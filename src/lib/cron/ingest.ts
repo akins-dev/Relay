@@ -6,6 +6,8 @@ import {
   fetchGitHubServers,
   fetchGlamaServers,
   fetchPulseMCPServers,
+  fetchClaudeMCPServers,
+  fetchMcpSoServers,
   upsertServers,
 } from '@/lib/ingest';
 import {
@@ -14,7 +16,7 @@ import {
   summarizeIngestResults,
 } from '@/lib/ingest-response';
 
-export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pulsemcp'|'github'|'vendor' = 'all') {
+export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pulsemcp'|'github'|'vendor'|'claudemcp'|'mcpso' = 'all') {
   const svc = createServiceClient();
   const ingestRuns = svc.from('ingest_runs') as any;
   const startedAt = new Date().toISOString();
@@ -84,6 +86,30 @@ export async function runIngest(source: 'all'|'official'|'smithery'|'glama'|'pul
       results.pulsemcp = await upsertServers(servers, svc);
       results.pulsemcp.fetched = servers.length;
       console.log(`[ingest] ✓ PulseMCP complete: +${results.pulsemcp.added} added, ~${results.pulsemcp.updated} updated, ${results.pulsemcp.skipped} skipped, ${results.pulsemcp.rejected} rejected\n`);
+    }
+
+    if (source === 'all' || source === 'claudemcp') {
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: ClaudeMCP');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
+      const servers = await fetchClaudeMCPServers();
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
+      results.claudemcp = await upsertServers(servers, svc);
+      results.claudemcp.fetched = servers.length;
+      console.log(`[ingest] ✓ ClaudeMCP complete: +${results.claudemcp.added} added, ~${results.claudemcp.updated} updated, ${results.claudemcp.skipped} skipped, ${results.claudemcp.rejected} rejected\n`);
+    }
+
+    if (source === 'all' || source === 'mcpso') {
+      console.log('\n══════════════════════════════════════════════');
+      console.log('[ingest] ▶ SOURCE: MCP.so');
+      console.log('══════════════════════════════════════════════');
+      const t0 = Date.now();
+      const servers = await fetchMcpSoServers();
+      console.log(`[ingest] Fetched ${servers.length} servers in ${((Date.now()-t0)/1000).toFixed(1)}s. Upserting...`);
+      results.mcpso = await upsertServers(servers, svc);
+      results.mcpso.fetched = servers.length;
+      console.log(`[ingest] ✓ MCP.so complete: +${results.mcpso.added} added, ~${results.mcpso.updated} updated, ${results.mcpso.skipped} skipped, ${results.mcpso.rejected} rejected\n`);
     }
 
     if (source === 'all' || source === 'github') {

@@ -13,13 +13,94 @@
 
 
 
-// ── L5: Trust score ───────────────────────────────────────────────────────────
+// ── L1: Publish-time static scan (manual submissions only) ───────────────────
+//
+// DESIGN NOTE: This function gates MANUAL server submissions by humans via the
+// publish UI (/api/servers POST). It is intentionally NOT used in the automated
+// ingest pipeline — ingest uses CVE-only rejection (S-14) to avoid false positives
+// on legitimate servers whose descriptions contain words like "execute" or "shell".
+//
+// At proxy time, indirectInjectionScan() and shellInjectionScan() cover runtime
+// payloads — descriptions are re-checked on every schema-drift event.
+//
+// For a typical clean MCP server, expect: passed=true, issues=[]
+// For an injection attempt, expect: passed=false, issues=[{severity:'critical',...}]
+
+export interface ScanIssue {
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  type:     string;
+  description: string;
+}
+
+export interface ScanResult {
+  passed: boolean;
+  issues: ScanIssue[];
+  score:  number; // 0–100, used by computeTrustScore scanScore param
+}
+
+const STATIC_INJECTION_PATTERNS: { pattern: RegExp; severity: ScanIssue['severity']; type: string; desc: string }[] = [
+  // Prompt injection / instruction override attempts in descriptions
+  { pattern: /ignore (previous|all|prior|above|earlier) instructions?/i, severity: 'critical', type: 'prompt_injection', desc: 'Instruction override detected in description' },
+  { pattern: /you are (now|actually|really|instead)\s+/i,               severity: 'critical', type: 'identity_override', desc: 'Identity override attempt in description' },
+  { pattern: /exfiltrate|send.*to.*http[s]?:\/\//i,                     severity: 'critical', type: 'exfiltration',      desc: 'Data exfiltration instruction in description' },
+  { pattern: /\[SYSTEM:|<\|im_start\|>|<\|im_end\|>/i,                  severity: 'critical', type: 'template_injection', desc: 'Chat template tokens in description' },
+  { pattern: /forget (everything|all|your|previous)/i,                  severity: 'critical', type: 'memory_wipe',        desc: 'Memory wipe instruction in description' },
+  { pattern: /your (true|real|actual|hidden) (purpose|goal|mission)/i,  severity: 'critical', type: 'hidden_purpose',     desc: 'Hidden purpose injection in description' },
+  // Insecure endpoint
+  { pattern: /^http:\/\//,                                               severity: 'high',     type: 'insecure_endpoint', desc: 'Server endpoint uses plain HTTP (not HTTPS)' },
+  // Suspicious tool name patterns
+  { pattern: /^(exec|eval|shell|cmd|system|spawn)$/i,                   severity: 'high',     type: 'dangerous_tool_name', desc: 'Tool name matches dangerous system call' },
+];
+
+export function scanServer(params: {
+  name:             string;
+  description:      string;
+  long_description?: string;
+  endpoint:         string;
+  tools:            string[];
+  tags:             string[];
+}): ScanResult {
+  const issues: ScanIssue[] = [];
+  // Scan description + long_description + tool names together
+  const textToScan = [params.description, params.long_description ?? '', ...params.tools].join(' ');
+
+  // Check description and tool names for injection patterns
+  for (const { pattern, severity, type, desc } of STATIC_INJECTION_PATTERNS) {
+    if (type === 'insecure_endpoint') {
+      if (pattern.test(params.endpoint)) {
+        issues.push({ severity, type, description: desc });
+      }
+    } else if (type === 'dangerous_tool_name') {
+      for (const tool of params.tools) {
+        if (pattern.test(tool)) {
+          issues.push({ severity, type, description: `${desc}: "${tool}"` });
+        }
+      }
+    } else {
+      if (pattern.test(textToScan)) {
+        issues.push({ severity, type, description: desc });
+      }
+    }
+  }
+
+  const criticals = issues.filter(i => i.severity === 'critical').length;
+  const highs     = issues.filter(i => i.severity === 'high').length;
+  const score     = Math.max(0, 100 - criticals * 40 - highs * 20);
+  const passed    = criticals === 0;
+
+  return { passed, issues, score };
+}
+
+
 
 export function computeTrustScore(params: {
   verified:          number;
   uptimePct:         number;
   stars:             number;
   daysSinceChange:   number;
+  // Optional: scan quality score (0-100, from L1/CVE scan results).
+  // If not provided, assumed clean (100). Used by uptime cron which reads scan_issues.
+  scanScore?:        number;
   // Optional: request failure rate from metering (0-100, 0=perfect)
   failureRatePct?:   number;
   // Optional: DLP trigger rate from proxy calls (0-100, 0=clean)
@@ -32,14 +113,19 @@ export function computeTrustScore(params: {
   // Verified publisher — 40 pts
   s += params.verified ? 40 : 0;
 
-  // Uptime — 30 pts (measured every 15 min by cron)
-  s += (params.uptimePct / 100) * 30;
+  // Uptime — 25 pts (measured every 15 min by cron)
+  s += (params.uptimePct / 100) * 25;
 
   // Schema stability — 15 pts (servers that mutate schemas are less trustworthy)
   s += (Math.min(params.daysSinceChange, 90) / 90) * 15;
 
-  // Community signals — 15 pts (log scale prevents large servers dominating)
-  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 15;
+  // Community signals — 10 pts (log scale prevents large servers dominating)
+  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 10;
+
+  // Scan quality — 10 pts (CVE and static scan results)
+  // scanScore is 0-100 from the scan pipeline; 100 = fully clean
+  const scanScore = params.scanScore ?? 100;
+  s += (Math.min(100, Math.max(0, scanScore)) / 100) * 10;
 
   // Runtime penalties (from metering — applied after ingest scores stabilise)
   // High request failure rate: up to -15 pts
