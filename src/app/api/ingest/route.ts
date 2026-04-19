@@ -6,7 +6,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { runIngest } from '@/lib/cron/ingest';
 
 const IngestSchema = z.object({
-  source: z.enum(['all','official','smithery','glama','pulsemcp','github']).default('all'),
+  source: z.enum(['all','official','smithery','glama','pulsemcp','github','vendor','claudemcp','mcpso']).default('all'),
 });
 
 function isAuthorized(req: NextRequest) {
