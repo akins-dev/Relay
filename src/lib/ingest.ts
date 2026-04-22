@@ -1,6 +1,6 @@
 import { isSafeUrl } from '@/lib/utils';
 /**
- * openMCP — Registry Ingest Pipeline
+ * Relay — Registry Ingest Pipeline
  *
  * Pulls servers from five upstream sources:
  *   1. Official MCP Registry (registry.modelcontextprotocol.io)
@@ -40,13 +40,17 @@ export interface IngestServer {
   tags:             string[];
   tools:            string[];
   tool_schemas:     ToolSchema[];
-  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' | 'direct' | 'vendor' | 'claudemcp' | 'mcpso';
+  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' |
+                    'direct' | 'partner' | 'claudemcp' | 'mcpso' |
+                    'mcp_run' | 'composio' | 'zapier' | 'langchain_hub';
   smithery_id?:     string;
   official_id?:     string;
   glama_id?:        string;
   verified?:        boolean;
   transport?:       'stdio' | 'sse' | 'streamable_http' | 'unknown';
   upstream_updated_at?: string;
+  description_quality?: 'auto_generated' | 'readme_parsed' | 'upstream' | 'manual';
+  readme_url?:      string;
 }
 
 /**
@@ -143,7 +147,7 @@ export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[
 
     if (!isSafeUrl(rawUrl)) return [];
     const res = await fetch(rawUrl, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      headers: { 'User-Agent': 'relay-ingest/0.1' },
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return [];
@@ -209,7 +213,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       : 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
 
     const pageRes: Response = await fetch(pageUrl, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      headers: { 'User-Agent': 'relay-ingest/0.1' },
       signal: AbortSignal.timeout(15_000),
     });
     if (!pageRes.ok) break;
@@ -292,7 +296,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'User-Agent': 'openMCP-ingest/0.1',
+          'User-Agent': 'relay-ingest/0.1',
         },
         signal: AbortSignal.timeout(15_000),
       }
@@ -348,7 +352,7 @@ export async function fetchGitHubServers(): Promise<IngestServer[]> {
     const res = await fetch(
       'https://api.github.com/repos/modelcontextprotocol/servers/contents/src',
       {
-        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
         signal: AbortSignal.timeout(10_000),
       }
     );
@@ -407,7 +411,7 @@ export async function fetchVendorServers(): Promise<IngestServer[]> {
   try {
     // 1. Fetch from the official github.com/mcp registry ORG
     const res = await fetch('https://api.github.com/orgs/mcp/repos?per_page=100', {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
+      headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
       signal: AbortSignal.timeout(10_000),
     });
     
@@ -426,10 +430,10 @@ export async function fetchVendorServers(): Promise<IngestServer[]> {
           github_url:   repo.html_url,
           homepage_url: repo.homepage || undefined,
           license:      repo.license?.spdx_id || 'MIT',
-          tags:         ['vendor', 'official'],
+          tags:         ['partner', 'official'],
           tools:        [],
           tool_schemas: [],
-          source:       'vendor',
+          source:       'partner',
           verified:     true,
           transport:    'stdio', // Assume stdio default for github repos
           upstream_updated_at: repo.updated_at,
@@ -463,7 +467,7 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
         : `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}`;
 
       const res = await fetch(url, {
-        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) break;
@@ -527,14 +531,14 @@ export async function fetchClaudeMCPServers(): Promise<IngestServer[]> {
   try {
     // claudemcp.com serves a JSON list at this endpoint (confirmed via network inspection)
     const res = await fetch('https://claudemcp.com/api/servers', {
-      headers: { 'User-Agent': 'Agentrail-ingest/0.1', 'Accept': 'application/json' },
+      headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
       signal: AbortSignal.timeout(15_000),
     });
 
     if (!res.ok) {
       // Fallback: attempt to parse the static JSON data embedded in the page
       const pageRes = await fetch('https://claudemcp.com/servers', {
-        headers: { 'User-Agent': 'Agentrail-ingest/0.1' },
+        headers: { 'User-Agent': 'relay-ingest/0.1' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!pageRes.ok) {
@@ -601,7 +605,7 @@ export async function fetchMcpSoServers(): Promise<IngestServer[]> {
   while (true) {
     try {
       const res = await fetch(`https://mcp.so/api/servers?page=${page}&limit=100`, {
-        headers: { 'User-Agent': 'Agentrail-ingest/0.1', 'Accept': 'application/json' },
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) break;
@@ -647,13 +651,158 @@ export async function fetchMcpSoServers(): Promise<IngestServer[]> {
   return servers;
 }
 
-
- * This determines whether the server is invokable through the openMCP proxy.
+/**
+ * This determines whether the server is invokable through the Relay proxy.
  *
  * stdio: local process — cannot be reached over HTTP, excluded from agent search
  * sse | streamable_http: public HTTP endpoint — invokable through proxy
  * unknown: no clear signal — treated as stdio (excluded) until proven otherwise
  */
+// ── README description extraction ─────────────────────────────────────────────
+// Fetches a GitHub README and extracts the first meaningful paragraph as a
+// description. Used when upstream registry provides no description or a
+// placeholder. Returns null if fetch fails or README has no extractable text.
+
+export async function parseReadmeDescription(githubUrl: string): Promise<{
+  description: string | null;
+  long_description: string | null;
+  readme_url: string;
+} | null> {
+  try {
+    const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!match) return null;
+    const [, owner, repo] = match;
+
+    const branches = ['main', 'master'];
+    let text: string | null = null;
+    let readmeUrl = '';
+
+    for (const branch of branches) {
+      readmeUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`;
+      if (!isSafeUrl(readmeUrl)) continue;
+      const res = await fetch(readmeUrl, {
+        headers: { 'User-Agent': 'relay-ingest/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (res.ok) { text = await res.text(); break; }
+    }
+    if (!text) return null;
+
+    // Strip markdown title and badges
+    const lines = text
+      .split('\n')
+      .filter(l => !l.startsWith('#'))           // strip headings
+      .filter(l => !l.startsWith('!['))           // strip image badges
+      .filter(l => !l.startsWith('[!['))          // strip badge links
+      .filter(l => l.trim().length > 0);
+
+    // First meaningful paragraph (at least 30 chars)
+    const paragraphs = text.split('\n\n')
+      .map(p => p.replace(/^#+\s+.*/gm, '').replace(/!\[.*?\]\(.*?\)/g, '').replace(/\[(.+?)\]\(.+?\)/g, '$1').trim())
+      .filter(p => p.length >= 30 && !p.startsWith('```'));
+
+    const description = paragraphs[0]?.slice(0, 300) ?? null;
+    const long_description = paragraphs.slice(0, 5).join('\n\n').slice(0, 2000) ?? null;
+
+    return { description, long_description, readme_url: readmeUrl };
+  } catch {
+    return null;
+  }
+}
+
+// ── MCP.run ───────────────────────────────────────────────────────────────────
+// mcp.run — hosted MCP server platform with REST API
+
+export async function fetchMcpRunServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    const res = await fetch('https://mcp.run/api/servers?limit=100', {
+      headers: { 'User-Agent': 'relay-ingest/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      console.warn('[ingest:mcp.run] API returned', res.status, '— skipping');
+      return [];
+    }
+    const data = await res.json();
+    const items: any[] = data?.servers ?? data?.data ?? data ?? [];
+    for (const s of items) {
+      const name = slugify(s.name ?? s.slug ?? s.id ?? '');
+      if (!name) continue;
+      const endpoint = s.endpoint ?? s.url ?? s.serverUrl ?? '';
+      servers.push({
+        name,
+        display_name:       s.name ?? name,
+        description:        s.description ?? '',
+        endpoint:           endpoint || '',
+        version:            s.version ?? '1.0.0',
+        github_url:         s.githubUrl ?? s.repository ?? undefined,
+        homepage_url:       s.homepageUrl ?? `https://mcp.run/servers/${s.slug ?? name}`,
+        license:            s.license ?? 'MIT',
+        tags:               s.tags ?? s.categories ?? [],
+        tools:              s.tools?.map((t: any) => t.name ?? t) ?? [],
+        tool_schemas:       [],
+        source:             'mcp_run',
+        verified:           s.verified ?? s.official ?? false,
+        transport:          endpoint ? undefined : 'stdio',
+        description_quality: s.description ? 'upstream' : 'auto_generated',
+        upstream_updated_at: s.updatedAt ?? undefined,
+      });
+    }
+  } catch (e: any) {
+    console.warn('[ingest:mcp.run] Error:', e.message);
+  }
+  console.log(`[ingest:mcp.run] Fetched ${servers.length} servers`);
+  return servers;
+}
+
+// ── Composio ──────────────────────────────────────────────────────────────────
+// composio.dev — agent tooling platform with MCP-compatible tool integrations
+
+export async function fetchComposioServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    // Composio exposes their integrations list publicly
+    const res = await fetch('https://backend.composio.dev/api/v1/apps?limit=100', {
+      headers: { 'User-Agent': 'relay-ingest/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      console.warn('[ingest:composio] API returned', res.status, '— skipping');
+      return [];
+    }
+    const data = await res.json();
+    const items: any[] = data?.items ?? data?.apps ?? [];
+    for (const s of items) {
+      const name = slugify(`composio-${s.name ?? s.key ?? s.appId ?? ''}`);
+      if (!name || name === 'composio-') continue;
+      // Composio tools are HTTP-accessible via their proxy
+      const endpoint = s.mcpEndpoint ?? s.serverUrl ?? '';
+      servers.push({
+        name,
+        display_name:       s.displayName ?? s.name ?? name,
+        description:        s.description ?? `${s.name ?? name} integration via Composio`,
+        endpoint:           endpoint || '',
+        version:            '1.0.0',
+        github_url:         undefined,
+        homepage_url:       `https://app.composio.dev/apps/${s.key ?? s.name}`,
+        license:            'Proprietary',
+        tags:               s.categories ?? s.tags ?? [],
+        tools:              s.actions?.map((a: any) => a.name ?? a) ?? [],
+        tool_schemas:       [],
+        source:             'composio',
+        verified:           false,
+        transport:          endpoint ? 'streamable_http' : 'stdio',
+        description_quality: s.description ? 'upstream' : 'auto_generated',
+      });
+    }
+  } catch (e: any) {
+    console.warn('[ingest:composio] Error:', e.message);
+  }
+  console.log(`[ingest:composio] Fetched ${servers.length} servers`);
+  return servers;
+}
+
 export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' | 'sse' | 'streamable_http' | 'unknown' {
   if (!endpoint) {
     // No endpoint at all — if there's a github URL, it's stdio
@@ -749,6 +898,7 @@ export async function upsertServers(
   const existingByOfficial = new Map<string, any>();
   const existingByGlama    = new Map<string, any>();
   const existingByGithub   = new Map<string, any>();
+  const existingByEndpoint = new Map<string, any>(); // NEW: dedup by HTTP endpoint
 
   for (const row of allExisting ?? []) {
     if (row.name)        existingByName.set(row.name, row);
@@ -756,6 +906,8 @@ export async function upsertServers(
     if (row.official_id) existingByOfficial.set(row.official_id, row);
     if (row.glama_id)    existingByGlama.set(row.glama_id, row);
     if (row.github_url)  existingByGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
+    // Index by normalized endpoint URL — catches cross-source duplicates
+    if (row.endpoint)    existingByEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
   }
 
   console.log(`${tag} Pre-fetched ${existingByName.size} existing servers. Processing ${servers.length} incoming...`);
@@ -825,6 +977,8 @@ export async function upsertServers(
       if (!existing && s.official_id)       existing = existingByOfficial.get(s.official_id);
       if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
       if (!existing && s.github_url)        existing = existingByGithub.get(s.github_url.replace(/\.git$/, '').toLowerCase());
+      // Endpoint dedup: catches the same HTTP server indexed under different names by different sources
+      if (!existing && s.endpoint)          existing = existingByEndpoint.get(s.endpoint.replace(/\/$/, '').toLowerCase());
       if (!existing)                        existing = existingByName.get(s.name);
 
       // ── THREE-TIER SKIP ALGORITHM ──────────────────────────────────────────
@@ -979,34 +1133,63 @@ export async function upsertServers(
         continue;
       }
 
-      // Compute scan quality score from CVE results for the trust formula
-      const ingestScanScore = hasCriticalCve ? 0 : hasHighSeverity ? 50 : 100;
+      // ── Description quality enrichment ───────────────────────────────────────
+      // If the upstream provided no description or a placeholder, fetch README.
+      // This is the primary fix for stdio servers having empty descriptions.
+      let descriptionQuality = s.description_quality ?? 'upstream';
+      let finalDescription   = s.description || s.display_name || 'No description provided';
+      let finalLongDesc      = s.long_description ?? null;
+      let readmeUrl          = s.readme_url ?? null;
 
-      let trustScore = computeTrustScore({
-        verified:        s.verified ? 1 : 0,
-        uptimePct:       100,
-        stars:           0,
-        daysSinceChange: 0,
-        scanScore:       ingestScanScore,
-      });
+      const needsEnrichment = !s.description
+        || s.description.length < 20
+        || s.description === 'No description provided'
+        || s.description.startsWith('Official MCP reference server:')
+        || s.description === 'Official Partner MCP Server'
+        || s.description === 'Official Vendor MCP Server';
 
-      // Override verified flag for trusted sources — but still run the full
-      // trust score formula. Verified sources already get the 40-point bonus.
-      // Do NOT hard-code 100 — a compromised official registry entry would
-      // get a perfect score with no quality checks applied.
-      if (s.source === 'vendor' || s.source === 'official') {
+      if (needsEnrichment && s.github_url && isSafeUrl(s.github_url)) {
+        const readme = await parseReadmeDescription(s.github_url);
+        if (readme?.description) {
+          finalDescription   = readme.description;
+          finalLongDesc      = readme.long_description ?? finalLongDesc;
+          readmeUrl          = readme.readme_url;
+          descriptionQuality = 'readme_parsed';
+          if (idx < 15) console.log(`[DEBUG] ${s.name} → enriched description from README`);
+        } else {
+          descriptionQuality = 'auto_generated';
+        }
+      }
+
+      // Set verified flag for trusted sources before computing trust score
+      if (s.source === 'partner' || s.source === 'official') {
         s.verified = true;
       }
 
+      // CVE severity classification — must happen before trust score
+      const hasHighSeverity    = cveIssues.some(i => i.severity === 'high');
+      const ingestScanScore    = hasCriticalCve ? 0 : hasHighSeverity ? 50 : 100;
+
+      // Official/partner servers get stability credit on first ingest —
+      // they have proven track records. Uptime checks will adjust over time.
+      let trustScore = computeTrustScore({
+        verified:        s.verified ? 1 : 0,
+        uptimePct:       100,
+        stars:           (s.source === 'official' || s.source === 'partner') ? 50 : 0,
+        daysSinceChange: (s.source === 'official' || s.source === 'partner') ? 90 : 0,
+        scanScore:       ingestScanScore,
+      });
+
       // High CVE issues → pending_review rather than active.
-      const hasHighSeverity = cveIssues.some(i => i.severity === 'high');
       const status = hasHighSeverity ? 'pending_review' : 'active';
 
       const serverData: Record<string, any> = {
         name:             s.name,
         display_name:     s.display_name || s.name,
-        description:      s.description  || s.display_name || 'No description provided',
-        long_description: s.long_description ?? null,
+        description:      finalDescription,
+        long_description: finalLongDesc,
+        description_quality: descriptionQuality,
+        readme_url:       readmeUrl,
         version:          s.version || '1.0.0',
         endpoint:         s.endpoint || null,
         github_url:       s.github_url   ?? null,
@@ -1042,7 +1225,7 @@ export async function upsertServers(
 
       if (existing) {
         // Shield Official/Vendor servers from generic registry overwrites
-        if ((existing.source === 'vendor' || existing.source === 'official') && s.source !== 'vendor' && s.source !== 'official') {
+        if ((existing.source === 'partner' || existing.source === 'official') && s.source !== 'partner' && s.source !== 'official') {
           console.log(`${tag} ${progress} [SKIP] ${s.name} — Protected official/vendor server, ignoring ${s.source} update`);
           result.skipped++;
           continue;

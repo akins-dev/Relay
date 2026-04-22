@@ -63,10 +63,9 @@ export async function resolveApiKey(
     if (!data) return { userId: null, keyId: null };
 
     // Fire-and-forget last_used_at update
-    svc.from('api_keys')
+    void svc.from('api_keys')
       .update({ last_used_at: new Date().toISOString() })
-      .eq('id', data.id)
-      .catch(() => {});
+      .eq('id', data.id);
 
     return { userId: data.user_id, keyId: data.id };
   });

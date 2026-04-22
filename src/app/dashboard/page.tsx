@@ -380,7 +380,7 @@ function DashboardContent() {
             {keyError && <p className="mt-3 text-[13px] font-medium text-red-500">{keyError}</p>}
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/5 p-3 text-[12px] text-muted-foreground/80">
               <Zap size={14} className="text-amber-400" />
-              <span>Keys give agents <strong>200 calls/min</strong> (vs 30/min anonymous). Pass as <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-brand/90 ring-1 ring-white/10">Authorization: Bearer sk_mcp_...</code></span>
+              <span>Keys give agents <strong>200 calls/min</strong> (vs 30/min anonymous). Pass as <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-brand/90 ring-1 ring-white/10">Authorization: Bearer sk_relay_...</code></span>
             </div>
           </div>
 
@@ -465,19 +465,10 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* ── Policies & Account tabs skipped for brevity but easily adjustable ──────────────── */}
-      
+      {/* ── Policies tab — embedded controls ──────────────────────────────── */}
       {tab === 'policies' && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-           {/* Minimal port for brevity */}
-           <div className="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
-             <div className="mb-6 flex items-center gap-3">
-               <ShieldCheck size={24} className="text-brand" />
-               <h3 className="text-xl font-bold text-foreground">Tool Policies</h3>
-             </div>
-             <p className="mb-8 text-muted-foreground">Manage granular permissions across all authenticated agents dynamically.</p>
-             <Link href="/dashboard/policies"><Button className="rounded-xl">Manage Policy Rules</Button></Link>
-           </div>
+          <EmbeddedPolicies />
         </div>
       )}
 
@@ -506,6 +497,135 @@ function DashboardContent() {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Embedded Policy Controls ──────────────────────────────────────────────────
+// Mirrors the logic from /dashboard/policies/page.tsx but renders inline in the
+// dashboard tab. The full-page version at /dashboard/policies still works for
+// direct links and bookmarks.
+
+const POLICY_GROUPS = [
+  { id: 'read',    label: 'Read',           desc: 'View, list, get, search operations',          patterns: ['read_*','get_*','list_*','search_*','fetch_*','find_*','query_*','describe_*','show_*'],       default: 'allow'   as const },
+  { id: 'create',  label: 'Create',         desc: 'Create, add, insert, upload',                 patterns: ['create_*','add_*','insert_*','upload_*','new_*','make_*','generate_*','build_*'],              default: 'allow'   as const },
+  { id: 'update',  label: 'Update',         desc: 'Update, edit, patch, modify',                 patterns: ['update_*','edit_*','patch_*','modify_*','set_*','change_*','rename_*','move_*'],              default: 'confirm' as const },
+  { id: 'delete',  label: 'Delete',         desc: 'Delete, remove, destroy, drop, purge',        patterns: ['delete_*','remove_*','destroy_*','drop_*','purge_*','wipe_*','truncate_*','clear_*','reset_*'], default: 'block' as const },
+  { id: 'send',    label: 'Send / Publish', desc: 'Send messages, emails, notifications',        patterns: ['send_*','publish_*','post_*','notify_*','broadcast_*','email_*','message_*'],                  default: 'confirm' as const },
+  { id: 'execute', label: 'Execute / Run',  desc: 'Execute code, run scripts, deploy',           patterns: ['execute_*','run_*','deploy_*','trigger_*','launch_*','start_*','apply_*'],                    default: 'confirm' as const },
+  { id: 'git',     label: 'Merge / Push',   desc: 'Push code, merge branches',                   patterns: ['push_*','merge_*','approve_*','commit_*','force_*','rebase_*'],                                default: 'confirm' as const },
+  { id: 'admin',   label: 'Admin',          desc: 'Admin operations, permission changes',        patterns: ['admin_*','grant_*','revoke_*','ban_*','terminate_*','format_*','invite_*','kick_*'],            default: 'block'   as const },
+];
+
+type PolicyAction = 'allow' | 'confirm' | 'block';
+
+const ACTION_STYLES: Record<PolicyAction, { label: string; active: string; dot: string }> = {
+  allow:   { label: 'Allow',   active: 'border-green-500/40 bg-green-500/10 text-green-400',   dot: 'bg-green-500' },
+  confirm: { label: 'Confirm', active: 'border-amber-500/40 bg-amber-500/10 text-amber-400',   dot: 'bg-amber-400' },
+  block:   { label: 'Block',   active: 'border-red-500/40 bg-red-500/10 text-red-400',         dot: 'bg-red-500'   },
+};
+
+async function policyAuthHeaders(): Promise<Record<string, string>> {
+  const sb = createClient();
+  const { data: { session } } = await sb.auth.getSession();
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+function EmbeddedPolicies() {
+  const [settings, setSettings] = useState<Record<string, PolicyAction>>(() => {
+    const d: Record<string, PolicyAction> = {};
+    POLICY_GROUPS.forEach(g => { d[g.id] = g.default; });
+    return d;
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState<string | null>(null);
+  const [saved,   setSaved]   = useState<string | null>(null);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const h = await policyAuthHeaders();
+      const res = await fetch('/api/policies', { headers: h }).catch(() => null);
+      if (!res?.ok) { setLoading(false); return; }
+      const { policies } = await res.json();
+      if (policies?.length) {
+        const loaded: Record<string, PolicyAction> = {};
+        policies.forEach((row: any) => {
+          POLICY_GROUPS.forEach(g => {
+            if (g.patterns.includes(row.tool_pattern)) loaded[g.id] = row.action;
+          });
+        });
+        setSettings(prev => ({ ...prev, ...loaded }));
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  async function save(groupId: string, action: PolicyAction) {
+    setSaving(groupId); setError('');
+    const g = POLICY_GROUPS.find(g => g.id === groupId)!;
+    const h = await policyAuthHeaders();
+    const res = await fetch('/api/policies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...h },
+      body: JSON.stringify({ group_id: groupId, patterns: g.patterns, action, label: g.label }),
+    });
+    if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? 'Save failed'); }
+    else { setSettings(p => ({ ...p, [groupId]: action })); setSaved(groupId); setTimeout(() => setSaved(null), 2000); }
+    setSaving(null);
+  }
+
+  if (loading) return <div className="flex justify-center py-12"><div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-foreground">Agent Permissions</h3>
+          <p className="text-[13px] text-muted-foreground mt-0.5">Control what operations agents can perform. Applied globally across all MCP servers.</p>
+        </div>
+        <Link href="/dashboard/policies" className="text-[12px] text-muted-foreground hover:text-foreground transition-colors">Full settings →</Link>
+      </div>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[13px] text-red-700">{error}</div>}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {POLICY_GROUPS.map(group => {
+          const current = settings[group.id] ?? group.default;
+          const isSaved = saved === group.id;
+          return (
+            <div key={group.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[13px] font-semibold text-foreground">{group.label}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">{group.desc}</div>
+                </div>
+                {isSaved && <span className="text-[11px] text-green-400">✓ Saved</span>}
+              </div>
+              <div className="flex gap-1.5">
+                {(['allow', 'confirm', 'block'] as PolicyAction[]).map(action => {
+                  const s = ACTION_STYLES[action];
+                  const isActive = current === action;
+                  return (
+                    <button
+                      key={action}
+                      onClick={() => !isActive && save(group.id, action)}
+                      disabled={saving === group.id}
+                      className={cn(
+                        'flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all',
+                        isActive ? s.active : 'border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10',
+                        saving === group.id && 'opacity-50 cursor-not-allowed',
+                      )}
+                    >
+                      {action === current && saving === group.id ? '...' : s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

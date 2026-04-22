@@ -42,8 +42,8 @@ const STATIC_INJECTION_PATTERNS: { pattern: RegExp; severity: ScanIssue['severit
   // Prompt injection / instruction override attempts in descriptions
   { pattern: /ignore (previous|all|prior|above|earlier) instructions?/i, severity: 'critical', type: 'prompt_injection', desc: 'Instruction override detected in description' },
   { pattern: /you are (now|actually|really|instead)\s+/i,               severity: 'critical', type: 'identity_override', desc: 'Identity override attempt in description' },
-  { pattern: /exfiltrate|send.*to.*http[s]?:\/\//i,                     severity: 'critical', type: 'exfiltration',      desc: 'Data exfiltration instruction in description' },
-  { pattern: /\[SYSTEM:|<\|im_start\|>|<\|im_end\|>/i,                  severity: 'critical', type: 'template_injection', desc: 'Chat template tokens in description' },
+  { pattern: /exfiltrate|send.{0,80}(?:data|credentials|secrets|user data).{0,40}(?:to|via|toward|towards)\b/i, severity: 'critical', type: 'exfiltration', desc: 'Data exfiltration instruction in description' },
+  { pattern: /\[SYSTEM:|<\|im_start\|>|<\|im_end\|>/i,                  severity: 'critical', type: 'prompt_injection', desc: 'Chat template tokens in description' },
   { pattern: /forget (everything|all|your|previous)/i,                  severity: 'critical', type: 'memory_wipe',        desc: 'Memory wipe instruction in description' },
   { pattern: /your (true|real|actual|hidden) (purpose|goal|mission)/i,  severity: 'critical', type: 'hidden_purpose',     desc: 'Hidden purpose injection in description' },
   // Insecure endpoint

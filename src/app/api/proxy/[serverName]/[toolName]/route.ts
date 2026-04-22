@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient }              from '@/lib/supabase/server';
-import { rateLimit, LIMITS }         from '@/lib/ratelimit';
+import { rateLimit, LIMITS, getLimitConfig }         from '@/lib/ratelimit';
 import { extractIp }                 from '@/lib/api';
 import { corsHeaders }               from '@/lib/utils';
 import { BRAND }                     from '@/lib/brand';
@@ -41,17 +41,17 @@ export async function POST(
 
   // Rate limit
   const rlKey    = callerUserId ? `proxy:user:${callerUserId}` : `proxy:ip:${ip}`;
-  const rlConfig = callerUserId ? LIMITS.proxyAuth : LIMITS.proxy;
+  const rlConfig = callerUserId ? await getLimitConfig('proxyAuth') : await getLimitConfig('proxy');
   const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', hint: 'Add Authorization: Bearer sk_mcp_... for 200/min' },
+      { error: 'Rate limit exceeded', hint: 'Add Authorization: Bearer sk_relay_... for 200/min' },
       { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
     );
   }
 
   const rawBody       = await req.text();
-  const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-openmcp-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
+  const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-relay-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
 
   const result = await executeProxyCall({
     serverName,

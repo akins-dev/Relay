@@ -7,7 +7,48 @@ import { useAuth } from '@/components/AuthProvider';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { paginateItems } from '@/lib/pagination';
 
-// ── Admin UID — cosmetic UI gating only ──────────────────────────────────────
+// ── Inline editable rate limit row ───────────────────────────────────────────
+function RateLimitRow({ row, saving, onSave }: {
+  row: any;
+  saving: boolean;
+  onSave: (context: string, limit: number, window: number) => void;
+}) {
+  const [limit,  setLimit]  = useState(String(row.limit_count));
+  const [window, setWindow] = useState(String(row.window_ms));
+  const dirty = limit !== String(row.limit_count) || window !== String(row.window_ms);
+  return (
+    <tr>
+      <td style={{ padding: '8px 12px', fontSize: '12px', fontFamily: 'var(--mono)', color: '#2563eb', borderBottom: '1px solid var(--border)' }}>{row.context}</td>
+      <td style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+        <input
+          type="number" value={limit} onChange={e => setLimit(e.target.value)}
+          style={{ width: '70px', padding: '4px 6px', fontSize: '12px', fontFamily: 'var(--mono)', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)' }}
+        />
+      </td>
+      <td style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+        <input
+          type="number" value={window} onChange={e => setWindow(e.target.value)}
+          style={{ width: '90px', padding: '4px 6px', fontSize: '12px', fontFamily: 'var(--mono)', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)' }}
+        />
+      </td>
+      <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>{row.note ?? '—'}</td>
+      <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>{row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}</td>
+      <td style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+        {dirty && (
+          <button
+            onClick={() => onSave(row.context, Number(limit), Number(window))}
+            disabled={saving}
+            style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 600, background: saving ? 'var(--bg-1)' : '#2563eb', color: saving ? 'var(--text-3)' : '#fff', border: 'none', borderRadius: '6px', cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+
 // This is used to show/hide the admin link in the UI. It has NO security impact —
 // actual API authorization uses the server-only ADMIN_API_TOKEN via safeCompare.
 // Get your UID from Supabase → Authentication → Users → your row → User UID
@@ -60,7 +101,7 @@ interface UptimeIssue {
   trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
 }
 
-type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations';
+type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations' | 'analytics' | 'config';
 const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
@@ -79,6 +120,14 @@ export default function AdminPage() {
   const [cronJobs,   setCronJobs]   = useState<CronJobRun[]>([]);
   const [driftEvents,setDriftEvents]= useState<DriftEvent[]>([]);
   const [uptimeIssues,setUptimeIssues]= useState<UptimeIssue[]>([]);
+  // Analytics intelligence data (Migration 022)
+  const [topIntents,       setTopIntents]       = useState<any[]>([]);
+  const [ecosystemGaps,    setEcosystemGaps]    = useState<any[]>([]);
+  const [searchQuality,    setSearchQuality]    = useState<any[]>([]);
+  const [serverReliability,setServerReliability]= useState<any[]>([]);
+  // Rate limit config
+  const [rateLimits,       setRateLimits]       = useState<any[]>([]);
+  const [rlSaving,         setRlSaving]         = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
   const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
@@ -110,7 +159,7 @@ export default function AdminPage() {
     const svc = supabase;
 
     try {
-      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes] = await Promise.all([
+      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes, intentRes, gapsRes, sqRes, srRes, rlRes] = await Promise.all([
         svc.from('platform_kpis').select('*').single(),
         svc.from('ingest_quality').select('*'),
         svc.from('security_threats').select('*').limit(30),
@@ -120,6 +169,13 @@ export default function AdminPage() {
         svc.from('cron_job_health').select('*'),
         svc.from('drift_events').select('*').limit(50),
         svc.from('uptime_issues').select('*').limit(50),
+        // Analytics (Migration 022)
+        svc.from('top_intents').select('*').limit(50),
+        svc.from('ecosystem_gaps').select('*').limit(50),
+        svc.from('search_quality_daily').select('*').limit(30),
+        svc.from('server_reliability').select('*').limit(50),
+        // Rate limit config (Migration 023)
+        svc.from('rate_limit_config').select('*').order('context'),
       ]) as any[];
 
       if (kpisRes.error) throw new Error(kpisRes.error.message);
@@ -133,6 +189,11 @@ export default function AdminPage() {
       if (cronRes?.data)   setCronJobs(cronRes.data as any);
       if (driftRes?.data)  setDriftEvents(driftRes.data as any);
       if (uptimeRes?.data) setUptimeIssues(uptimeRes.data as any);
+      if (intentRes?.data) setTopIntents(intentRes.data as any);
+      if (gapsRes?.data)   setEcosystemGaps(gapsRes.data as any);
+      if (sqRes?.data)     setSearchQuality(sqRes.data as any);
+      if (srRes?.data)     setServerReliability(srRes.data as any);
+      if (rlRes?.data)     setRateLimits(rlRes.data as any);
       setLastRefresh(new Date());
     } catch (error: any) {
       setAdminError(error.message ?? 'Could not load admin dashboard');
@@ -151,6 +212,23 @@ export default function AdminPage() {
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
   }, [isAdmin, load]);
+
+  // ── Save rate limit config ─────────────────────────────────────────────────
+  async function saveRateLimit(context: string, limitCount: number, windowMs: number) {
+    setRlSaving(context);
+    try {
+      const { error } = await supabase
+        .from('rate_limit_config')
+        .update({ limit_count: limitCount, window_ms: windowMs, updated_at: new Date().toISOString() })
+        .eq('context', context);
+      if (error) throw error;
+      await load();
+    } catch (e: any) {
+      setAdminError(e.message);
+    } finally {
+      setRlSaving(null);
+    }
+  }
 
   // ── Trigger ingest ─────────────────────────────────────────────────────────
   const [ingesting, setIngesting] = useState(false);
@@ -325,7 +403,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px', overflowX: 'auto' }}>
-        {(['overview','operations','ingest','security','servers','threats'] as Tab[]).map(t => (
+        {(['overview','ingest','security','servers','threats','operations','analytics','config'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
@@ -396,7 +474,7 @@ export default function AdminPage() {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
-            {['all','official','smithery','glama','pulsemcp','github'].map(src => (
+            {['all','official','smithery','glama','github','claudemcp','mcpso','mcp_run','composio','partner'].map(src => (
               <button key={src} onClick={() => triggerIngest(src)}
                 disabled={ingesting} className="btn btn-ghost btn-sm"
                 style={{ fontFamily: 'var(--mono)' }}>
@@ -740,6 +818,148 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── ANALYTICS ──────────────────────────────────────────────────────── */}
+      {tab === 'analytics' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          <div style={{ padding: '12px 14px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '12px', color: 'var(--text-3)' }}>
+            This data powers Relay&apos;s feedback loop. Intent→server mappings improve search ranking automatically.
+            After ~10K invocations, this becomes the training corpus for the Gap 3 fine-tuned model.
+          </div>
+
+          {/* Top Intents */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Top Intents — what agents are trying to do</h3>
+            {topIntents.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No intent data yet. Data accumulates as agents use search_tools.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr><TH>Intent</TH><TH>Invocations</TH><TH>Successes</TH><TH>Success %</TH><TH>Servers</TH><TH>Last Seen</TH></tr></thead>
+                  <tbody>
+                    {topIntents.slice(0, tablePageSize).map((r, i) => (
+                      <tr key={i}>
+                        <TD>{r.intent_text}</TD>
+                        <TD>{fmt(r.total_invocations)}</TD>
+                        <TD color={C.green}>{fmt(r.total_successes)}</TD>
+                        <TD color={Number(r.success_rate_pct) > 80 ? C.green : Number(r.success_rate_pct) > 50 ? C.orange : C.red}>{pct(r.success_rate_pct)}</TD>
+                        <TD>{r.server_diversity}</TD>
+                        <TD>{ago(r.last_seen)}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* Ecosystem Gaps */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Ecosystem Gaps — intents with zero results</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '12px' }}>These are things agents need that the ecosystem can&apos;t serve. Ingest prioritization signal.</p>
+            {ecosystemGaps.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No gaps recorded yet. Gaps appear when search_tools returns 0 results for an action intent.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr><TH>Intent</TH><TH>Attempts</TH><TH>Last Tried</TH></tr></thead>
+                  <tbody>
+                    {ecosystemGaps.slice(0, tablePageSize).map((r, i) => (
+                      <tr key={i}>
+                        <TD color={C.orange}>{r.intent_text}</TD>
+                        <TD>{fmt(r.search_attempts)}</TD>
+                        <TD>{ago(r.last_attempted)}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* Search Quality */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Search Quality — daily</h3>
+            {searchQuality.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No search data yet.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr><TH>Day</TH><TH>Searches</TH><TH>Zero Results</TH><TH>Knowledge Deflected</TH><TH>Cache Hits</TH><TH>Cache %</TH><TH>Avg ms</TH></tr></thead>
+                  <tbody>
+                    {searchQuality.slice(0, tablePageSize).map((r, i) => (
+                      <tr key={i}>
+                        <TD mono>{r.day}</TD>
+                        <TD>{fmt(r.total_searches)}</TD>
+                        <TD color={Number(r.zero_result_pct) > 20 ? C.red : C.orange}>{fmt(r.zero_results)} ({pct(r.zero_result_pct)})</TD>
+                        <TD color={C.blue}>{fmt(r.knowledge_deflected)}</TD>
+                        <TD color={C.green}>{fmt(r.cache_hits)}</TD>
+                        <TD color={Number(r.cache_hit_pct) > 30 ? C.green : C.grey}>{pct(r.cache_hit_pct)}</TD>
+                        <TD>{r.avg_search_ms ? `${r.avg_search_ms}ms` : '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          {/* Server Reliability */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Server Reliability — the ML training signal</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '12px' }}>Historical success rates per server. High invoke_count + high success_rate = strong training examples.</p>
+            {serverReliability.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No reliability data yet. Accumulates as invoke_tool calls are made.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr><TH>Server</TH><TH>Invocations</TH><TH>Success %</TH><TH>Avg Latency</TH><TH>Unique Intents</TH><TH>Last Success</TH></tr></thead>
+                  <tbody>
+                    {serverReliability.slice(0, tablePageSize).map((r, i) => (
+                      <tr key={i}>
+                        <TD mono color={C.blue}>{r.server_name}</TD>
+                        <TD>{fmt(r.total_invokes)}</TD>
+                        <TD color={Number(r.success_rate_pct) > 80 ? C.green : Number(r.success_rate_pct) > 50 ? C.orange : C.red}>{pct(r.success_rate_pct)}</TD>
+                        <TD>{r.avg_latency_ms ? `${r.avg_latency_ms}ms` : '—'}</TD>
+                        <TD>{r.unique_intents_served}</TD>
+                        <TD>{r.last_success ? ago(r.last_success) : '—'}</TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIG ─────────────────────────────────────────────────────────── */}
+      {tab === 'config' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          <div style={{ padding: '12px 14px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '12px', color: 'var(--text-3)' }}>
+            Rate limit changes take effect within 5 minutes (cache TTL). Changes are logged with your user ID.
+            Window is always in milliseconds (60000 = 1 minute).
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Rate Limits</h3>
+            {rateLimits.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No config found. Run migration 023 to create rate_limit_config table.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr><TH>Context</TH><TH>Limit</TH><TH>Window (ms)</TH><TH>Note</TH><TH>Updated</TH><TH>Action</TH></tr></thead>
+                  <tbody>
+                    {rateLimits.map((r: any) => (
+                      <RateLimitRow
+                        key={r.context}
+                        row={r}
+                        saving={rlSaving === r.context}
+                        onSave={saveRateLimit}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
           </div>
         </div>
       )}

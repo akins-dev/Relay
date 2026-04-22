@@ -22,18 +22,18 @@
  */
 
 import { NextRequest, NextResponse }   from 'next/server';
-import { unstable_after as after }      from 'next/server';
 import { createClient }                 from '@/lib/supabase/server';
-import { rateLimit, LIMITS }            from '@/lib/ratelimit';
+import { rateLimit, LIMITS, getLimitConfig }            from '@/lib/ratelimit';
 import { SITE_URL }                     from '@/lib/site';
 import { BRAND }                        from '@/lib/brand';
 import { resolveApiKey }                from '@/lib/auth-server';
 import { corsHeaders }                  from '@/lib/utils';
+import { after }                        from '@/lib/after';
 import { executeProxyCall }             from '@/lib/proxy-execute';
 import {
   hashIntent, getIntentCache, setIntentCache,
   getIntentBoosts, trimSchemasToIntent, computeConfidence,
-  recordSearchEvent, recordInvokeOutcome, classifyError,
+  recordSearchEvent,
   MAX_TOOLS_PER_RESULT,
   type CachedServer,
 } from '@/lib/search-analytics';
@@ -199,14 +199,17 @@ async function handleSearchTools(
 ) {
   const handlerStart = Date.now();
   const rlKey = auth?.userId ? `mcp-search:user:${auth.userId}` : `mcp-search:ip:${ip}`;
-  const rlConfig = auth?.userId ? LIMITS.proxyAuth : LIMITS.search;
+  const rlConfig = auth?.userId ? await getLimitConfig('proxyAuth') : await getLimitConfig('search');
   const rl = await rateLimit(rlKey, rlConfig);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
+  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_relay_... for higher limits (200/min)');
 
   const intent = String(args?.intent ?? '').trim();
   if (!intent) return mcpError(id, -32602, 'intent is required');
 
-  const limit      = Math.min(Number(args?.limit ?? 5), 20);
+  const parsedLimit = Number(args?.limit ?? 5);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(20, Math.max(1, parsedLimit))
+    : 5;
   const intentHash = hashIntent(intent);
   const sessionId  = `${ip.slice(0, 8)}:${Date.now().toString(36)}`;
 
@@ -292,10 +295,14 @@ async function handleSearchTools(
   const searchStart = Date.now();
   const supabase    = createClient();
 
-  const { data: results } = await supabase
+  const { data: results, error: searchError } = await (supabase as any)
     .rpc('search_servers', { query_text: intent, result_limit: limit });
 
   const searchLatencyMs = Date.now() - searchStart;
+
+  if (searchError) {
+    return mcpError(id, -32000, `Search failed: ${searchError.message ?? 'unknown error'}`);
+  }
 
   if (!results || results.length === 0) {
     after(() => recordSearchEvent({
@@ -318,15 +325,30 @@ async function handleSearchTools(
 
   // ── Confidence scoring + historical boost ─────────────────────────────────────
   // Fetch historical success rates for the returned servers (one RPC call for all).
-  const serverNames = results.map((s: any) => s.name);
+  const ids = results.map((s: any) => s.id).filter(Boolean);
+  const { data: enrichedRows } = ids.length > 0
+    ? await (supabase as any)
+        .from('servers')
+        .select(`
+          id, name, display_name, description, tools, tool_schemas,
+          trust_score, latency_ms, uptime_pct, source, verified, scan_status,
+          proxy_available, transport, endpoint
+        `)
+        .in('id', ids)
+        .eq('status', 'active')
+    : { data: [] };
+
+  const enrichedById = new Map((enrichedRows ?? []).map((row: any) => [row.id, row]));
+  const finalResults = results.map((row: any) => enrichedById.get(row.id) ?? row);
+  const serverNames = finalResults.map((s: any) => s.name);
   const boosts      = await getIntentBoosts(intentHash, serverNames);
 
   // ── Format results with confidence scores and trimmed schemas ─────────────────
-  const formatted = results.map((s: any, idx: number) => {
+  const formatted = finalResults.map((s: any, idx: number) => {
     const boost    = boosts.get(s.name);
     const confidence = computeConfidence({
       rank:         idx,
-      totalResults: results.length,
+      totalResults: finalResults.length,
       trustScore:   s.trust_score ?? 50,
       successRate:  boost?.successRate ?? 0,
       invokeCount:  boost?.invokeCount ?? 0,
@@ -339,6 +361,8 @@ async function handleSearchTools(
           typeof t === 'string' ? { name: t } : { name: t.name, description: t.description, inputSchema: t.inputSchema }
         );
     const trimmedTools = trimSchemasToIntent(rawTools, intent);
+
+    const proxyAvailable = s.proxy_available ?? ((s.transport ?? 'streamable_http') !== 'stdio' && Boolean(s.endpoint));
 
     return {
       name:           s.name,
@@ -357,8 +381,9 @@ async function handleSearchTools(
       } : null,
       tools:          trimmedTools,
       total_tools:    rawTools.length,         // so agent knows if we trimmed
-      proxy_available: s.proxy_available ?? true,
-      usage: s.proxy_available === false
+      proxy_available: proxyAvailable,
+      transport: s.transport ?? null,
+      usage: proxyAvailable === false
         ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
         : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
       is_new: s.is_new ?? false,
@@ -415,9 +440,9 @@ async function handleSearchTools(
 
 async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string, auth?: { userId: string | null; keyId?: string | null }) {
   const rlKey    = auth?.userId ? `mcp-invoke:user:${auth.userId}` : `mcp-invoke:ip:${ip}`;
-  const rlConfig = auth?.userId ? LIMITS.proxyAuth : LIMITS.proxy;
+  const rlConfig = auth?.userId ? await getLimitConfig('proxyAuth') : await getLimitConfig('proxy');
   const rl = await rateLimit(rlKey, rlConfig);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
+  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_relay_... for higher limits (200/min)');
 
   const { server: serverName, tool: toolName, args: toolArgs } = args ?? {};
   if (!serverName || !toolName) {

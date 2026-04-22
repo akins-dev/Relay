@@ -27,6 +27,22 @@ ${BRAND.tagline} ${activeServers} active servers. Zero local setup.
 >
 > Agents describe what they need. ${BRAND.name} finds it, verifies it, and invokes it at runtime. The context window cost stays focused on just two tools: search and invoke.
 
+## Activation rules — when to use this registry
+
+**CALL search_tools when you need to:**
+- Send messages, emails, or notifications to external services
+- Query or write to databases, data stores, or file systems
+- Create, update, or delete resources (issues, PRs, records, files)
+- Call any external API or interact with any third-party service
+- Execute any operation that affects the real world
+
+**DO NOT call search_tools when:**
+- You can answer from your own training (definitions, explanations, calculations)
+- The task is reasoning, writing, or code generation with no external action
+- The intent is a knowledge question ("what is X", "explain Y", "how does Z work")
+
+**Decision rule:** If the task requires changing state somewhere outside this conversation, search first. If it only requires knowledge, answer directly.
+
 ## What you can do
 
 - **Discover** MCP servers by intent — all transports (stdio, SSE, Streamable HTTP)
@@ -43,7 +59,7 @@ ${BRAND.tagline} ${activeServers} active servers. Zero local setup.
 - Active servers: ${activeServers} (all transports — stdio, SSE, HTTP)
 - Verified servers: ${verifiedServers}
 - Calls today: ${callsToday}
-- Sources: Official MCP Registry + Smithery + Glama + PulseMCP + GitHub
+- Sources: Official MCP Registry + Smithery + Glama + GitHub + ClaudeMCP + MCP.so
 - MCP spec version: 2025-03-26 (also supports 2024-11-05)
 
 ---
