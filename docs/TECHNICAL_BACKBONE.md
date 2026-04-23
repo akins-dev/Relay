@@ -1,6 +1,6 @@
 # Relay Technical Backbone
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 Status: Canonical living technical reference
 
 ## 1. Purpose
@@ -58,6 +58,94 @@ The MVP-critical loop is:
 5. improve future ranking
 
 Everything else is secondary to stabilizing that loop.
+
+## 3.1 How MCP Is Commonly Used Today
+
+In a normal MCP integration, a client or agent runtime connects to one or more explicitly configured MCP servers, loads their available tool/resource/prompt surfaces, and then gives the model access to that bounded surface for planning and tool choice.
+
+The exact implementation differs by client, but the common pattern is:
+
+1. a human or application explicitly chooses which servers exist in the environment
+2. the client loads or exposes those tool schemas to the model/runtime
+3. the model decides whether to call one of the already-available tools
+
+This works well for bounded environments. It weakens as the number of desirable MCP servers grows.
+
+### Where That Model Breaks
+
+- the set of accessible capabilities is still human-curated
+- the model can only choose from what has already been connected
+- credential and transport complexity scale with connected servers
+- large tool surfaces create routing ambiguity and context pressure
+
+## 3.2 How Relay Changes That
+
+Relay changes the model from "preload a bounded tool universe" to "query a runtime discovery layer when needed".
+
+The current Relay design does this with:
+
+- `search_tools(intent)` for runtime capability resolution
+- `invoke_tool(server, tool, args)` for controlled execution
+
+The point is not that two tools are inherently special. The point is that:
+
+- capability discovery becomes runtime-native
+- the model-facing surface stays small
+- search results can be structured, ranked, and improved over time
+- execution stays behind one policy/auth/security boundary
+
+## 3.3 How Relay Helps The Agent Make Better Decisions
+
+The current solution is:
+
+- a heuristic knowledge-vs-action classifier to avoid unnecessary tool search
+- lexical + fuzzy search over a canonical registry
+- historical boost data from prior invoke outcomes
+- confidence scoring that combines position, trust, and history
+- schema trimming so the model sees the most relevant tools per result instead of large noisy tool lists
+- a separate guarded invoke path with structured auth/setup responses
+
+This is a strong MVP architecture, but it is not the final optimal form.
+
+## 3.4 Is The Current Solution Optimal?
+
+Not yet.
+
+It is a credible and efficient MVP solution, but not the theoretical optimum.
+
+### Why It Is Good For MVP
+
+- simple model-facing interface
+- measurable search -> invoke -> learn loop
+- clean place to enforce auth, trust, and policy
+- efficient bootstrap without requiring a trained routing model
+
+### Why It Is Not Yet Fully Optimal
+
+- search still returns result sets that the model must interpret
+- confidence is heuristic + empirical aggregate, not learned routing
+- schema trimming is lexical, not intent-model-aware
+- there is no speculative execution or ephemeral tool materialization yet
+- there is no trained fast path for common intents yet
+
+### Path Toward A More Optimal System
+
+- stronger behavioral reranking from real invoke outcomes
+- learned intent routing for common intents
+- speculative invocation on very high-confidence matches
+- session pooling / lower-latency invoke path
+- potentially adaptive or ephemeral tool surfacing once enough confidence exists
+
+### Roadmap Mapping For Those Gaps
+
+| Gap | Planned improvement | Sprint |
+|---|---|---|
+| search still returns result sets that the model must interpret | speculative invocation on obvious single matches; learned routing for common intents | Sprint 4, Sprint 8+ |
+| confidence is heuristic + empirical aggregate | learned Lever 3B classifier first, then trained routing | Sprint 6, Sprint 8+ |
+| schema trimming is lexical | stronger reranking first, then adaptive tool surfacing | Sprint 6, Sprint 8+ |
+| no speculative execution yet | high-confidence speculative invocation | Sprint 4 |
+| no ephemeral tool materialization yet | adaptive or ephemeral tool surfacing once confidence is stable | Sprint 8+ |
+| no trained fast path for common intents yet | routing model trained from `search_events`, `invoke_outcomes`, and `intent_server_mappings` | Sprint 8+ |
 
 ## 4. System Classification
 
@@ -682,247 +770,126 @@ Important current state:
 
 This means the search -> invoke learning loop is present in the current code, even though older docs in the repo still describe it as missing.
 
-## 12. Competitor Landscape
+## 12. Story Constraint And Roadmap Alignment
 
-There is no perfect one-to-one competitor that matches Relay's full intended thesis exactly. The honest way to compare the market is to separate:
+This project should be explained in problem-first terms.
 
-- registry/discovery
-- managed connections/auth
-- gateway/control plane
-- agent-centric runtime capability resolution
+The central story is:
 
-### 12.1 Thesis-Level Comparison
+1. MCP capability does not scale cleanly under explicit pre-configuration.
+2. Relay moves capability resolution into the runtime loop.
+3. Security, vault-backed credentials, trust, and policy are support systems that make that runtime loop safe to use.
+4. Search and invoke outcomes are recorded so the system can improve toward learned routing.
 
-| System | Registry / discovery | Managed auth / connections | Gateway / control plane | Agent-centric runtime capability resolution |
-|---|---|---|---|---|
-| Glama | strong | strong | strong | partial |
-| Smithery | strong | strong | strong | partial |
-| mcp.run | medium | strong | strong | partial |
-| PulseMCP | strong | weak | weak | weak |
-| MCP.so | strong | weak | weak/partial | weak |
-| Relay | strong | strong | strong | core thesis |
+That means Relay should not be described primarily as a registry, a gateway, a vault, or a security product in isolation. Those are necessary subsystems. They are not the root story.
 
-The distinction is important:
+### 12.1 Full-System View
 
-- Glama and Smithery solve major adjacent pieces very well.
-- Relay's distinct claim is not that it is the only directory or only gateway.
-- Relay's distinct claim is that it is explicitly designed to remove the practical MCP configuration ceiling by making runtime discovery agent-centric.
+Relay is one coupled system with four layers:
 
-### 12.2 Competitor Notes From Current Sources
+1. multi-source ingest builds a canonical registry from fragmented upstream data
+2. runtime search resolves likely capability by intent while keeping the model-facing surface small
+3. guarded invocation centralizes auth, vault injection, trust, policy, and security controls
+4. analytics and training data improve later routing quality
 
-#### Glama
+### 12.2 Current Gaps And Their Scheduled Fixes
 
-Current official site claims:
+| Current gap | Why it matters | Planned fix | Sprint |
+|---|---|---|---|
+| search still returns result sets the model must interpret | common intents still pay interpretation overhead | speculative invocation, then learned routing | Sprint 4, Sprint 8+ |
+| confidence is heuristic + empirical aggregate | ranking quality is good but not yet model-learned | learned Lever 3B classifier, later trained routing | Sprint 6, Sprint 8+ |
+| schema trimming is lexical | result payloads are cleaner, but not yet intent-model-aware | stronger reranking, then adaptive tool surfacing | Sprint 6, Sprint 8+ |
+| no speculative execution yet | search and invoke remain separate on obvious cases | speculative invocation on high-confidence single matches | Sprint 4 |
+| no strong `stdio` runtime bridge in general agent hosts | a large share of discovered capability is not yet equally invocable in the cloud path | CLI bridge, then cloud stdio bridge | Sprint 5, Sprint 7 |
+| no trained fast path for common intents | common traffic still hits the lexical path | learned routing layer | Sprint 8+ |
 
-- 21,999 MCP servers, 2,588 connectors, 131,409 tools as of April 23, 2026
-- full logging, per-tool access control, managed OAuth credentials, usage analytics
-- browser-based inspector and one-click hosting
-- tool-level search across server-exposed tools
+### 12.3 What Must Stay In The Story
 
-What Glama clearly solves well:
+The following are essential because they directly support the core loop:
 
-- registry/discovery
-- tool-level search
-- gateway/control plane
-- managed credentials and observability
+- ingest from several sources because the ecosystem is fragmented
+- canonical registry normalization because runtime search quality depends on it
+- vault-backed secrets and OAuth because many useful servers need credentials
+- 14-layer security and policy enforcement because runtime execution without controls is unacceptable
+- confidence scoring because search needs a measurable ranking layer before learned routing exists
+- analytics tables because training data does not appear by magic
+- CLI and cloud stdio bridges because discovery without invocation is incomplete
+- learned routing because the long-term goal is to reduce or remove search cost for common intents
 
-What Glama does not clearly present as its core thesis:
+### 12.4 What Should Be De-Emphasized
 
-- collapsing the ecosystem behind one constant model-facing runtime abstraction
-- treating agent-centric runtime intent routing as the primary product boundary
+The docs should avoid drifting into:
 
-Glama appears closest to Relay on gateway/control-plane sophistication, but the public positioning is broader than Relay's specific thesis.
-
-#### Smithery
-
-Current official docs describe Smithery as:
-
-- the largest open marketplace of MCP servers
-- a platform to find, use, and publish MCP servers
-- a managed "Connect" layer for OAuth, credentials, tokens, and sessions
-- a publishing/gateway layer with analytics and protocol-compliance handling
-- a per-connection model where applications list a user's connections, create MCP clients per connection, and aggregate tools across those connections
-
-What Smithery clearly solves well:
-
-- registry/distribution
-- managed auth and connection lifecycle
-- MCP integration ergonomics
-
-What Smithery's own docs still imply:
-
-- the app explicitly creates or retrieves connections
-- tools are aggregated from connected integrations into the model/tooling layer
-
-That means Smithery reduces the operational pain of 1:1 integrations substantially, but it does not fully eliminate the explicit connection model or clearly frame constant runtime capability resolution as the core problem statement.
-
-#### mcp.run
-
-Current official docs describe:
-
-- a servlet/profile model rather than only raw server listings
-- local and remote execution
-- portable profiles, SSO, centrally stored authenticated connections
-- a security/sandbox narrative around servlet execution
-
-This is not the same product shape as Relay, but it is highly relevant because it attacks the same "how do tools follow the user and stay manageable?" problem.
-
-#### PulseMCP
-
-Current site shows:
-
-- 13,107 servers listed on April 23, 2026
-- popularity-style ranking and classification labels
-- `server.json`-oriented listing metadata
-
-This appears strongest as a discovery and popularity surface.
-
-#### MCP.so
-
-Current site shows:
-
-- 20,333 MCP servers collected on April 23, 2026
-- hosted, official, and featured listings
-- broad marketplace positioning
-
-This is a directory/marketplace competitor more than a control-plane competitor.
-
-#### Composio
-
-Current public pages emphasize:
-
-- managed MCP infrastructure
-- built-in auth/security/observability
-- a large catalog of integrations
-
-This is adjacent because it is more integration-platform-oriented than open registry oriented, but it still competes for teams that want "one managed MCP layer instead of managing raw servers themselves".
-
-### 12.3 Research Neighbors And Prior Attempts
-
-Relay is also adjacent to several strands of tool-use and retrieval research:
-
-#### Static tool preload
-
-- works for bounded tool sets
-- fails as the accessible tool universe grows
-- preserves a human-controlled integration bottleneck
-
-#### Tool RAG / neural API retrieval
-
-Examples: ToolLLM / ToolBench style API retrieval systems.
-
-These help retrieve relevant APIs from a large pre-indexed tool universe. They are useful neighbors, but they do not by themselves solve:
-
-- live MCP ecosystem discovery
-- trust and policy controls
-- credential injection
-- transport-aware invocation
-
-#### Tool-use competence papers
-
-Examples: Toolformer, Chameleon, APIBank.
-
-These papers are highly relevant because they show:
-
-- LLMs benefit from external tools
-- tool planning/retrieval is an active research area
-- bounded API/tool benchmarks are useful
-
-But they mostly study:
-
-- whether a model can learn to use tools
-- how to retrieve or sequence tools
-- how to benchmark tool-use behavior
-
-They do not solve the infrastructure problem Relay is focused on:
-
-- dynamic discovery across a living MCP ecosystem
-- runtime capability resolution for real agents
-- unified auth, policy, and execution controls
-
-### 12.4 Relay's Current Defensible Wedge
-
-Relay's most credible wedge is not "we also have a directory". It is:
-
-- agent-centric runtime discovery by intent
-- a deliberately small model-facing interface
-- normalized multi-source registry building
-- explicit security and auth controls around runtime execution
-- storing both discovery metadata and empirical outcome intelligence
-- treating `intent_server_mappings` as the long-term routing moat
-
-To make that wedge real, the ingest pipeline and search/invoke data contract must become clean and dependable first.
+- generic competitor framing
+- feature-by-feature platform comparison
+- business-model-first storytelling
+- over-explaining subsystems without tying them back to the practical MCP cap
 
 ## 13. Current Obstacles And Trade-Offs
 
 ### Obstacles
 
-- source contract drift across route/schema/code
-- incomplete wiring of source adapters
+- source contract drift across route, schema, and code
+- incomplete wiring of some source adapters
 - endpoint dedup bug
 - transport truth is still partly heuristic
-- stdio extraction remains weak without a better execution strategy
-- documentation drift already exists between repo docs and code
+- `stdio` extraction remains weak without a better execution strategy
+- documentation drift can reintroduce narrative confusion
 
 ### Trade-Offs
 
-- storing all stdio rows increases discovery completeness but reduces immediate invocability
+- storing all `stdio` rows increases discovery completeness but reduces immediate cloud invocability
 - README fallback increases coverage but lowers schema precision
 - CVE-only ingest rejection reduces false positives but may admit malicious-but-unflagged servers
 - free-tier infra lowers cost but raises operational fragility if not clearly classified as disposable
 
-## 14. Recommended Next Sprints
+## 14. Recommended Next Work Sequence
 
-### Sprint A: Ingest Correctness
+### Sprint 3
 
-- fix endpoint-prefetch dedup bug
-- wire `mcp_run` and `composio` properly or remove them from the public contract
-- unify `partner` vs `vendor`
-- restore one authoritative `search_servers(...)` contract
-- capture authoritative transport and extraction provenance
+- finish sampling security controls
+- finish OAuth refresh/retry behavior
+- keep auth and audit flows aligned with the current runtime contract
 
-### Sprint B: Ingest Quality
+### Sprint 4
 
-- improve stdio execution model
-- add extraction quality scoring
-- improve monorepo README/subdirectory handling
-- expand source-level metrics and dashboards
+- add speculative invocation
+- add session pooling / stateless invoke optimizations
+- complete streaming support
 
-### Sprint C: Runtime/Analytics Integrity
+### Sprint 5
 
-- verify search and invoke contracts are aligned across MCP and REST
-- keep the search -> invoke linkage intact
-- turn runtime reliability metrics into trust-score penalties deliberately
+- ship the CLI `stdio` bridge
+- apply local DLP and policy enforcement in the CLI path
+- keep async audit sync intact
 
-### Sprint D: Resilience
+### Sprint 6
 
-- formalize backup/restore runbooks
-- test migration away from Redis with no data loss
-- test re-ingest/backfill after sandbox outages
+- replace the heuristic gate with the learned Lever 3B classifier
+- add behavioral trust penalties from runtime outcomes
+- only add richer reranking if analytics proves lexical recall is insufficient
+
+### Sprint 7
+
+- add the cloud `stdio` bridge for non-CLI agent hosts
+
+### Sprint 8+
+
+- train the learned routing layer
+- add adaptive or ephemeral tool surfacing where confidence is strong enough
+- move common intents onto the learned fast path while keeping lexical search as fallback
 
 ## 15. Operational Rules Going Forward
 
 - No canonical project data may live only in Redis or another free-tier cache.
 - Any future feature that introduces state must declare whether it is canonical, reconstructible, or disposable.
-- New ingestion sources must define:
-  source contract, dedup key, transport semantics, extraction path, failure modes, and backfill strategy.
-- New analytics must land in Postgres if it matters for product learning or trust scoring.
-- Changes to architecture or roadmap must update this file, `DECISION_LOG.md`, and `CHANGELOG.md`.
+- New ingestion sources must define source contract, dedup key, transport semantics, extraction path, failure modes, and backfill strategy.
+- New analytics must land in Postgres if they matter for product learning, trust scoring, or routing quality.
+- Changes to the architecture or roadmap must update this file, `DECISION_LOG.md`, and `CHANGELOG.md`.
+- Narrative docs must describe Relay first as a solution to the practical MCP configuration ceiling and only secondarily as a collection of supporting subsystems.
 
 ## 16. References
 
-- Glama: https://glama.ai/
-- Glama servers: https://glama.ai/mcp/servers
-- Glama connectors: https://glama.ai/mcp/connectors
-- Glama inspector: https://glama.ai/mcp/inspector
-- Glama clients: https://glama.ai/mcp/clients
-- Smithery docs: https://smithery.ai/docs
-- Smithery Connect: https://smithery.ai/docs/use/connect
-- Smithery server publishing: https://smithery.ai/docs/build
-- mcp.run docs: https://docs.mcp.run/mcp-clients/intro/
-- mcp.run security article: https://docs.mcp.run/blog/2025/04/07/mcp-run-security/
-- PulseMCP directory: https://www.pulsemcp.com/servers
-- MCP.so: https://mcp.so/
 - Toolformer: https://arxiv.org/abs/2302.04761
 - Chameleon: https://arxiv.org/abs/2304.09842
 - ToolLLM: https://arxiv.org/abs/2307.16789

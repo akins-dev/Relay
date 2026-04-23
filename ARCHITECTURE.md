@@ -1,11 +1,6 @@
 # Agentrail / Relay — Architecture Deep-Dive
-**Perspective: 10,000x engineer with full MCP protocol knowledge**
 *Last updated: April 2026*
 *Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)*
-
-> **Brand Identity**: All product names derive from `BRAND` constants safely in configuration.
-> Active Brand: `Relay` / `Agentrail`
-> CLI: `Relay CLI` | Vault: `Relay Vault` | Cloud: `Relay Cloud`
 
 ---
 
@@ -37,10 +32,7 @@ AI Agent (Claude / GPT / Gemini / local agent)
     ▼
 [ Relay ] ← This gap is what we fill
     │
-    ├── Smithery   (5,000+ servers, mostly stdio, container bridge)
-    ├── Glama      (14,000+ servers, quality-checked, HTTP-only view)
-    ├── PulseMCP   (popularity signals, no proxy)
-    └── Official   (registry.modelcontextprotocol.io, metadata only)
+    └── resolves capability at runtime over a fragmented multi-source ecosystem
 ```
 
 ### Discovery: Explicit Runtime Connection
@@ -51,17 +43,7 @@ Agents connect directly to the Relay Cloud proxy without complex custom code. We
 2. **Option 2: System Prompt (AGENTS.md)** — Point an LLM directly to our Markdown skill file to teach it how to search and invoke dynamically over HTTP.
 3. **Option 3: REST API** — Standard cURL/fetch integration for custom framework builders.
 
-*(Note: We also implement the experimental `/.well-known/mcp.json` protocol for next-generation fully autonomous agents capable of self-assembling registries, but the 3 methods above are the explicit standards used to connect today.)*
-
-| Dimension | Smithery | Glama | Official Registry | **Relay** |
-|---|---|---|---|---|
-| Registry / discovery | ✅ | ✅ | ✅ | ✅ |
-| Managed auth / connections | ✅ | ✅ | ❌ | ✅ |
-| Gateway / control plane | ✅ | ✅ | ❌ | ✅ |
-| Tool-level discovery | Partial | ✅ | ❌ | ✅ |
-| Agent-centric runtime discovery by intent | Partial | Partial | ❌ | **Core thesis** |
-| Constant model-facing surface as a first-class design goal | No public evidence | No public evidence | ❌ | **Core design choice** |
-| Search -> invoke -> learn feedback loop | Partial | Partial | ❌ | **Core design choice** |
+*(Note: We also implement the experimental `/.well-known/mcp.json` protocol for next-generation autonomous agents capable of self-assembling registries, but the 3 methods above are the explicit supported connection paths today.)*
 
 ---
 

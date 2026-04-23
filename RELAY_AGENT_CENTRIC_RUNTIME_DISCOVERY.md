@@ -1,286 +1,233 @@
 # Relay And The Practical MCP Cap
 
-Subtitle: Why agent-centric runtime discovery matters, what existing MCP platforms already solve well, and where Relay is trying to be different
+Subtitle: Why agent-centric runtime discovery is the right abstraction for a large MCP ecosystem
 
 Status: Draft article / technical essay
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 ## Abstract
 
-Model Context Protocol has made tool interoperability dramatically better, but it has not removed the practical ceiling that teams hit when they try to scale tool access in real agent systems. The bottleneck is no longer just protocol compatibility. It is the cost of explicit configuration: discovering servers, connecting them, managing credentials, choosing which tools the model should see, and maintaining all of that as the ecosystem grows.
+Model Context Protocol solved interoperability. It did not solve the practical configuration ceiling teams hit when they try to use a growing number of MCP servers in real agent systems.
 
-Relay is based on a simple claim: the next limiting factor in agent capability is not the number of MCP servers that exist, but the number that can be used sanely under explicit pre-configuration. The project therefore treats MCP as an agent-runtime problem first. The goal is to let the agent discover capability by intent at runtime, rather than forcing the human to explicitly wire the capability universe in advance.
+The bottleneck is explicit pre-configuration. A human still has to discover servers, decide which ones belong in the environment, manage credentials, handle transport differences, and expose a bounded tool surface to the model. That works for small setups. It becomes brittle as the ecosystem grows.
 
-This article argues that the practical MCP cap is real, that current registries and gateways solve only parts of the problem, and that an agent-centric runtime discovery layer is a coherent response. It also explains why Relay currently uses a minimal two-tool interface, why security and credential injection are support systems rather than the main thesis, and why the ingest and analytics layers matter for making the architecture real.
+Relay is built around a simple claim: the next major MCP problem is not protocol compatibility, but making a large capability universe usable without turning every new server into another manual integration project. The response is an agent-centric runtime layer that lets the agent discover capability by intent, invoke through one guarded path, and improve future routing from real outcomes.
 
-## 1. The Problem Is Not Just Tool Count
+## 1. The Practical MCP Cap
 
-There is a common way to talk about tool use in LLM systems: context gets crowded when too many tool definitions are exposed to the model. That observation is true, but it is incomplete.
+The limiting factor in MCP is not raw server count. It is the amount of MCP capacity a team can use sanely under explicit configuration.
 
-The deeper issue is operational. In real systems, teams hit a practical ceiling long before they run out of available tools or servers. Once the number of MCP servers grows past a modest range, several things start to break at once:
+In practice, the ceiling appears early:
 
-- a human still has to decide which servers are worth connecting
-- a human still has to configure credentials, OAuth, and transport details
-- a human still has to decide what the model should see ahead of time
-- the model is asked to reason over an increasingly noisy and unstable tool surface
-- every new capability still behaves like another 1:1 integration project
+- a human still decides which servers get connected
+- a human still manages auth, OAuth, and transport setup
+- a human still chooses what the model should see ahead of time
+- the model still has to reason over a growing and noisier tool surface
+- each new capability still behaves like another 1:1 integration project
 
 This is the practical MCP cap.
 
-It is not a spec limit. It is a usability and architecture limit.
+It is not a flaw in the protocol. It is an architecture problem created by preload-oriented usage.
 
-In plain terms: the ecosystem may contain thousands of MCP servers, but usable capacity is capped by what a team can explicitly configure and what an agent can sanely operate with.
+## 2. Why Preload-Oriented MCP Stops Scaling
 
-## 2. Why The Current Approach Stops Scaling
+Normal MCP usage is usually:
 
-The default pattern in many agent systems is still preload-oriented:
+1. choose a set of servers
+2. connect them explicitly
+3. expose their tool surface
+4. let the model choose from that bounded set
 
-1. pick a set of tools or servers
-2. configure them explicitly
-3. expose them to the model
-4. hope the chosen set is enough
+That works well when the environment is small and stable. It weakens as the desirable server set grows.
 
-This works for bounded systems. It fails structurally as the accessible capability universe grows.
+The main failure modes are straightforward:
 
-Even retrieval-based approaches often inherit the same limitation. They may retrieve a smaller subset at runtime, but they usually start from a bounded or pre-selected tool universe. That still leaves the surrounding infrastructure problem unsolved:
-
-- who discovered the tool universe
-- who evaluated trust
-- who manages credentials
-- who handles transport
-- who records what actually worked
-
-The result is that the ecosystem can grow faster than any single application's ability to use it cleanly.
+- accessible capability stays human-curated
+- context pressure rises with every added server
+- auth and transport complexity rise with every added server
+- the model can only choose from what has already been connected
+- the surrounding system still does not know what actually worked for which intent
 
 ## 3. Relay's Thesis
 
-Relay starts from a different premise:
+Relay shifts capability resolution into the runtime loop.
 
-agents should do more of the heavy lifting at runtime.
-
-That means:
-
-- the agent expresses intent
-- Relay resolves likely server/tool options
-- invocation flows through one controlled execution path
-- auth, policy, trust, and safety stay below that path
-- outcomes are recorded so routing gets better over time
-
-This is why Relay is best described as an agent-centric runtime discovery and execution layer.
-
-The project is not mainly trying to be:
-
-- another MCP directory
-- another generic gateway
-- another security product with MCP attached
-
-Those things matter, but they are secondary to the central idea: remove the practical MCP configuration ceiling by shifting capability resolution into the runtime loop.
-
-## 4. Why Relay Uses Two Meta-Tools
-
-Relay's current implementation exposes two meta-tools:
+The current interface is deliberately minimal:
 
 - `search_tools(intent)`
 - `invoke_tool(server, tool, args)`
 
-This is an implementation choice, not the entire product thesis.
+That interface is not the whole thesis. It is the current implementation of a broader product idea:
 
-The reason for the design is straightforward. If the problem is that explicit configuration and large tool surfaces do not scale, then a small model-facing interface is a strong way to keep the runtime legible while still allowing access to a much larger capability universe.
+- capability discovery should happen at runtime
+- the model-facing surface should stay small
+- auth, policy, trust, and execution controls should stay behind one path
+- the system should record outcomes so routing gets better over time
 
-The two-tool model has several advantages:
+In other words, Relay treats MCP as an agent-runtime problem, not just a registry or connection problem.
 
-- it keeps the model-facing surface stable even as the ecosystem grows
-- it gives the system one place to apply trust, auth, and policy controls
-- it makes search and invoke outcomes measurable
-- it creates a clean path toward learned routing later
+## 4. What Relay Already Does Today
 
-The important point is not the number two by itself. The important point is that the interface stays deliberately small while capability resolution happens dynamically.
+Relay already has the main MVP loop in place.
 
-## 5. What Existing Platforms Already Solve Well
+### Runtime loop
 
-Relay is not entering an empty market. Several platforms already solve important parts of the problem well.
+- agents connect once through the native MCP server
+- `search_tools` resolves capability by intent over a large normalized registry
+- `invoke_tool` executes through one guarded runtime path
+- every search and invoke is recorded
+- aggregated mappings improve future ranking
 
-### Glama
+### Registry layer
 
-Glama currently appears strongest on:
+- ingest from multiple upstream sources into canonical `servers` rows
+- normalize metadata, schemas, provenance, trust, scan history, and drift state
+- preserve `stdio` rows even when they are not yet cloud-invocable
 
-- registry and discovery UX
-- tool-level search
-- gateway/control-plane capabilities
-- managed credentials
-- observability, logging, and tool access control
+### Security and credential layer
 
-Its UI is fast, detailed, and operationally serious. It has strong server pages, connector pages, hosted gateway ideas, and a browser-based inspector. That makes it one of the strongest MCP ecosystem products today.
+- 14-layer security model around search, invoke, auth, and policy
+- vault-backed secret storage and injection
+- structured auth/setup responses when credentials are missing
+- drift detection and re-scan behavior for changed servers
 
-But Glama's public framing is broader than Relay's specific thesis. It clearly helps with discovery and gatewaying, but it does not obviously present itself as a system built primarily to remove the practical MCP configuration ceiling through agent-centric runtime routing.
+### Analytics layer
 
-### Smithery
+- `search_events`
+- `invoke_outcomes`
+- `intent_server_mappings`
 
-Smithery is strong on:
+These tables matter because they create the bridge from runtime discovery to learned routing.
 
-- registry/distribution
-- publishing
-- managed auth and connection lifecycle
-- simplifying MCP integration through a managed service
+## 5. Why The Two-Tool Model Is Good For The MVP
 
-Its Connect model is especially important because it removes a great deal of OAuth and session-management pain.
+The current design is strong for the MVP for four reasons:
 
-But Smithery's current docs still describe a connection-first workflow: create or retrieve per-user connections, create clients for those connections, and aggregate tools from the connected integrations. That reduces operational pain dramatically, but it still implies an explicit connection model and a growing tool surface built from the user's connected set.
+- it keeps the model-facing surface small
+- it creates one clean search -> invoke -> learn loop
+- it centralizes auth, trust, policy, and vault injection
+- it avoids needing a trained routing model before the system has usage data
 
-### mcp.run
+This is not presented as the final perfect form. It is the most credible bootstrap path toward that form.
 
-mcp.run is highly relevant because it attacks a related problem: making tool access portable, secure, and centrally managed. Its servlet/profile model and `mcpx` abstraction are serious infrastructure work.
+## 6. What Is Not Yet Fully Optimal
 
-It is not the same product shape as Relay, but it is an important adjacent response to the same ecosystem pressure.
+The current system is effective, but not yet the theoretical best possible version.
 
-## 6. What Relay Is Claiming Differently
+The main limitations are:
 
-The honest Relay claim is not:
+- search still returns ranked result sets that the model must interpret
+- confidence is still heuristic + empirical aggregate, not learned routing
+- schema trimming is still lexical, not intent-model-aware
+- there is no speculative execution yet
+- there is no adaptive or ephemeral tool surfacing yet
+- there is no trained fast path for common intents yet
 
-"nobody else has discovery, auth, or a gateway."
+Those are real gaps. They are also already mapped to the roadmap.
 
-That would be false.
+## 7. How The Current Gaps Map To The Roadmap
 
-The stronger and more defensible claim is:
+### Sprint 4
 
-Relay is explicitly organized around the agent-runtime problem.
+- speculative invocation for obvious high-confidence single matches
+- session pooling and lower-latency invoke path
+- streaming support and `progress` handling
+- prompt caching for warm knowledge on the most-used servers
 
-In other words:
+This is the first step toward collapsing the distance between search and invoke.
 
-- the bottleneck is the practical MCP cap
-- the cap is created by explicit pre-configuration
-- the response is runtime capability resolution by intent
-- a small model-facing interface is a deliberate design consequence of that choice
+### Sprint 5
 
-Security, trust, credential injection, and policy enforcement are critical because runtime discovery without runtime control would be irresponsible. But they are support systems for the main architectural move.
+- CLI as a native MCP server for local stdio execution
+- local DLP and policy enforcement
+- async audit sync back into the registry
 
-## 7. Relation To Prior Research
+This is the step that makes the large `stdio` portion of the ecosystem operationally usable, not just discoverable.
 
-Relay is also adjacent to a growing body of tool-use research.
+### Sprint 6
 
-### Toolformer
+- a learned Lever 3B classifier replacing the current heuristic gate
+- stronger behavioral trust signals from invoke outcomes
+- smarter reranking only where the lexical layer proves insufficient
 
-Toolformer showed that language models can learn to call tools as part of the generation process. This matters because it supports the broader idea that tool use should be integrated into model behavior rather than treated as a purely external scripting problem.
+This improves the decision quality of the current MVP without changing the core interface.
 
-### Chameleon
+### Sprint 8+
 
-Chameleon framed tool use as compositional reasoning with plug-and-play modules. This is relevant because it pushes toward planner-mediated use of heterogeneous capabilities, not just static prompting.
+- learned routing on `search_events`, `invoke_outcomes`, and `intent_server_mappings`
+- direct `(server, tool, confidence)` resolution for common intents
+- adaptive or ephemeral tool surfacing once confidence is strong enough
 
-### ToolLLM / ToolBench
-
-ToolLLM and ToolBench are especially relevant because they attack large-scale API retrieval and tool-use training. They show that retrieval and ranking over large API collections matter and that tool-use competence can be improved significantly.
-
-But these systems still operate mainly at the model/retrieval layer. They do not solve the MCP-specific infrastructure problem of:
-
-- live ecosystem discovery
-- gatewayed invocation
-- credential injection
-- transport differences
-- policy enforcement
-- empirical routing from real invoke outcomes
-
-### APIBank
-
-Benchmarks such as APIBank matter because they force precision around what tool-augmented systems are actually good at. They help evaluate whether a model can use tools. They do not provide a runtime platform for a live, evolving MCP ecosystem.
-
-Relay sits one layer lower than these papers. It is not primarily a tool-use benchmark or a model-training recipe. It is infrastructure for making large-scale MCP use tractable in real agent systems.
+This is the first real trained fast path. `search_tools` remains necessary for novel or ambiguous cases, but it stops being the common path for well-learned intents.
 
 ## 8. Why Ingest Matters More Than It Looks
 
-If Relay is an agent-runtime layer, then registry quality is not cosmetic. It is foundational.
+If Relay resolves capability at runtime, registry quality is not cosmetic. It directly affects whether the system can make a correct decision.
 
-Bad registry state leads to:
+Bad ingest quality leads to:
 
-- the wrong server being suggested
+- wrong servers being suggested
 - duplicate servers crowding results
-- incorrect transport assumptions
-- failed auth/setup guidance
-- missing schemas
+- missing or low-quality schemas
+- bad transport assumptions
+- weak auth/setup guidance
 - broken trust calculations
 
-That is why ingest is the current MVP priority.
+That is why the ingest pipeline, provenance rules, drift handling, and schema quality all matter to the product story. They are not side systems. They determine whether runtime discovery is trustworthy enough to use.
 
-The MVP does not need every future feature. It needs:
+## 9. Why The Learning Loop Matters
 
-- canonical server rows
-- a clean search contract
-- a clean invoke contract
-- a working search -> invoke -> learn loop
+The long-term value of Relay is not only that it exposes the ecosystem at runtime. It is that it learns from usage.
 
-Without those, the agent-centric runtime thesis remains only a narrative.
+The loop is:
 
-## 9. Why The Feedback Loop Is The Long-Term Moat
+1. the agent searches by intent
+2. Relay returns likely server/tool options
+3. the agent invokes one
+4. Relay records the result
+5. future routing improves
 
-The strategic asset in Relay is not just the server index.
+This produces something static registries do not have: an empirical record of which server/tool paths actually work for real intents under live usage.
 
-Directories can be copied.
-Gateway ideas can be copied.
-Even good UI can be copied.
+That is what later enables:
 
-What is harder to copy is the empirical record of what actually worked for which intent under real usage.
+- stronger reranking
+- confidence calibration from outcomes
+- adaptive tool surfacing
+- learned routing for common intents
 
-That is what the `search_events`, `invoke_outcomes`, and `intent_server_mappings` tables are for.
+## 10. Relation To Research
 
-They answer a question that is much more valuable than "what MCP servers exist?":
+Relay is adjacent to several strands of tool-use research.
 
-Given this intent, which server and tool actually worked, how reliably, and how fast?
+### Toolformer
 
-That is the bridge from runtime discovery to learned routing.
+Toolformer supports the general idea that tool use can become part of model behavior rather than a purely external scripting layer.
 
-## 10. What A Fair Comparison With Competitors Looks Like
+### Chameleon
 
-A fair comparison should separate these dimensions:
+Chameleon is relevant because it treats tool use as compositional reasoning over heterogeneous capabilities.
 
-- discovery
-- gateway/control plane
-- managed auth/connections
-- agent-centric runtime capability resolution
+### ToolLLM / ToolBench
 
-On the first three, Relay is entering a market where serious work already exists.
+These are especially relevant because they show that retrieval and ranking across large API collections matter, and that tool-use performance can improve with better training and selection.
 
-On the fourth, the field is still comparatively open.
+### APIBank
 
-That is why Relay should not market itself as "the only MCP platform with X." It should market itself as a system designed around a specific unsolved pressure point:
+APIBank and similar benchmarks are useful because they force precision around what tool-augmented systems can actually do.
 
-the practical MCP configuration ceiling.
+Relay sits one layer lower than these papers. It is not mainly a benchmark or a model-training recipe. It is runtime infrastructure for making large-scale MCP capability resolution workable in live agent systems.
 
-## 11. MVP Implications
+## 11. Conclusion
 
-This framing has a useful side effect: it keeps the MVP honest.
+MCP removed protocol fragmentation. It did not remove the operational ceiling created by explicit configuration.
 
-If the main goal is to remove the practical cap, then the MVP does not need to win on everything at once. It needs to prove four things:
+Relay's answer is to move capability resolution into the runtime loop: discover by intent, invoke through one guarded path, record outcomes, and improve over time. The current two-tool model is the bootstrap form of that architecture. The later roadmap turns that same loop into speculative execution, adaptive tool surfacing, and learned routing.
 
-1. agents can discover useful capability by intent at runtime
-2. the returned registry state is trustworthy enough to use
-3. invocation works through one guarded path
-4. outcomes can improve future routing
-
-That is enough to validate the product thesis.
-
-## 12. Conclusion
-
-MCP solved protocol fragmentation. It did not solve the usability limit created by explicit configuration.
-
-Relay's wager is that the next step is not simply better directories or better gateways, although both matter. The next step is to make MCP usage agent-centric: let the agent discover and use capabilities at runtime, while the surrounding platform handles trust, auth, policy, and measurement.
-
-The two-tool interface is one implementation of that idea. It may prove to be the right one, or it may evolve. But the underlying problem is real regardless of interface details: explicit pre-configuration does not scale with ecosystem growth.
-
-If Relay succeeds, it will not be because it indexed more servers than everyone else. It will be because it made a much larger capability universe usable without requiring humans to keep wiring it in by hand.
+The story only works when it stays simple. The problem is the practical MCP cap. The solution is runtime discovery plus guarded execution plus learning from real outcomes. Everything else in Relay exists to make that core loop reliable enough to trust.
 
 ## References
 
-- Glama homepage: https://glama.ai/
-- Glama servers: https://glama.ai/mcp/servers
-- Glama connectors: https://glama.ai/mcp/connectors
-- Glama tools: https://glama.ai/mcp/tools
-- Glama inspector: https://glama.ai/mcp/inspector
-- Glama clients: https://glama.ai/mcp/clients
-- Smithery docs: https://smithery.ai/docs
-- Smithery Connect overview: https://smithery.ai/docs/use
-- Smithery Connect guide: https://smithery.ai/docs/use/connect
-- Smithery Connect API: https://smithery.ai/docs/use/connect-api
-- Smithery quickstart connect: https://smithery.ai/docs/getting_started/quickstart_connect
-- mcp.run client intro: https://docs.mcp.run/mcp-clients/intro/
 - Toolformer: https://arxiv.org/abs/2302.04761
 - Chameleon: https://arxiv.org/abs/2304.09842
 - ToolLLM: https://arxiv.org/abs/2307.16789

@@ -1,219 +1,169 @@
 # Relay — Overview & Roadmap
 
-> *The agent-centric layer that removes the practical MCP configuration ceiling.*
-> *Built in public. MIT licensed. For the agent development community.*
+> *The agent-centric runtime layer for the practical MCP configuration ceiling.*
 > Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
 
 ---
 
-## What We're Building
+## What Relay Solves
 
-Relay solves the problem every agent developer hits when they scale past a handful of MCP servers.
+Relay solves the practical MCP configuration ceiling.
 
-**The problem:** MCP has a practical ceiling. Long before the ecosystem runs out of servers, developers and agents hit a sanity cap: too many servers to explicitly configure, too many tools to expose cleanly, too much auth and transport complexity to manage by hand, and too much model confusion when the available surface gets large. The result is a brittle 1:1 integration model where each new capability still behaves like another manual integration project.
+The problem is not that MCP lacks servers. The problem is that usable capacity collapses once teams have to keep discovering, wiring, authenticating, exposing, and maintaining more and more servers by hand. Long before the ecosystem runs out of capability, humans and agents hit a sanity ceiling:
 
-**The solution:** shift MCP from explicit pre-configuration to runtime agent-driven discovery and execution.
+- too many servers to configure explicitly
+- too many tools to expose cleanly
+- too much auth and transport complexity to manage by hand
+- too much model confusion once the surface gets large
+- too many 1:1 integration projects for each new capability
 
-```
+Relay changes the model from explicit preload to runtime capability resolution.
+
+```text
 search_tools("send a transactional email with HTML body")
-→ returns verified servers with schemas
+-> returns ranked, verified server/tool options with trimmed schemas
 
 invoke_tool({ server: "sendgrid-mail", tool: "send_email", args: {...} })
-→ executes through a 14-layer security proxy
+-> executes through one guarded runtime path
 ```
 
-An agent connecting to Relay gets a minimal runtime interface and uses Relay to do the heavy lifting at runtime. The current implementation keeps the model-facing surface flat at two tool definitions, but the core idea is larger than that interface choice: remove the practical cap by letting the agent discover and use capabilities by intent instead of forcing the human to wire everything in ahead of time.
+The two-tool interface is the current implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, auth, trust, and execution happen at runtime.
+
+The deeper differentiator is the learning loop. Relay is designed to record which server/tool combinations actually worked for which intents so routing gets better over time instead of staying static.
 
 ---
 
-## Why This Is the Right Architecture
+## What Exists Today
 
-### The mathematical case
+### Core runtime
 
-Every approach that keeps capability selection primarily outside the runtime loop — static configuration, bounded tool preload, or retrieval over a pre-selected tool universe — eventually runs into the same scaling pressure:
+- Native MCP server at `/api/mcp-server`
+- `search_tools`: FTS + trigram retrieval across 20,000+ indexed servers with confidence scoring
+- `invoke_tool`: direct execution through the security proxy
+- Lever 3A knowledge classifier to deflect non-action queries before search
+- Intent cache for frequent intent -> server mappings
+- Schema trimming so each result surfaces the most relevant tools
+- Historical confidence boosts from prior invoke outcomes
+- SSE transport for legacy clients
 
-**Recall ≤ k/N**
+### Registry and ingest
 
-Where k is the pre-selected tool count and N is the total ecosystem size. As N grows, recall approaches zero. You can tune k upward, but that consumes context proportionally and degrades reasoning quality.
+- Ingest from 7 active sources: Official Registry, Smithery, Glama, GitHub, Vendor, ClaudeMCP, MCP.so
+- Canonical normalized `servers` rows in Postgres
+- Three-tier ingest skip pipeline: timestamp -> hash -> full refresh
+- Dedup, normalization, trust scoring, scan history, and schema snapshots
+- `stdio` rows preserved even when not cloud-invocable yet
 
-Relay attacks that ceiling by moving capability resolution into the runtime path:
+### Security and execution control
 
-η = N / (c + r)
+- 14-layer security stack across scan, invoke, auth, DLP, SSRF, and confirmation paths
+- Schema drift detection with automatic suspension on post-approval mutation
+- Re-scan on drift events
+- Rate limiting and response-size guards
+- Per-user, per-server, per-tool policy controls
+- HMAC-signed confirmation flow for destructive actions
 
-Where N = ecosystem size, c ≈ 100 (two tool definitions), r ≈ 500 (search results). The important point is not the exact constant. The important point is that the model-facing interface stays small while the accessible capability universe can keep growing.
+### Credentials and vault
 
-### The trajectory case
+- Supabase Vault / pgsodium-backed secret storage
+- Automatic credential injection across known key-name variants
+- Structured 401 responses that tell the agent what credential is missing
+- OAuth connection flow in progress as part of the runtime credential layer
 
-The MCP ecosystem is growing fast. Every new server makes explicit configuration harder. Relay is designed so that ecosystem growth increases available capability without forcing the developer to keep manually expanding the model-facing tool surface.
+### Analytics and training data
 
-That is the structural bet behind Relay.
+- `search_events`: every search call
+- `invoke_outcomes`: every invoke result
+- `intent_server_mappings`: aggregated intent -> server -> tool outcomes
+- Views for top intents, gaps, search quality, and server reliability
+
+This is the training corpus for later learned routing. The current system already records the loop that future routing depends on.
 
 ---
 
-## What's Built Today
+## What Is Good Now Vs Not Yet Optimal
 
-### Core capabilities (Sprint 2 — complete)
+Relay is already a credible MVP because it keeps the agent interface small, centralizes runtime control, and measures the full search -> invoke -> learn loop.
 
-**Agent interface:**
-- Native MCP server at `/api/mcp-server` — agents connect once, get everything
-- `search_tools`: FTS + trigram intent retrieval across 20,000+ servers with confidence scoring
-- `invoke_tool`: direct execution through the security proxy (no internal HTTP hop)
-- Lever 3A knowledge classifier: deflects non-action queries before DB touch
-- Intent cache: O(1) lookup for frequent intent→server mappings
-- Schema trimming: max 3 most-relevant tools per result
-- Historical confidence: prior success rates boost search ranking
-- SSE transport for legacy clients (2024-11-05 spec)
+The current gaps are real, and they are already mapped to the roadmap:
 
-**Discovery:**
-- `/.well-known/mcp.json`: machine-readable registry manifest
-- `/agents.md`: LLM skill file with activation rules and full API docs
-- Ingest from 7 sources: Official Registry, Smithery, Glama, GitHub, Vendor, ClaudeMCP, MCP.so
+| Current gap | What improves it | Sprint |
+|---|---|---|
+| Search still returns result sets the model must interpret | speculative invocation on obvious single matches; learned routing for common intents | Sprint 4, Sprint 8+ |
+| Confidence is heuristic + empirical aggregate, not learned routing | learned Lever 3B classifier and later learned routing | Sprint 6, Sprint 8+ |
+| Schema trimming is lexical, not intent-model-aware | stronger reranking first, then adaptive tool surfacing once confidence is high enough | Sprint 6, Sprint 8+ |
+| No speculative execution yet | high-confidence speculative invocation | Sprint 4 |
+| No ephemeral tool materialization yet | adaptive or ephemeral tool surfacing on stable high-confidence paths | Sprint 8+ |
+| No trained fast path for common intents yet | routing model trained on `intent_server_mappings` + `invoke_outcomes` | Sprint 8+ |
 
-**Security:**
-- 14-layer security stack (L1–L14, S-12, S-13, S-14)
-- SSRF protection: full IPv4 + IPv6 coverage including edge cases
-- Schema drift detection: auto-suspends servers that mutate tools post-approval
-- Injection re-scan on every drift event (ATK-1 fix)
-- HMAC-signed confirmation tokens (timing-safe, 5-minute expiry)
-- Nested JSON injection bypass via recursive string flattening
-
-**Credentials:**
-- Supabase pgsodium vault (AES-256-GCM)
-- Auto-injection via all credential name variants
-- OAuth connection flow (Sprint 3)
-- Credential name suggestions in structured 401 responses
-
-**Policies:**
-- Per-user, per-server, per-tool access rules
-- Glob pattern matching (delete_*, drop_*, etc.)
-- Default destructive-action blocks on signup
-- Confirmation flow with HMAC tokens
-
-**Analytics (Migration 022):**
-- `search_events`: every search_tools call, full context
-- `invoke_outcomes`: every invoke result, linked to search
-- `intent_server_mappings`: aggregated feedback loop (the ML training corpus)
-- Confidence scoring, schema trimming, intent caching
-- Analytics views: top_intents, ecosystem_gaps, search_quality_daily, server_reliability
-
-**Infrastructure:**
-- EWMA trust scoring (uptime + stability + community + scan + runtime)
-- Three-tier skip algorithm in ingest (O(1) timestamp → hash → full pipeline)
-- Rate limiting: Upstash Redis sliding window, in-memory fallback
-- Response size guard: 10MB hard limit
-- Batch pre-fetch in ingest (eliminates N+1 DB lookups)
-- Race condition recovery on concurrent ingest runs
+The important point is that these are not random feature ideas. They are the next steps on the same problem-solving path.
 
 ---
 
 ## Roadmap
 
-### Sprint 3 — Sampling Security + OAuth (2 weeks)
+### Sprint 3 — Sampling Security + OAuth
 
-- [ ] `sampling/createMessage` rate limit: 5/min per server
-- [ ] Sampling audit log: every server-initiated LLM call recorded
-- [ ] OAuth token refresh: detect 401 → refresh → retry once
-- [ ] Bearer-only auth hardening (OAuth deferred to Sprint 4)
-- [ ] Supabase TypeScript type regeneration (20+ migrations applied)
+- `sampling/createMessage` rate limit and audit logging
+- OAuth token refresh and retry-once flow
+- bearer-only auth hardening
+- type regeneration after the current migration chain
 
-### Sprint 4 — Performance + Streaming (3 weeks)
+### Sprint 4 — Performance + Streaming
 
-- [ ] Upstash Redis session pool: cache MCP handshake for 5 min per server
-- [ ] Stateless probe mode: skip initialize for 2025-03-26 compliant servers
-- [ ] SSE streaming pass-through: pipe upstream SSE directly to client
-- [ ] `progress` notification handling
-- [ ] Speculative invocation: on high-confidence (trust > 90) single match, pre-execute and return result with search results in one call
-- [ ] Prompt caching: compressed registry snapshot of top-200 servers for warm knowledge (Gap 1)
+- session pooling for repeated MCP handshakes
+- stateless probe mode for compliant servers
+- SSE streaming pass-through and `progress` handling
+- speculative invocation for very high-confidence single matches
+- prompt caching for warm knowledge on top servers
 
-### Sprint 5 — CLI as Native MCP Server (4 weeks)
+### Sprint 5 — CLI As Native MCP Server
 
-- [ ] `@Relay/cli` npm package
-- [ ] `Relay search/info/login` commands
-- [ ] `Relay serve` — starts as native MCP server over stdio
-- [ ] Subprocess lifecycle manager (npx-style on-demand spawning)
-- [ ] Local DLP + policy enforcement (offline security)
-- [ ] Async audit sync to registry
-- [ ] Closes the stdio gap: 100% of ecosystem becomes invocable
+- `@Relay/cli`
+- `Relay search`, `Relay info`, `Relay login`
+- `Relay serve` as a native stdio MCP server
+- subprocess lifecycle manager for local stdio execution
+- local DLP and policy enforcement for offline execution
+- async audit sync back to the registry
 
-### Sprint 6 — Intelligence + Publisher Program (5 weeks)
+This sprint closes the largest remaining practical gap in the ecosystem: many discovered servers are `stdio` and need a local runtime bridge.
 
-- [ ] **Lever 3B:** Train logistic regression classifier on accumulated search_events + invoke_outcomes data. Replaces heuristic Lever 3A with a learned model. Zero ongoing cost.
-- [ ] **Hybrid retrieval reranker:** keep FTS + trigram as the baseline recall layer, and add embedding recall only if analytics shows repeated lexical misses. Behavioral signals remain the ranking authority.
-- [ ] **Behavioral trust signals:** DLP trigger rate and failure rate from metering feed trust score in real time
-- [ ] **GitHub OIDC verified publisher:** Publishers sign with GitHub Actions tokens. Registry verifies cryptographically. No human review bottleneck.
-- [ ] `@Relay/sdk` TypeScript SDK
-- [ ] `Relay` Python SDK (PyPI)
-- [ ] `Relay publish` + `Relay validate` CLI commands
-- [ ] Tool schema registry: versioned JSON Schema store
+### Sprint 6 — Intelligence + Publisher Program
 
-### Sprint 7 — Cloud stdio Bridge (7 weeks)
+- Lever 3B learned classifier replacing the current heuristic gate
+- stronger behavioral trust signals from runtime outcomes
+- hybrid retrieval reranker only if lexical misses justify it
+- verified publisher pipeline
+- TypeScript and Python SDKs
+- schema registry and publisher tooling
 
-- [ ] Container-based stdio invocation (Fly.io Machines)
-- [ ] Cold start < 3s, warm < 100ms
-- [ ] Per-request ephemeral containers (process isolation, network isolation)
-- [ ] Scale-to-zero billing
-- [ ] Closes the stdio gap for agents without CLI
+### Sprint 7 — Cloud Stdio Bridge
 
-### Sprint 8+ — Gap 3: Learned Intent Routing
+- container-based stdio invocation for agents that cannot run the CLI
+- per-request isolation
+- scale-to-zero execution
 
-This is where the data asset becomes a product.
+### Sprint 8+ — Learned Routing Layer
 
-After sufficient usage data accumulates in `intent_server_mappings` and `invoke_outcomes`, train a routing model on the corpus and, if justified by quality and cost, distill or fine-tune a small model (7B class) on the highest-value intent paths:
-- Input: intent string
-- Output: (server_name, tool_name, confidence) without any search call
+- train a routing model on `search_events`, `invoke_outcomes`, and `intent_server_mappings`
+- route common intents directly to `(server, tool, confidence)` without a search step
+- surface tools adaptively when confidence is strong enough
+- turn `search_tools` into the fallback path for novel, ambiguous, or low-confidence intents
 
-For the most common intents (~80% of traffic based on the power law distribution that will emerge), the model answers directly from learned routing. `search_tools` becomes a fallback for novel intents and low-confidence cases.
-
-This is the practically optimal solution. The two visible tools become nearly zero-latency for trained intents. The registry is still needed for discovery, security, and tail intents — but the common path becomes sub-millisecond.
-
-**This is the business.** The learned routing layer + its training corpus + ongoing improvement pipeline is the competitive moat that no competitor can replicate without the same data.
+This is the long-term fast path: common intents stop paying the full search cost while the same registry, policy, security, and auth systems remain underneath.
 
 ---
 
-## The Business Case
+## Full Picture
 
-### Why the data is the moat
+Relay is one system with four tightly coupled layers:
 
-The `intent_server_mappings` table answers a question no one else can:
+1. Multi-source ingest builds a canonical registry from the fragmented MCP ecosystem.
+2. Runtime search keeps the agent-facing interface small while still exposing that larger capability universe by intent.
+3. Guarded invocation centralizes trust, security, auth, vault injection, and policy enforcement.
+4. Analytics and training data turn real outcomes into better future routing.
 
-*"Given this specific intent, which MCP server actually worked, how reliably, and how fast?"*
-
-Not what servers exist — Glama and Smithery already cover a lot of that. Not merely what tools they expose. But which server/tool combinations actually work for specific real-world intents, measured across real agent invocations, inside an agent-centric runtime layer that is explicitly designed to remove the practical MCP configuration ceiling.
-
-That signal has three commercial applications:
-
-**Application 1 — Intelligence product**
-Companies building agent pipelines want to know: "Which tools should my agent use?" Today they figure this out by trial and error. Relay's data makes it deterministic. A query like "what's the most reliable way to send transactional email" becomes answerable with empirical evidence: success_rate, latency, dlp_trigger_rate, across 10,000+ invocations.
-
-**Application 2 — Gap analysis product**
-The `ecosystem_gaps` view shows intents that agents search for but can't find. This is a roadmap for the MCP ecosystem. Companies building tools want to know where demand exists before there's supply. That data is uniquely Relay's.
-
-**Application 3 — Gap 3 learned routing model**
-The training corpus (intent → server → tool → outcome) enables a learned routing layer that eliminates search latency for common intents. Whether that is delivered as a classifier, distillation pipeline, or fine-tuned model depends on the observed quality/cost tradeoff. The product value is the routing accuracy, not the specific model class.
-
-### Community first, business second
-
-Everything above is built on a foundation of genuine community value. The registry is MIT licensed. The API is free for community use. The security scanning is a public good — no other registry does 14-layer scanning.
-
-The commercial layer (intelligence products, fine-tuned model) is built on top of that foundation after the community establishes the data asset. You don't build the business first and hope the community follows. You build something genuinely useful, accumulate the data that emerges from real use, and then build the business around what the data reveals.
-
-Clarke's Third Law applies in reverse too: sufficiently well-understood data becomes technology. The intent→outcome mappings you're collecting today are magic to everyone who doesn't have them.
-
----
-
-## Closest Achievable Solution to Perfect
-
-The theoretically perfect MCP tool system has no discovery step, no invocation boundary, and no authentication concept — tool capability is intrinsic to model weights, intent maps directly to execution, and security is structural rather than computational.
-
-Relay is currently at ~70% of that limit. The path to ~85%:
-
-**Gap 1 (Sprint 4, 2 days):** Prompt caching of top-200 server summaries. For 80% of queries, the model "already knows" without a search call. Context-embedded warm knowledge at zero recurring cost.
-
-**Gap 2 (Sprint 4, 3 days):** Speculative invocation. High-confidence single matches pre-execute, collapsing search+invoke to one call. The theoretical minimum for a non-weight-embedded system.
-
-**Gap 3 (Sprint 8+):** Learned routing on accumulated corpus. Common intents answered directly for trained paths. The point where the search-then-invoke pattern becomes invisible for known intents. The architecture is still there — it just operates at near-zero cost for known intents.
-
-Each gap closes as the system matures. The architecture is already on the right trajectory. The data being collected now is what makes Gap 3 possible. The current lexical retrieval layer is the bootstrap, not the endpoint.
+That is the whole story. Security, vault, confidence scoring, training, stdio bridging, and future learned routing all matter because they make the same core promise real: agents should be able to discover and use capability at runtime without humans repeatedly rebuilding the integration surface by hand.
 
 ---
 

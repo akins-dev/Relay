@@ -3,6 +3,7 @@
 **The agent-centric runtime discovery and invocation layer for MCP servers.**
 
 Canonical technical reference: [`docs/README.md`](docs/README.md)
+Project narrative and roadmap: [`OVERVIEW_AND_ROADMAP.md`](OVERVIEW_AND_ROADMAP.md)
 
 > "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
@@ -27,6 +28,8 @@ Relay is an agent-centric runtime layer that lets agents do the heavy lifting at
 Our current implementation approach is to expose two meta-tools: `search` and `invoke`. That is not the thesis by itself. It is the mechanism we believe most cleanly solves the practical cap problem: keep the model-facing surface small while still allowing access to a much larger capability universe.
 
 Security, trust, credential injection, policy enforcement, and analytics sit underneath that runtime model. They are essential, but they are support systems for the core idea: agents should not be blocked by explicit pre-configuration when the right capability could be discovered and used at runtime.
+
+The learning loop matters just as much as the interface. Relay records search and invoke outcomes so future routing can improve from real usage instead of staying static.
 
 ---
 
@@ -82,18 +85,13 @@ Most MCP servers require API keys. Store them once in the Relay Vault. The proxy
 
 ---
 
-## 📚 Core Documentation
+## Core Documentation
 
-As the repository scale has grown to handle enterprise-grade loads, detailed configuration instructions and design logic have been properly split into specialized manuals:
-
-### 🛡️ [Security Guides & Trust Models](SECURITY.md)
-Contains the exact breakdowns for the 14-layer security system (L1 through S-14), encompassing Shell Injection protections, PII safeguards, and Context-Bleed defenses. It also defines how external Sub-Registries map to quantitative 0–100 Trust Scores.
-
-### 🏗️ [Architecture Deep Dive](ARCHITECTURE.md)
-Outlines the high-performance systems powering Relay's infrastructure, including the 0-Latency DB Poly-Cache, Event-Loop ReDoS protections, our custom Three-Tier Skip algorithm for hyper-fast MCP ingestion, and details about future SDK and CLI rollouts.
-
-### 🛠️ [Setup & Developer Guide](DEVELOPMENT.md)
-Looking to host Relay locally, contribute to the Core API, or launch the Render NodeJS stdio-Sandbox? The Builder's Guide includes the full `bun run` processes, mandatory `.env` configurations, and Supabase SQL migration chains. It also includes the vital Pre-Production Checklist for operating your own live instance.
+- [OVERVIEW_AND_ROADMAP.md](OVERVIEW_AND_ROADMAP.md): problem, current solution, full-system picture, and upcoming sprint work
+- [docs/TECHNICAL_BACKBONE.md](docs/TECHNICAL_BACKBONE.md): canonical technical reference for ingest, runtime, data model, vault, analytics, and roadmap alignment
+- [SECURITY.md](SECURITY.md): 14-layer security system and trust model
+- [ARCHITECTURE.md](ARCHITECTURE.md): runtime and infrastructure design
+- [DEVELOPMENT.md](DEVELOPMENT.md): local setup, migrations, and contributor workflow
 
 ---
 
