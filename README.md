@@ -1,6 +1,8 @@
 # ⬡ Relay
 
-**The secure, runtime discovery and invocation layer for MCP servers.**
+**The agent-centric runtime discovery and invocation layer for MCP servers.**
+
+Canonical technical reference: [`docs/README.md`](docs/README.md)
 
 > "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
@@ -10,21 +12,21 @@
 
 ---
 
-## The Problem: The Context & Security Bottleneck
+## The Problem: The Practical MCP Cap
 
-Currently, AI agents are strictly bottlenecked by human pre-configuration. To interact with the outside world, a developer must manually discover, configure, and inject entire Model Context Protocol (MCP) tool schemas into an agent's context window **before** it ever runs. 
+In practice, agent builders hit a sanity ceiling long before they run out of available MCP servers. Once you move past a modest number of configured servers, the workflow becomes brittle: someone still has to discover the right server, wire it in, manage auth, maintain it, and decide what the model should see ahead of time.
 
-As an agent's capabilities grow, injecting dozens of massive tool schemas wastes huge portions of the LLM's context window. This constraint drives up token costs, significantly increases latency, and degrades the agent's reasoning focus, which inevitably leads to severe hallucinations. Worse yet, giving an autonomous agent unmitigated access to unverified remote tools presents a massive security vector. The friction of the current static MCP ecosystem fundamentally limits autonomous workflows.
+That is the real MCP scaling problem. The ecosystem may contain thousands of servers, but usable capacity is capped by what a human can explicitly pre-configure and what an agent can sanely operate with. Large tool surfaces increase context pressure, token cost, and routing ambiguity. Manual setup also turns every new capability into another 1:1 integration burden. Security, credential handling, and transport differences make the problem worse.
 
 ## The Vision: Relay
 
-**Relay completely breaks the 30-tool context ceiling.**
+**Relay removes the practical MCP configuration ceiling.**
 
-Relay is a secure runtime discovery tool that allows AI agents to query and discover tools purely by intent. Instead of manually selecting and pre-loading static toolsets, agents use Relay to dynamically discover exactly what they need, the moment they need to solve a user's problem. 
+Relay is an agent-centric runtime layer that lets agents do the heavy lifting at runtime. Instead of forcing developers to explicitly preload and maintain an ever-growing set of MCP servers, Relay lets the agent discover what it needs by intent, choose a server at runtime, and execute through one controlled path.
 
-This architectural shift grants agents access to thousands of MCPs instantly while permanently keeping their context window light (reducing the cognitive load and resulting hallucinations). The context window cost is forever reduced to exactly two meta-tools: `search` and `invoke`.
+Our current implementation approach is to expose two meta-tools: `search` and `invoke`. That is not the thesis by itself. It is the mechanism we believe most cleanly solves the practical cap problem: keep the model-facing surface small while still allowing access to a much larger capability universe.
 
-Most importantly, Relay acts as the immutable bridging layer—ensuring strict data loss prevention (DLP), payload injection detection, and repository trust-scoring. Relay empowers true autonomous agentic scale without compromising security.
+Security, trust, credential injection, policy enforcement, and analytics sit underneath that runtime model. They are essential, but they are support systems for the core idea: agents should not be blocked by explicit pre-configuration when the right capability could be discovered and used at runtime.
 
 ---
 

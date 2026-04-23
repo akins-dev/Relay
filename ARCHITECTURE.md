@@ -1,6 +1,7 @@
 # Agentrail / Relay — Architecture Deep-Dive
 **Perspective: 10,000x engineer with full MCP protocol knowledge**
 *Last updated: April 2026*
+*Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)*
 
 > **Brand Identity**: All product names derive from `BRAND` constants safely in configuration.
 > Active Brand: `Relay` / `Agentrail`
@@ -10,17 +11,19 @@
 
 ## 1. What We Are Building
 
-An **agent-first runtime trust layer** for the MCP ecosystem — not a generic registry marketplace.
+An **agent-first runtime discovery and execution layer** for the MCP ecosystem — not a generic registry marketplace.
 
 ### The Core Insight
 
-> "Agent development will never scale treating every tool integration as a 1:1 integration."
+> "Agent development will never scale if every new capability still behaves like a 1:1 integration."
 
-Every agent framework today requires explicit pre-configuration of MCP servers. The agent cannot discover, evaluate, or connect to tools autonomously. Relay solves this with two native MCP tools:
+The core problem is the practical MCP cap. Long before the ecosystem runs out of servers, developers and agents hit a sanity ceiling: too many servers to configure explicitly, too much auth and transport complexity to manage manually, and too much context pressure when the exposed tool surface keeps growing.
+
+Relay's current implementation solves this with two native MCP tools:
 - `search_tools({ intent })` — find servers by what the agent needs to do
 - `invoke_tool({ server, tool, args })` — invoke through a security proxy
 
-The context window cost: **exactly 2 tools**, regardless of how many thousand servers exist.
+The two-tool interface is the implementation approach, not the thesis by itself. The thesis is that the agent should do the heavy lifting at runtime instead of depending on ever-expanding explicit pre-configuration.
 
 ### The Problem Space
 
@@ -50,19 +53,15 @@ Agents connect directly to the Relay Cloud proxy without complex custom code. We
 
 *(Note: We also implement the experimental `/.well-known/mcp.json` protocol for next-generation fully autonomous agents capable of self-assembling registries, but the 3 methods above are the explicit standards used to connect today.)*
 
-| Feature | Smithery | Glama | Official Registry | **Relay** |
+| Dimension | Smithery | Glama | Official Registry | **Relay** |
 |---|---|---|---|---|
-| Server discovery | ✅ | ✅ | ✅ | ✅ |
-| Active agent proxying | ❌ | ✅ (Gateway) | ❌ | ✅ HTTP + stdio bridge |
-| Context-shielded proxy| ❌ | ❌ | ❌ | ✅ 2-tool dynamic discovery |
-| Security scanning | ❌ | Partial | ❌ | ✅ Multi-layer L1–L14 |
-| Credential injection | ❌ | ✅ | ❌ | ✅ Vault-encrypted |
-| Tool policy control | ❌ | ✅ (Per-tool) | ❌ | ✅ Allow/Confirm/Block |
-| Proxy layer | Partial (stdio bridge) | ✅ | ❌ | ✅ |
-| Trust scores | ❌ | Basic | ❌ | ✅ EWMA + multi-signal |
-| Resources + Prompts proxy | ❌ | ❌ | ❌ | ✅ |
-| MCP spec compliance | Partial | ❌ | ✅ | ✅ (initialize handshake) |
-| Native MCP server interface | ❌ | ❌ | ❌ | ✅ `search_tools` + `invoke_tool` |
+| Registry / discovery | ✅ | ✅ | ✅ | ✅ |
+| Managed auth / connections | ✅ | ✅ | ❌ | ✅ |
+| Gateway / control plane | ✅ | ✅ | ❌ | ✅ |
+| Tool-level discovery | Partial | ✅ | ❌ | ✅ |
+| Agent-centric runtime discovery by intent | Partial | Partial | ❌ | **Core thesis** |
+| Constant model-facing surface as a first-class design goal | No public evidence | No public evidence | ❌ | **Core design choice** |
+| Search -> invoke -> learn feedback loop | Partial | Partial | ❌ | **Core design choice** |
 
 ---
 
@@ -123,7 +122,7 @@ To bypass Vercel Hobby tier timeout limits (10s–60s) on background execution t
 ### What Works Well ✅
 
 1. **Auth architecture** — Bearer-token-first with cookie fallback. Handles Next.js 14 chunked cookies.
-2. **Security scanning depth** — 14 layers is industry-leading. No other MCP registry does this.
+2. **Security scanning depth** — deep and differentiated for the current MCP ecosystem.
 3. **Vault integration** — AES-256-GCM via Supabase pgsodium. Correct approach.
 4. **Trust score EWMA** — Exponential moving average prevents gaming by new servers.
 5. **Policy system** — Allow/Confirm/Block per tool pattern is the right UX.

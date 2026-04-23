@@ -1,17 +1,18 @@
 # Relay — Overview & Roadmap
 
-> *The trust layer for runtime MCP tool discovery and secure invocation.*
+> *The agent-centric layer that removes the practical MCP configuration ceiling.*
 > *Built in public. MIT licensed. For the agent development community.*
+> Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
 
 ---
 
 ## What We're Building
 
-Relay solves the problem every agent developer hits when they scale past a handful of tools.
+Relay solves the problem every agent developer hits when they scale past a handful of MCP servers.
 
-**The problem:** Every AI agent framework today requires explicit pre-configuration of MCP servers. Before an agent can use a tool, a developer has to find it, evaluate it, integrate it, and wire it into the agent's configuration. This 1:1 integration model doesn't scale. As the MCP ecosystem grows to thousands of servers, the configuration problem becomes the bottleneck — not the capabilities themselves.
+**The problem:** MCP has a practical ceiling. Long before the ecosystem runs out of servers, developers and agents hit a sanity cap: too many servers to explicitly configure, too many tools to expose cleanly, too much auth and transport complexity to manage by hand, and too much model confusion when the available surface gets large. The result is a brittle 1:1 integration model where each new capability still behaves like another manual integration project.
 
-**The solution:** Two tools. Any agent. Every capability.
+**The solution:** shift MCP from explicit pre-configuration to runtime agent-driven discovery and execution.
 
 ```
 search_tools("send a transactional email with HTML body")
@@ -21,7 +22,7 @@ invoke_tool({ server: "sendgrid-mail", tool: "send_email", args: {...} })
 → executes through a 14-layer security proxy
 ```
 
-An agent connecting to Relay gets access to the entire MCP ecosystem without pre-configuring anything. It discovers what it needs at runtime, by intent. The context window cost stays flat at two tool definitions — regardless of whether the ecosystem has 100 servers or 100,000.
+An agent connecting to Relay gets a minimal runtime interface and uses Relay to do the heavy lifting at runtime. The current implementation keeps the model-facing surface flat at two tool definitions, but the core idea is larger than that interface choice: remove the practical cap by letting the agent discover and use capabilities by intent instead of forcing the human to wire everything in ahead of time.
 
 ---
 
@@ -29,25 +30,23 @@ An agent connecting to Relay gets access to the entire MCP ecosystem without pre
 
 ### The mathematical case
 
-Every approach that pre-loads tools — whether static configuration (OpenAI Assistants API), retrieval-based selection (LangChain/ToolRAG), or publisher curation (MCP spec subsets) — has a fundamental ceiling:
+Every approach that keeps capability selection primarily outside the runtime loop — static configuration, bounded tool preload, or retrieval over a pre-selected tool universe — eventually runs into the same scaling pressure:
 
 **Recall ≤ k/N**
 
 Where k is the pre-selected tool count and N is the total ecosystem size. As N grows, recall approaches zero. You can tune k upward, but that consumes context proportionally and degrades reasoning quality.
 
-Relay breaks this ceiling. Coverage efficiency is:
+Relay attacks that ceiling by moving capability resolution into the runtime path:
 
 η = N / (c + r)
 
-Where N = ecosystem size, c ≈ 100 (two tool definitions), r ≈ 500 (search results). At 20,000 servers, this is 5,000× more efficient than ToolRAG — and the ratio grows with every server added to the ecosystem.
+Where N = ecosystem size, c ≈ 100 (two tool definitions), r ≈ 500 (search results). The important point is not the exact constant. The important point is that the model-facing interface stays small while the accessible capability universe can keep growing.
 
 ### The trajectory case
 
-The MCP ecosystem is growing fast. Every new server added to the ecosystem makes:
-- Pre-load approaches worse (more context cost, lower recall fraction)
-- Relay better (same context cost, higher absolute recall)
+The MCP ecosystem is growing fast. Every new server makes explicit configuration harder. Relay is designed so that ecosystem growth increases available capability without forcing the developer to keep manually expanding the model-facing tool surface.
 
-The architecture is asymptotically dominant. This is not a feature — it's a structural property of the design.
+That is the structural bet behind Relay.
 
 ---
 
@@ -179,7 +178,7 @@ The `intent_server_mappings` table answers a question no one else can:
 
 *"Given this specific intent, which MCP server actually worked, how reliably, and how fast?"*
 
-Not what servers exist — Smithery and Glama have that. Not what tools they expose — the MCP spec handles that. But which ones **actually work** for **specific real-world intents**, measured across **real agent invocations**, with **cryptographic security verification**.
+Not what servers exist — Glama and Smithery already cover a lot of that. Not merely what tools they expose. But which server/tool combinations actually work for specific real-world intents, measured across real agent invocations, inside an agent-centric runtime layer that is explicitly designed to remove the practical MCP configuration ceiling.
 
 That signal has three commercial applications:
 

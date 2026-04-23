@@ -1,5 +1,7 @@
 # Security & Trust Models
 
+Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
+
 Every server scanned before listing. Every proxy call inspected.
 
 **Publish-time (per ingested server):**
@@ -22,7 +24,7 @@ Every server scanned before listing. Every proxy call inspected.
 - L6 Supabase RLS — database-level enforcement on all tables
 - L7 OAuth connection security — validated redirects, state verification, encrypted token storage
 
-Current OWASP MCP Top 10 coverage: **~70%**. Target: 90%+ with WASM sandbox (L2).
+Current OWASP MCP Top 10 coverage target is documented internally as **~70%** today, with a path to 90%+ once a stronger sandbox layer exists.
 
 **What happens to threatening servers:**
 - Critical scan issue or critical CVE → `rejected` — never listed

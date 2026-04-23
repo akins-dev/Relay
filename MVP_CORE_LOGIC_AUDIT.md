@@ -1,6 +1,7 @@
 # MVP Core Logic Audit
 
 Last updated: 2026-04-23
+Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
 
 ## Purpose
 
@@ -215,8 +216,8 @@ Flow:
 ### Current invoke flaws
 
 - API key prefix messaging is inconsistent: runtime accepts `sk_mcp_` but several error hints tell users to send `sk_relay_`.
-- the MCP layer does not pass search linkage metadata into `executeProxyCall()`, so the search -> invoke feedback loop is mostly disconnected.
-- request/response analytics are asynchronous, which is fine, but the code currently records much less useful behavioral intelligence than intended because the upstream invoke lacks search context.
+- the search -> invoke linkage now exists in the MCP path, but it still depends on the caller carrying `search_event_id` and `intent` forward correctly.
+- request/response analytics are asynchronous, which is fine, but the higher-level search and SQL contracts still need cleanup before the feedback loop can be treated as fully trustworthy.
 
 ## Feedback Loop: Intended vs Actual
 
@@ -231,12 +232,12 @@ Flow:
 ### Actual loop today
 
 1. `search_tools` records a search event asynchronously.
-2. `invoke_tool` does not carry that search event ID forward.
-3. `invoke_tool` also does not pass the intent hash/text.
-4. `recordInvokeOutcome()` runs without the key linkage fields.
-5. ranking data therefore cannot become the core business asset the architecture claims it will be.
+2. `invoke_tool` now carries `searchEventId`, `intentHash`, and `intentText` into `executeProxyCall()` when the MCP caller supplies them.
+3. `recordInvokeOutcome()` writes an `invoke_outcomes` row with those linkage fields.
+4. `record_intent_outcome(...)` updates `intent_server_mappings`.
+5. future searches can already consume `get_intent_boosts(...)`.
 
-This is the single most important architectural gap.
+The loop is present in code now. The remaining gap is not total absence; it is contract hardening and verification across MCP, REST, SQL, and analytics.
 
 ## The Real MVP Core
 
@@ -289,13 +290,13 @@ Exit criteria:
 - one documented invoke contract
 - consistent auth instructions
 
-### Phase 3: Repair the feedback loop
+### Phase 3: Harden the feedback loop
 
-1. Return a search correlation token or event ID from `search_tools`.
-2. Require or carry that token into `invoke_tool`.
-3. Pass `searchEventId`, `intentHash`, and `intentText` into `executeProxyCall()`.
-4. Verify `recordInvokeOutcome()` updates `intent_server_mappings`.
-5. Add tests proving a successful invoke changes future ranking input.
+1. Keep returning a search correlation token or event ID from `search_tools`.
+2. Ensure all invoke entrypoints consistently carry that linkage into `executeProxyCall()`.
+3. Verify `recordInvokeOutcome()` updates `intent_server_mappings`.
+4. Add tests proving a successful invoke changes future ranking input.
+5. Decide whether linkage should become required or remain best-effort.
 
 Exit criteria:
 
@@ -453,10 +454,10 @@ Automated testing should be the default for the core. Manual testing should vali
 
 As of 2026-04-23:
 
-- `npm test -- --runInBand` fails
-- `npx tsc --noEmit` fails
+- `npm test` passes
+- `npx tsc --noEmit` passes
 
-That means the repo is not currently in a state where failing tests cleanly point to core logic regressions. The first job is to restore signal.
+That restores basic signal. It does not by itself prove the contracts are clean, but it means failures can once again be treated as useful regression indicators.
 
 ## Immediate MVP Checklist
 
