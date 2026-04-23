@@ -23,6 +23,7 @@ Important:
 - the automated test suite in this repo is Jest-based
 - use `npm test -- --runInBand`
 - do not use `bun test` for this suite unless the tests are rewritten for Bun's mocking API
+- for deterministic local search/invoke testing, use [PROTOTYPE_GUIDE.md](./PROTOTYPE_GUIDE.md)
 
 ## Automated Checks
 

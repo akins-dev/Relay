@@ -9,7 +9,10 @@
     "lint": "next lint",
     "db:types": "npx supabase gen types typescript --linked > src/types/supabase.ts",
     "test": "jest --testPathPattern=__tests__",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "prototype:server": "node prototype/fake-mcp-server.mjs",
+    "prototype:seed": "node prototype/seed-fixtures.mjs",
+    "prototype:smoke": "node prototype/smoke-test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
