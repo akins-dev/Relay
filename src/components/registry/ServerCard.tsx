@@ -19,7 +19,7 @@ interface ServerCardProps {
     tags:         string[];
     source?:      string;
     is_new?:      boolean;
-    github_url?:  string;
+    github_url?:  string | null;
     profiles?:    { username: string; avatar_url?: string } | null;
   };
   /** Active search query — passed down to highlight matched text */

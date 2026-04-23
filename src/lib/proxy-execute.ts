@@ -53,7 +53,7 @@ function audit(svc: ReturnType<typeof createServiceClient>, data: {
   request_size: number; response_size: number; latency_ms: number;
   status_code: number; dlp_triggered: boolean; dlp_issues: string[];
   ip: string; user_agent: string;
-}) { svc.from('audit_log').insert(data).catch(() => {}); }
+}) { void svc.from('audit_log').insert(data as any); }
 
 // Single vault lookup via server_credential_hints — one DB call, standard naming
 async function injectCredential(
@@ -314,10 +314,10 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   // ── 15. Metering + feedback loop + audit (always runs — even 401/502) ─────────
   after(() => {
     if (success) {
-      svc.from('servers').update({ latency_ms: Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9) }).eq('id', server.id).catch(() => {});
-      svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
+      void (svc.from('servers') as any).update({ latency_ms: Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9) }).eq('id', server.id);
+      void svc.rpc('increment_calls', { server_id: server.id });
     }
-    svc.from('metering_events').insert({ server_id: server.id, user_id: callerUserId, tool_name: toolName, interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length, latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0 }).catch(() => {});
+    void svc.from('metering_events').insert({ server_id: server.id, user_id: callerUserId, tool_name: toolName, interface: callInterface, request_bytes: rawBody.length, response_bytes: responseBody.length, latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0 } as any);
     recordInvokeOutcome({ searchEventId: searchEventId ?? null, userId: callerUserId, serverId: server.id, serverName, toolName, intentHash: intentHash ?? null, intentText: intentText ?? null, statusCode: upstreamStatus, success, latencyMs: latency, errorType: classifyError(upstreamStatus, allIssues.length > 0, responseBody), dlpTriggered: allIssues.length > 0, wasRetry: wasRetry ?? false, retryServer: retryServer ?? null }).catch(() => {});
     audit(svc, { server_id: server.id, action: upstreamError ? 'proxy_error' : upstreamStatus === 401 ? 'proxy_auth_failure' : allIssues.length > 0 ? 'proxy_dlp_warning' : 'proxy_call', tool_name: toolName, request_size: rawBody.length, response_size: responseBody.length, latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0, dlp_issues: allIssues, ip, user_agent: userAgent });
   });

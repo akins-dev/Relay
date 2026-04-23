@@ -462,17 +462,17 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
 
   while (true) {
     try {
-      const url = cursor
+      const url: string = cursor
         ? `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}&after=${cursor}`
         : `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}`;
 
-      const res = await fetch(url, {
+      const res: Response = await fetch(url, {
         headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data: any = await res.json();
       const items: any[] = data.servers ?? [];
       if (items.length === 0) break;
 

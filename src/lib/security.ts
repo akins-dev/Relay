@@ -36,6 +36,7 @@ export interface ScanResult {
   passed: boolean;
   issues: ScanIssue[];
   score:  number; // 0–100, used by computeTrustScore scanScore param
+  details?: string;
 }
 
 const STATIC_INJECTION_PATTERNS: { pattern: RegExp; severity: ScanIssue['severity']; type: string; desc: string }[] = [
@@ -88,7 +89,12 @@ export function scanServer(params: {
   const score     = Math.max(0, 100 - criticals * 40 - highs * 20);
   const passed    = criticals === 0;
 
-  return { passed, issues, score };
+  return {
+    passed,
+    issues,
+    score,
+    details: issues.map(i => i.description).join('; ') || 'No issues detected',
+  };
 }
 
 

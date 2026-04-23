@@ -9,9 +9,13 @@ export async function runSchemaDrift() {
   const results = { checked: 0, drifted: 0, suspended: 0, errors: 0 };
 
   // Track cron job run for admin dashboard
-  const { data: cronRun } = await svc.from('cron_job_runs').insert({
-    job_name: 'schema_drift', status: 'running',
-  }).select('id').single().catch(() => ({ data: null }));
+  let cronRun: { id: string } | null = null;
+  try {
+    const { data } = await svc.from('cron_job_runs').insert({
+      job_name: 'schema_drift', status: 'running',
+    }).select('id').single();
+    cronRun = (data as any) ?? null;
+  } catch {}
 
   const { data: servers } = await svc
     .from('servers')
@@ -98,9 +102,9 @@ export async function runSchemaDrift() {
 
   // Record completion in cron_job_runs
   if (cronRun?.id) {
-    await svc.from('cron_job_runs').update({
+    await (svc.from('cron_job_runs') as any).update({
       finished_at: new Date().toISOString(), status: 'success', result: results,
-    }).eq('id', cronRun.id).catch(() => {});
+    }).eq('id', cronRun.id);
   }
 
   return { ...results, timestamp: new Date().toISOString() };

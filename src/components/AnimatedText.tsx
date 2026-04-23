@@ -55,7 +55,7 @@ export function AnimatedHeading({
   delay = 0,
   once = true,
 }: AnimatedHeadingProps) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLHeadingElement>(null);
   const isInView = useInView(ref as React.RefObject<Element>, { once, margin: '-80px' });
 
   // Split into lines then words while preserving newlines
@@ -63,7 +63,7 @@ export function AnimatedHeading({
   let wordIndex = 0;
 
   return (
-    <Tag ref={ref} className={className} aria-label={children}>
+    <Tag ref={ref as any} className={className} aria-label={children}>
       {segments.map((line, li) => (
         <span key={li} className="block">
           {line.split(' ').map((word, wi) => {

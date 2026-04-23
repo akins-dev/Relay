@@ -51,6 +51,7 @@ export function hashIntent(intent: string): string {
 // ── Search event ──────────────────────────────────────────────────────────────
 
 export interface SearchEventParams {
+  searchEventId?:  string;
   userId:          string | null;
   sessionId:       string;
   interface:       'mcp_server' | 'rest' | 'sdk';
@@ -80,6 +81,7 @@ export async function recordSearchEvent(params: SearchEventParams): Promise<stri
     const { data } = await svc
       .from('search_events')
       .insert({
+        id:               params.searchEventId,
         user_id:          params.userId,
         session_id:       params.sessionId,
         interface:        params.interface,

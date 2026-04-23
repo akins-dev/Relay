@@ -124,6 +124,14 @@ const TOOLS = [
           type: 'object',
           description: 'Tool arguments matching the inputSchema exactly. Business data only — no API keys, tokens, or secrets.',
         },
+        search_event_id: {
+          type: 'string',
+          description: 'Optional correlation ID returned by search_tools. Pass it through unchanged so Relay can learn from the search -> invoke chain.',
+        },
+        intent: {
+          type: 'string',
+          description: 'Optional original intent string from search_tools. Pass it through unchanged to strengthen Relay ranking feedback.',
+        },
       },
     },
   },
@@ -211,6 +219,7 @@ async function handleSearchTools(
     ? Math.min(20, Math.max(1, parsedLimit))
     : 5;
   const intentHash = hashIntent(intent);
+  const searchEventId = crypto.randomUUID();
   const sessionId  = `${ip.slice(0, 8)}:${Date.now().toString(36)}`;
 
   // ── LEVER 3A: Heuristic intent classifier ────────────────────────────────────
@@ -237,6 +246,7 @@ async function handleSearchTools(
   if (looksLikeKnowledge && !hasActionOverride) {
     // Record as knowledge deflection — non-blocking
     after(() => recordSearchEvent({
+      searchEventId,
       userId: auth?.userId ?? null, sessionId,
       interface: 'mcp_server', intentText: intent,
       intentClass: 'knowledge', resultCount: 0,
@@ -250,6 +260,8 @@ async function handleSearchTools(
         no_tool_needed: true,
         reason: 'This is a knowledge or reasoning task. Answer from your training — no external tool needed.',
         intent,
+        intent_hash: intentHash,
+        search_event_id: searchEventId,
         hint: 'Call search_tools when you need to take action on an external system (send, create, query, update, delete, etc.).',
       }, null, 2) }],
     });
@@ -261,6 +273,7 @@ async function handleSearchTools(
   const cached = getIntentCache(intentHash);
   if (cached && cached.servers.length > 0) {
     after(() => recordSearchEvent({
+      searchEventId,
       userId: auth?.userId ?? null, sessionId,
       interface: 'mcp_server', intentText: intent,
       intentClass: 'action', resultCount: cached.servers.length,
@@ -276,6 +289,8 @@ async function handleSearchTools(
     return mcpResponse(id, {
       content: [{ type: 'text', text: JSON.stringify({
         intent,
+        intent_hash: intentHash,
+        search_event_id: searchEventId,
         results: cached.servers.slice(0, limit).map(s => ({
           name:           s.server_name,
           confidence:     s.success_rate,
@@ -306,6 +321,7 @@ async function handleSearchTools(
 
   if (!results || results.length === 0) {
     after(() => recordSearchEvent({
+      searchEventId,
       userId: auth?.userId ?? null, sessionId,
       interface: 'mcp_server', intentText: intent,
       intentClass: 'action', resultCount: 0,
@@ -319,6 +335,8 @@ async function handleSearchTools(
         results: [],
         message: `No servers found for: "${intent}". Try broader terms or check spelling.`,
         intent,
+        intent_hash: intentHash,
+        search_event_id: searchEventId,
       }, null, 2) }],
     });
   }
@@ -397,8 +415,8 @@ async function handleSearchTools(
   // should always re-query so search quality improvements apply immediately.
   if (topResult && topResult.confidence > 0.5) {
     const cacheableServers: CachedServer[] = formatted
-      .filter(r => r.confidence > 0.4)
-      .map(r => ({
+      .filter((r: any) => r.confidence > 0.4)
+      .map((r: any) => ({
         server_name:    r.name,
         tool_name:      r.tools?.[0]?.name ?? null,
         success_rate:   r.confidence,
@@ -410,6 +428,7 @@ async function handleSearchTools(
 
   // ── Record search event (non-blocking) ────────────────────────────────────────
   after(() => recordSearchEvent({
+    searchEventId,
     userId:       auth?.userId ?? null,
     sessionId,
     interface:    'mcp_server',
@@ -428,10 +447,13 @@ async function handleSearchTools(
   return mcpResponse(id, {
     content: [{ type: 'text', text: JSON.stringify({
       intent,
+      intent_hash: intentHash,
+      search_event_id: searchEventId,
       results: formatted,
       tip: [
         'Results ordered by confidence (position + trust + history).',
         'Use invoke_tool with the exact server and tool names shown.',
+        'Pass search_event_id and intent through to invoke_tool so Relay can learn from successful chains.',
         `Schemas trimmed to ${MAX_TOOLS_PER_RESULT} most relevant tools per server — use total_tools to see if more exist.`,
       ].join(' '),
     }, null, 2) }],
@@ -444,7 +466,13 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
   const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_relay_... for higher limits (200/min)');
 
-  const { server: serverName, tool: toolName, args: toolArgs } = args ?? {};
+  const {
+    server: serverName,
+    tool: toolName,
+    args: toolArgs,
+    search_event_id: searchEventId,
+    intent,
+  } = args ?? {};
   if (!serverName || !toolName) {
     return mcpError(id, -32602, 'server and tool are required');
   }
@@ -462,6 +490,9 @@ async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string
       userAgent:     req.headers.get('user-agent') ?? '',
       confirmHeader: req.headers.get('x-confirm-token'),
       callInterface: 'mcp_server',
+      searchEventId: typeof searchEventId === 'string' ? searchEventId : null,
+      intentText: typeof intent === 'string' ? intent : undefined,
+      intentHash: typeof intent === 'string' ? hashIntent(intent) : undefined,
     });
   } catch (e: any) {
     return mcpError(id, -32000, `Proxy execution failed: ${e.message}`);

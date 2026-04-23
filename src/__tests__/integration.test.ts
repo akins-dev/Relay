@@ -43,8 +43,19 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 
 jest.mock('@/lib/auth-server', () => ({
-  ...jest.requireActual('@/lib/auth-server'),
+  resolveUser: async (req: any) => {
+    const user = mockGetUser.mock?.results?.[mockGetUser.mock.results.length - 1]?.value;
+    const resolved = user ? await user : { data: { user: null } };
+    return { user: resolved?.data?.user ?? null, supabase: { auth: { getUser: mockGetUser }, from: mockFrom, rpc: mockRpc } };
+  },
   resolveApiKey: (...args: any[]) => mockResolveApiKey(...args),
+  resolveCallerUserId: async (req: any) => {
+    const apiKey = await mockResolveApiKey(req);
+    if (apiKey.userId) return { userId: apiKey.userId, keyId: apiKey.keyId, fromApiKey: true };
+    const user = mockGetUser.mock?.results?.[mockGetUser.mock.results.length - 1]?.value;
+    const resolved = user ? await user : { data: { user: null } };
+    return { userId: resolved?.data?.user?.id ?? null, keyId: null, fromApiKey: false };
+  },
 }));
 
 jest.mock('@/lib/ratelimit', () => ({
@@ -165,16 +176,14 @@ describe('Input validation (Zod schemas)', () => {
     const { POST } = await import('../app/api/ingest/route');
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
+    // Use the actual CRON_SECRET env var (or set a known one for the test)
+    const testSecret = process.env.CRON_SECRET || 'test-cron-secret';
+    process.env.CRON_SECRET = testSecret;
+
     const req = makeRequest('POST', 'http://localhost/api/ingest',
       { source: 'not_a_valid_source' },
-      { Authorization: `Bearer ${process.env.CRON_SECRET ?? 'test-secret'}` }
+      { Authorization: `Bearer ${testSecret}` }
     );
-    // Mock safeCompare to return true
-    jest.mock('@/lib/utils', () => ({
-      ...jest.requireActual('@/lib/utils'),
-      safeCompare: () => true,
-      isSafeUrl: () => true,
-    }));
 
     const res = await POST(req);
     // Should get 400 validation error (Zod) — source enum invalid

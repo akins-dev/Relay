@@ -217,11 +217,11 @@ export default function AdminPage() {
   async function saveRateLimit(context: string, limitCount: number, windowMs: number) {
     setRlSaving(context);
     try {
-      const { error } = await supabase
-        .from('rate_limit_config')
+      const result = await (supabase
+        .from('rate_limit_config') as any)
         .update({ limit_count: limitCount, window_ms: windowMs, updated_at: new Date().toISOString() })
         .eq('context', context);
-      if (error) throw error;
+      if (result.error) throw result.error;
       await load();
     } catch (e: any) {
       setAdminError(e.message);

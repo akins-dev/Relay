@@ -74,23 +74,30 @@ export async function rateLimit(
   const upstash = await getUpstash();
 
   if (upstash) {
-    // Cache limiter instances — creating new Ratelimit per request is expensive
-    const cacheKey = `${config.limit}:${config.windowMs}`;
-    if (!limiterCache.has(cacheKey)) {
-      const { Ratelimit, redis } = upstash;
-      limiterCache.set(cacheKey, new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(config.limit, `${config.windowMs}ms`),
-        prefix:  BRAND.slug,
-      }));
+    try {
+      // Cache limiter instances — creating new Ratelimit per request is expensive
+      const cacheKey = `${config.limit}:${config.windowMs}`;
+      if (!limiterCache.has(cacheKey)) {
+        const { Ratelimit, redis } = upstash;
+        limiterCache.set(cacheKey, new Ratelimit({
+          redis,
+          limiter: Ratelimit.slidingWindow(config.limit, `${config.windowMs}ms`),
+          prefix:  BRAND.slug,
+        }));
+      }
+      const limiter = limiterCache.get(cacheKey);
+      const { success, remaining, reset } = await limiter.limit(key);
+      return {
+        allowed: success,
+        remaining,
+        resetAt: typeof reset === 'number' ? reset : Date.now() + config.windowMs,
+      };
+    } catch (error: any) {
+      // Development and some local environments may have stale or unreachable
+      // Upstash credentials configured. Rate limiting should degrade gracefully.
+      console.warn('[ratelimit] Upstash unavailable, falling back to in-memory limiter:', error?.message ?? 'unknown error');
+      return memRateLimit(key, config.limit, config.windowMs);
     }
-    const limiter = limiterCache.get(cacheKey);
-    const { success, remaining, reset } = await limiter.limit(key);
-    return {
-      allowed: success,
-      remaining,
-      resetAt: typeof reset === 'number' ? reset : Date.now() + config.windowMs,
-    };
   }
 
   // In-memory fallback
