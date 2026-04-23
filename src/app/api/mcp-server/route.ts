@@ -8,7 +8,7 @@
  * Auth: API key via Authorization: Bearer header (optional for read, required for invoke)
  *
  * Two tools exposed:
- *   search_tools(intent, limit?)  — semantic search returning servers + full schemas
+ *   search_tools(intent, limit?)  — intent search returning servers + full schemas
  *   invoke_tool(server, tool, args) — proxied through 15-layer security stack
  *
  * Config for Claude Desktop / Cursor / any MCP client:

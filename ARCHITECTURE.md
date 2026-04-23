@@ -190,16 +190,16 @@ For Streamable HTTP 2025-03-26 servers: probe for stateless mode (skip init).
 
 ---
 
-### Gap 2.5: Zero-Cost Intent-Based Discovery — ✅ ALREADY IMPLEMENTED
+### Gap 2.5: Zero-Cost Lexical Retrieval + Reranking — ✅ ALREADY IMPLEMENTED
 
-The `search_servers` Postgres function already uses the optimal zero-cost approach:
+The `search_servers` Postgres function already uses the right zero-cost MVP approach:
 1. **Postgres FTS** — `ts_rank(s.search_vector, plainto_tsquery('english', query_text))` with weighted tsvector columns
 2. **pg_trgm trigram matching** — `similarity(s.name, query_text) > 0.15` for typo tolerance and fuzzy matching
 3. **Tag ILIKE fallback** — catches category-level matches
 4. **Ranking boost** — new servers (< 90 days) get a 1.0–1.4x boost to surface fresh additions
 
-This gives genuine semantic-like search capability purely in SQL, with ZERO additional API costs or infrastructure.
-No OpenAI embeddings, no Pinecone, no monthly bills.
+This gives strong intent-oriented lexical retrieval purely in SQL, with zero additional API costs or infrastructure.
+It is not embedding-based semantic search. The semantic gap is closed later by behavioral reranking, learned routing, and eventually model weights.
 
 ### Gap 3: Streaming Response Support
 

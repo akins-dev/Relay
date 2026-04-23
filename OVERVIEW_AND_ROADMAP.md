@@ -57,7 +57,7 @@ The architecture is asymptotically dominant. This is not a feature — it's a st
 
 **Agent interface:**
 - Native MCP server at `/api/mcp-server` — agents connect once, get everything
-- `search_tools`: FTS + trigram search across 20,000+ servers with confidence scoring
+- `search_tools`: FTS + trigram intent retrieval across 20,000+ servers with confidence scoring
 - `invoke_tool`: direct execution through the security proxy (no internal HTTP hop)
 - Lever 3A knowledge classifier: deflects non-action queries before DB touch
 - Intent cache: O(1) lookup for frequent intent→server mappings
@@ -139,6 +139,7 @@ The architecture is asymptotically dominant. This is not a feature — it's a st
 ### Sprint 6 — Intelligence + Publisher Program (5 weeks)
 
 - [ ] **Lever 3B:** Train logistic regression classifier on accumulated search_events + invoke_outcomes data. Replaces heuristic Lever 3A with a learned model. Zero ongoing cost.
+- [ ] **Hybrid retrieval reranker:** keep FTS + trigram as the baseline recall layer, and add embedding recall only if analytics shows repeated lexical misses. Behavioral signals remain the ranking authority.
 - [ ] **Behavioral trust signals:** DLP trigger rate and failure rate from metering feed trust score in real time
 - [ ] **GitHub OIDC verified publisher:** Publishers sign with GitHub Actions tokens. Registry verifies cryptographically. No human review bottleneck.
 - [ ] `@Relay/sdk` TypeScript SDK
@@ -154,19 +155,19 @@ The architecture is asymptotically dominant. This is not a feature — it's a st
 - [ ] Scale-to-zero billing
 - [ ] Closes the stdio gap for agents without CLI
 
-### Sprint 8+ — Gap 3: Weight-Embedded Intelligence
+### Sprint 8+ — Gap 3: Learned Intent Routing
 
 This is where the data asset becomes a product.
 
-After sufficient usage data accumulates in `intent_server_mappings` and `invoke_outcomes`, fine-tune a small model (7B class) on the corpus:
+After sufficient usage data accumulates in `intent_server_mappings` and `invoke_outcomes`, train a routing model on the corpus and, if justified by quality and cost, distill or fine-tune a small model (7B class) on the highest-value intent paths:
 - Input: intent string
 - Output: (server_name, tool_name, confidence) without any search call
 
-For the most common intents (~80% of traffic based on the power law distribution that will emerge), the model answers from weights. `search_tools` becomes a fallback for novel intents.
+For the most common intents (~80% of traffic based on the power law distribution that will emerge), the model answers directly from learned routing. `search_tools` becomes a fallback for novel intents and low-confidence cases.
 
-This is the theoretically optimal solution approaching practical reality. The two visible tools become nearly zero-latency for trained intents. The registry is still needed for discovery, security, and tail intents — but the common path becomes sub-millisecond.
+This is the practically optimal solution. The two visible tools become nearly zero-latency for trained intents. The registry is still needed for discovery, security, and tail intents — but the common path becomes sub-millisecond.
 
-**This is the business.** The fine-tuned model + its training corpus + ongoing improvement pipeline is the competitive moat that no competitor can replicate without the same data.
+**This is the business.** The learned routing layer + its training corpus + ongoing improvement pipeline is the competitive moat that no competitor can replicate without the same data.
 
 ---
 
@@ -188,8 +189,8 @@ Companies building agent pipelines want to know: "Which tools should my agent us
 **Application 2 — Gap analysis product**
 The `ecosystem_gaps` view shows intents that agents search for but can't find. This is a roadmap for the MCP ecosystem. Companies building tools want to know where demand exists before there's supply. That data is uniquely Relay's.
 
-**Application 3 — Gap 3 fine-tuned model**
-The training corpus (intent → server → tool → outcome) enables a fine-tuned model that eliminates search latency for common intents. This model, licensed or offered as an API, is a standalone product. Every agent framework that wants fast, reliable tool selection needs it.
+**Application 3 — Gap 3 learned routing model**
+The training corpus (intent → server → tool → outcome) enables a learned routing layer that eliminates search latency for common intents. Whether that is delivered as a classifier, distillation pipeline, or fine-tuned model depends on the observed quality/cost tradeoff. The product value is the routing accuracy, not the specific model class.
 
 ### Community first, business second
 
@@ -211,9 +212,9 @@ Relay is currently at ~70% of that limit. The path to ~85%:
 
 **Gap 2 (Sprint 4, 3 days):** Speculative invocation. High-confidence single matches pre-execute, collapsing search+invoke to one call. The theoretical minimum for a non-weight-embedded system.
 
-**Gap 3 (Sprint 8+):** Fine-tuned model on accumulated corpus. Common intents answered from weights. The point where the search-then-invoke pattern becomes invisible for trained intents. The architecture is still there — it just operates at near-zero cost for known intents.
+**Gap 3 (Sprint 8+):** Learned routing on accumulated corpus. Common intents answered directly for trained paths. The point where the search-then-invoke pattern becomes invisible for known intents. The architecture is still there — it just operates at near-zero cost for known intents.
 
-Each gap closes as the system matures. The architecture is already on the right trajectory. The data being collected now is what makes Gap 3 possible. That's the rare property of a system that gets better by being used — not despite its design, but because of it.
+Each gap closes as the system matures. The architecture is already on the right trajectory. The data being collected now is what makes Gap 3 possible. The current lexical retrieval layer is the bootstrap, not the endpoint.
 
 ---
 
