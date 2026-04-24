@@ -1,4 +1,4 @@
-import { isSafeUrl } from '@/lib/utils';
+import { isSafeUrl, isSafeUrlForServerFetch, parseGitHubUrl } from '@/lib/utils';
 /**
  * Relay — Registry Ingest Pipeline
  *
@@ -68,8 +68,9 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
   prompts:     Array<{ name: string; description?: string }>;
   protocolVersion: string | null;
   mcpCompliant: boolean;
+  transport: 'stdio' | 'sse' | 'streamable_http' | 'unknown';
 }> {
-  const empty = { toolSchemas: [], resources: [], prompts: [], protocolVersion: null, mcpCompliant: false };
+  const empty = { toolSchemas: [], resources: [], prompts: [], protocolVersion: null, mcpCompliant: false, transport: 'unknown' as const };
 
   if (!endpoint || !isSafeUrl(endpoint)) {
     // Fallback: parse README for tool hints
@@ -94,6 +95,7 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
       prompts:         probe.prompts,
       protocolVersion: probe.protocolVersion,
       mcpCompliant:    probe.mcpCompliant,
+      transport:       probe.transport,
     };
   }
 
@@ -103,6 +105,7 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
     prompts:         probe.prompts,
     protocolVersion: probe.protocolVersion,
     mcpCompliant:    probe.mcpCompliant,
+    transport:       probe.transport,
   };
 }
 
@@ -139,19 +142,8 @@ export interface IngestResult {
  */
 export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[]> {
   try {
-    // Convert github.com URL to raw.githubusercontent.com
-    const rawUrl = githubUrl
-      .replace('github.com', 'raw.githubusercontent.com')
-      .replace(/\/tree\/[^/]+/, '')
-      + '/main/README.md';
-
-    if (!isSafeUrl(rawUrl)) return [];
-    const res = await fetch(rawUrl, {
-      headers: { 'User-Agent': 'relay-ingest/0.1' },
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) return [];
-    const text = await res.text();
+    const text = await fetchFirstGithubText(githubUrl, ['README.md', 'readme.md']);
+    if (!text) return [];
 
     const tools: ToolSchema[] = [];
     const seen = new Set<string>();
@@ -198,6 +190,39 @@ export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[
   } catch {
     return [];
   }
+}
+
+function buildGitHubRawCandidates(githubUrl: string, filenames: string[]): string[] {
+  const parts = parseGitHubUrl(githubUrl);
+  if (!parts) return [];
+
+  const branches = parts.branch ? [parts.branch, 'main', 'master'] : ['main', 'master'];
+  const subpaths = parts.subpath ? [parts.subpath, null] : [null];
+  const urls: string[] = [];
+
+  for (const branch of branches) {
+    for (const subpath of subpaths) {
+      for (const filename of filenames) {
+        const cleanSubpath = subpath?.replace(/^\/+|\/+$/g, '');
+        const path = cleanSubpath ? `${cleanSubpath}/${filename}` : filename;
+        urls.push(`https://raw.githubusercontent.com/${parts.owner}/${parts.repo}/${branch}/${path}`);
+      }
+    }
+  }
+
+  return [...new Set(urls)];
+}
+
+async function fetchFirstGithubText(githubUrl: string, filenames: string[]): Promise<string | null> {
+  for (const rawUrl of buildGitHubRawCandidates(githubUrl, filenames)) {
+    if (!(await isSafeUrlForServerFetch(rawUrl))) continue;
+    const res = await fetch(rawUrl, {
+      headers: { 'User-Agent': 'relay-ingest/0.1' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (res.ok) return await res.text();
+  }
+  return null;
 }
 
 
@@ -669,17 +694,12 @@ export async function parseReadmeDescription(githubUrl: string): Promise<{
   readme_url: string;
 } | null> {
   try {
-    const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
-    if (!match) return null;
-    const [, owner, repo] = match;
-
-    const branches = ['main', 'master'];
     let text: string | null = null;
     let readmeUrl = '';
 
-    for (const branch of branches) {
-      readmeUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`;
-      if (!isSafeUrl(readmeUrl)) continue;
+    for (const candidate of buildGitHubRawCandidates(githubUrl, ['README.md', 'readme.md'])) {
+      readmeUrl = candidate;
+      if (!(await isSafeUrlForServerFetch(readmeUrl))) continue;
       const res = await fetch(readmeUrl, {
         headers: { 'User-Agent': 'relay-ingest/1.0' },
         signal: AbortSignal.timeout(8_000),
@@ -817,11 +837,13 @@ export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' |
     if (e.includes('github.com/') && !e.includes('/api/') && !e.includes('/sse')) {
       return 'stdio';
     }
-    // StreamableHTTP pattern: /mcp, /api/mcp, /mcp-server
-    if (e.includes('/mcp') || e.includes('/sse') || e.includes('/stream')) {
+    if (e.includes('/sse') || e.includes('/events')) {
+      return 'sse';
+    }
+    if (e.includes('/mcp') || e.includes('/stream')) {
       return 'streamable_http';
     }
-    return 'sse'; // default HTTP assumption
+    return 'unknown';
   }
 
   // Local process indicators
@@ -947,10 +969,10 @@ export async function upsertServers(
       // Stdio servers are stored with proxy_available=false so users can
       // find them and invoke them via the CLI or a future container bridge.
       const detected = detectTransport(s.endpoint, s.github_url);
-      const transport = (s.transport === 'stdio' || detected === 'stdio') 
+      let transport = (s.transport === 'stdio' || detected === 'stdio') 
         ? 'stdio' 
         : (s.transport && s.transport !== 'unknown' ? s.transport : detected);
-      const proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+      let proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
 
       if (idx < 15) { // Log first 15 to keep it clean
         console.log(`\n[DEBUG-TRACE] ${s.name}`);
@@ -1047,50 +1069,53 @@ export async function upsertServers(
         mcpPrompts      = primitives.prompts;
         protocolVersion = primitives.protocolVersion;
         mcpCompliant    = primitives.mcpCompliant;
+        if (primitives.transport !== 'unknown') {
+          transport = primitives.transport;
+          proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+        }
       } else if (transport === 'stdio') {
         if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET B (STDIO BRANCH)`);
         // Stdio server processing tree
         if (!process.env.SANDBOX_URL) {
           if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox] SANDBOX_URL not set`);
+        } else if (!process.env.SANDBOX_AUTH_TOKEN) {
+          if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox-auth] SANDBOX_AUTH_TOKEN not set`);
         } else if (!s.github_url && !s.smithery_id) {
           if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-source] stdio but no github_url or smithery_id`);
         } else {
           if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Preparing Sandbox Req...`);
           // Stdio server with Sandbox integration configured
           try {
-            const isSmithy = Boolean(s.smithery_id);
-            const runTarget = isSmithy
-              ? ['-y', '@smithery/cli@latest', 'run', s.smithery_id]
-              : ['-y', 'tsx', `${s.github_url}`];
-
-            const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
-              },
-              body: JSON.stringify({
-                command: 'npx',
-                args: runTarget
-              })
-            });
-            
-            if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox fetch status: ${req.status}`);
-            
-            if (req.ok) {
-              const sandboxResult = await req.json();
-              if (sandboxResult.success && sandboxResult.data) {
-                if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
-                toolSchemas = sandboxResult.data.tools || [];
-                mcpResources = sandboxResult.data.resources || [];
-                mcpPrompts = sandboxResult.data.prompts || [];
-                mcpCompliant = true;
-                protocolVersion = '2024-11-05';
-              } else {
-                if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox returned success=false. Body:`, JSON.stringify(sandboxResult));
-              }
+            const sandboxCommand = buildSandboxCommand(s);
+            if (!sandboxCommand) {
+              if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox-command] no safe executable strategy for source`);
             } else {
-               if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox rejected with status ${req.status}. Body: ${await req.text().catch(()=>'error reading body')}`);
+              const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json', 
+                  'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}` 
+                },
+                body: JSON.stringify(sandboxCommand)
+              });
+              
+              if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox fetch status: ${req.status}`);
+              
+              if (req.ok) {
+                const sandboxResult = await req.json();
+                if (sandboxResult.success && sandboxResult.data) {
+                  if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
+                  toolSchemas = sandboxResult.data.tools || [];
+                  mcpResources = sandboxResult.data.resources || [];
+                  mcpPrompts = sandboxResult.data.prompts || [];
+                  mcpCompliant = true;
+                  protocolVersion = '2024-11-05';
+                } else {
+                  if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox returned success=false. Body:`, JSON.stringify(sandboxResult));
+                }
+              } else {
+                 if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox rejected with status ${req.status}. Body: ${await req.text().catch(()=>'error reading body')}`);
+              }
             }
           } catch (e: any) {
             if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox probe FAILED with Exception: ${e.message}`);
@@ -1325,4 +1350,23 @@ function slugify(name: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 64);
+}
+
+function buildSandboxCommand(s: IngestServer): { command: string; args: string[] } | null {
+  if (s.smithery_id) {
+    return {
+      command: 'npx',
+      args: ['-y', '@smithery/cli@latest', 'run', s.smithery_id],
+    };
+  }
+
+  if (!s.github_url) return null;
+  const gh = parseGitHubUrl(s.github_url);
+  if (!gh || gh.subpath) return null;
+
+  const ref = gh.branch ? `github:${gh.owner}/${gh.repo}#${gh.branch}` : `github:${gh.owner}/${gh.repo}`;
+  return {
+    command: 'npx',
+    args: ['-y', ref],
+  };
 }

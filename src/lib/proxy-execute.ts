@@ -12,7 +12,7 @@
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { withCache }                         from '@/lib/cache';
-import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
+import { signToken, verifyToken, isSafeUrl, isSafeUrlForServerFetch, readBoundedResponse, resolveSafeRedirectUrl } from '@/lib/utils';
 import { SITE_URL }                          from '@/lib/site';
 import { BRAND }                             from '@/lib/brand';
 import { after }                             from '@/lib/after';
@@ -101,6 +101,7 @@ async function injectCredential(
 // MCP initialize handshake for stateful servers (SSE, 2024-11-05 strict)
 async function mcpHandshake(endpoint: string, headers: Record<string, string>): Promise<string | null> {
   try {
+    if (!(await isSafeUrlForServerFetch(endpoint))) return null;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -183,10 +184,6 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
     }), contentType: 'application/json', headers: {} };
   }
 
-  if (!server.endpoint || !isSafeUrl(server.endpoint)) {
-    return { status: 400, body: JSON.stringify({ error: 'Server endpoint failed SSRF validation' }), contentType: 'application/json', headers: {} };
-  }
-
   if (!Array.isArray(server.tools) || !server.tools.includes(toolName)) {
     return { status: 404, body: JSON.stringify({
       error: `Tool '${toolName}' not found on '${serverName}'`,
@@ -253,6 +250,10 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
     }
   } catch {}
 
+  if (!server.endpoint || !(await isSafeUrlForServerFetch(server.endpoint))) {
+    return { status: 400, body: JSON.stringify({ error: 'Server endpoint failed SSRF validation' }), contentType: 'application/json', headers: {} };
+  }
+
   // ── 10. Vault credential injection (single lookup) ────────────────────────────
   const upstreamHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -289,8 +290,9 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
 
     if (upstream.status >= 300 && upstream.status < 400) {
       const location = upstream.headers.get('location') ?? '';
-      if (!isSafeUrl(location)) return { status: 502, body: JSON.stringify({ error: 'Upstream redirected to blocked URL (SSRF guard)' }), contentType: 'application/json', headers: {} };
-      const rr = await fetch(location, { method: 'POST', headers: upstreamHeaders, body: mcpBody, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
+      const redirectUrl = await resolveSafeRedirectUrl(location, server.endpoint);
+      if (!redirectUrl) return { status: 502, body: JSON.stringify({ error: 'Upstream redirected to blocked URL (SSRF guard)' }), contentType: 'application/json', headers: {} };
+      const rr = await fetch(redirectUrl, { method: 'POST', headers: upstreamHeaders, body: mcpBody, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
       upstreamStatus = rr.status; upstreamContentType = rr.headers.get('content-type') ?? 'application/json';
       const b = await readBoundedResponse(rr); responseBody = b.body; responseTruncated = b.truncated;
     } else {

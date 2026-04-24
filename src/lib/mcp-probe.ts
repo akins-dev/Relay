@@ -47,7 +47,7 @@
  *   https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
  */
 
-import { isSafeUrl } from '@/lib/utils';
+import { isSafeUrlForServerFetch } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +135,7 @@ async function mcpInitialize(
   serverInfo:      { name?: string; version?: string } | null;
 } | null> {
   try {
+    if (!(await isSafeUrlForServerFetch(endpoint))) return null;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -298,6 +299,7 @@ async function detectTransportFromLiveProbe(
   endpoint: string
 ): Promise<MCPTransport | null> {
   try {
+    if (!(await isSafeUrlForServerFetch(endpoint))) return null;
     // Try SSE GET — if the server opens an event stream, it's SSE or Streamable HTTP
     const res = await fetch(endpoint, {
       method:  'GET',
@@ -306,15 +308,23 @@ async function detectTransportFromLiveProbe(
     });
     const ct = res.headers.get('content-type') ?? '';
     if (ct.includes('text/event-stream')) {
-      // Streamable HTTP serves SSE for GET AND accepts POST
-      // Legacy SSE only serves the stream for GET; POST goes to a /messages endpoint
-      return 'streamable_http'; // default assumption for HTTP-accessible MCP servers
+      const pathname = new URL(endpoint).pathname.toLowerCase();
+      if (pathname.endsWith('/sse') || pathname.includes('/events')) return 'sse';
+      return 'streamable_http';
     }
     if (res.ok) return 'streamable_http'; // responded to GET — HTTP transport
     return null;
   } catch {
     return null;
   }
+}
+
+function inferTransportFromEndpoint(endpoint: string): MCPTransport {
+  try {
+    const pathname = new URL(endpoint).pathname.toLowerCase();
+    if (pathname.endsWith('/sse') || pathname.includes('/events')) return 'sse';
+  } catch {}
+  return 'streamable_http';
 }
 
 // ── Main probe entrypoint ─────────────────────────────────────────────────────
@@ -350,7 +360,7 @@ export async function probeMCPServer(
     status:          'unreachable',
   };
 
-  if (!isSafeUrl(endpoint)) {
+  if (!(await isSafeUrlForServerFetch(endpoint))) {
     return { ...empty, status: 'blocked:ssrf' };
   }
 
@@ -371,6 +381,7 @@ export async function probeMCPServer(
   }
 
   const { protocolVersion, capabilities, serverInfo } = init;
+  const transport = (await detectTransportFromLiveProbe(endpoint)) ?? inferTransportFromEndpoint(endpoint);
 
   // Step 2: Fetch primitives based on capabilities
   // Only call tools/list if server declared tools capability (or if we don't know — try anyway)
@@ -390,7 +401,7 @@ export async function probeMCPServer(
     alive:           true,
     mcpCompliant:    true,
     protocolVersion,
-    transport:       'streamable_http',
+    transport,
     capabilities,
     tools,
     resources,
@@ -411,7 +422,7 @@ export async function probeMCPServer(
 export async function probeUptime(
   endpoint: string
 ): Promise<{ up: boolean; latencyMs: number; mcpCompliant: boolean }> {
-  if (!isSafeUrl(endpoint)) return { up: false, latencyMs: 0, mcpCompliant: false };
+  if (!(await isSafeUrlForServerFetch(endpoint))) return { up: false, latencyMs: 0, mcpCompliant: false };
 
   const start = Date.now();
 
@@ -436,7 +447,7 @@ export async function probeUptime(
   // Fallback 2: GET /health
   try {
     const healthUrl = endpoint.replace(/\/$/, '') + '/health';
-    if (isSafeUrl(healthUrl)) {
+    if (await isSafeUrlForServerFetch(healthUrl)) {
       const res = await fetch(healthUrl, {
         signal: AbortSignal.timeout(4_000),
         headers: { 'User-Agent': 'openMCP-registry/1.0' },

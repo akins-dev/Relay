@@ -409,22 +409,25 @@ export interface CveIssue {
  */
 export async function scanNpmDependencies(githubUrl: string): Promise<CveIssue[]> {
   try {
-    // Convert github.com URL to raw content URL
-    const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
-    if (!match) return [];
-    const [, owner, repo] = match;
-    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/package.json`;
+    const { parseGitHubUrl, isSafeUrlForServerFetch } = await import('@/lib/utils');
+    const parts = parseGitHubUrl(githubUrl);
+    if (!parts) return [];
 
-    const res = await fetch(rawUrl, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) {
-      // Try master branch
-      const res2 = await fetch(rawUrl.replace('/main/', '/master/'), { signal: AbortSignal.timeout(8_000) });
-      if (!res2.ok) return [];
-      const pkg = await res2.json();
-      return await runNpmAudit(pkg);
+    const branches = parts.branch ? [parts.branch, 'main', 'master'] : ['main', 'master'];
+    const subpaths = parts.subpath ? [parts.subpath, null] : [null];
+
+    for (const branch of branches) {
+      for (const subpath of subpaths) {
+        const path = subpath ? `${subpath.replace(/^\/+|\/+$/g, '')}/package.json` : 'package.json';
+        const rawUrl = `https://raw.githubusercontent.com/${parts.owner}/${parts.repo}/${branch}/${path}`;
+        if (!(await isSafeUrlForServerFetch(rawUrl))) continue;
+        const res = await fetch(rawUrl, { signal: AbortSignal.timeout(8_000) });
+        if (!res.ok) continue;
+        const pkg = await res.json();
+        return await runNpmAudit(pkg);
+      }
     }
-    const pkg = await res.json();
-    return await runNpmAudit(pkg);
+    return [];
   } catch {
     return [];
   }

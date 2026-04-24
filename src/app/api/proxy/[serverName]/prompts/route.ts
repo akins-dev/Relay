@@ -18,7 +18,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveUser }                       from '@/lib/auth-server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp, apiError }               from '@/lib/api';
-import { isSafeUrl, readBoundedResponse } from '@/lib/utils';
+import { isSafeUrlForServerFetch, readBoundedResponse } from '@/lib/utils';
 import { indirectInjectionScan, dlpScan }    from '@/lib/security';
 import { BRAND }                             from '@/lib/brand';
 
@@ -59,7 +59,7 @@ export async function GET(
 
   const { server } = await resolveCallerAndServer(req, serverName);
   if (!server) return apiError(`Server '${serverName}' not found`, 404);
-  if (!isSafeUrl(server.endpoint)) return apiError('Endpoint failed safety check', 400);
+  if (!(await isSafeUrlForServerFetch(server.endpoint))) return apiError('Endpoint failed safety check', 400);
 
   try {
     const res = await fetch(server.endpoint, {
