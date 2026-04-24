@@ -1352,7 +1352,7 @@ function slugify(name: string): string {
     .slice(0, 64);
 }
 
-function buildSandboxCommand(s: IngestServer): { command: string; args: string[] } | null {
+export function buildSandboxCommand(s: Pick<IngestServer, 'smithery_id' | 'github_url'>): { command: string; args: string[] } | null {
   if (s.smithery_id) {
     return {
       command: 'npx',

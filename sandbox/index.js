@@ -4,6 +4,8 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 
 const app = express();
 app.use(express.json());
+const ALLOWED_COMMANDS = new Set(['npx']);
+const MAX_ARG_COUNT = 16;
 
 // Auth token — REQUIRED in all environments. No insecure fallbacks.
 const AUTH_TOKEN = process.env.SANDBOX_AUTH_TOKEN;
@@ -23,10 +25,16 @@ app.post('/extract', async (req, res) => {
   if (!command || typeof command !== 'string') {
     return res.status(400).json({ error: "Command is required and must be a string" });
   }
+  if (!ALLOWED_COMMANDS.has(command)) {
+    return res.status(400).json({ error: "command is not allowed" });
+  }
 
   // Validate args is an array of strings
   if (args !== undefined && (!Array.isArray(args) || !args.every(a => typeof a === 'string'))) {
     return res.status(400).json({ error: "args must be an array of strings" });
+  }
+  if ((args || []).length > MAX_ARG_COUNT) {
+    return res.status(400).json({ error: `args must have at most ${MAX_ARG_COUNT} items` });
   }
 
   // Validate env is an object of string key-value pairs

@@ -48,7 +48,7 @@ The deeper differentiator is the learning loop. Relay is designed to record whic
 
 ### Registry and ingest
 
-- Ingest from 7 active sources: Official Registry, Smithery, Glama, GitHub, Vendor, ClaudeMCP, MCP.so
+- Ingest from active sources including Official Registry, Smithery, Glama, PulseMCP, GitHub, verified organization feeds, ClaudeMCP, MCP.so, MCP.run, and Composio
 - Canonical normalized `servers` rows in Postgres
 - Three-tier ingest skip pipeline: timestamp -> hash -> full refresh
 - Dedup, normalization, trust scoring, scan history, and schema snapshots
@@ -110,6 +110,14 @@ The important point is that these are not random feature ideas. They are the nex
 - replace weak GitHub `stdio` sandbox execution assumptions with a more reliable extraction strategy
 - add ingest-quality metrics for extraction coverage, schema coverage, duplicate collisions, and bad-row rate
 - clean up the migration/documentation drift around source labels, search RPC shape, and local setup
+- add sandbox/backfill parity so every stdio extraction path derives commands the same way
+- add explicit stdio extraction provenance fields so ranking can distinguish sandbox-derived vs README-derived vs upstream-provided metadata
+- support source-provided launch manifests or publisher-declared execution commands for monorepo/subdirectory stdio servers
+- improve GitHub URL parsing to handle branch names with slashes and reduce tree/blob ambiguity
+- replace `last_scanned_at` as a schema-stability proxy with a real `last_schema_change_at` or equivalent stability metric
+- add ingest observability for sandbox call attempts, sandbox success rate, README fallback rate, and unresolved stdio rows
+- define stricter retention and ranking rules for weak stdio rows with no extracted tools so MVP discovery quality stays high
+- harden sandbox execution policy further if new runners are introduced beyond `npx`
 
 ### Sprint 3 — Sampling Security + OAuth
 
