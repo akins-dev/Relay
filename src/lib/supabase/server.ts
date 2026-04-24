@@ -10,15 +10,17 @@ export function createClient() {
   const cookieStore = cookies();
   return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
-      getAll() { return cookieStore.getAll(); },
+      getAll() {
+        return cookieStore.then((store) => store.getAll());
+      },
       setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-        try {
+        return cookieStore.then((store) => {
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+            store.set(name, value, options)
           );
-        } catch {
+        }).catch(() => {
           // In Server Components — middleware handles cookie refresh
-        }
+        });
       },
     },
   });
