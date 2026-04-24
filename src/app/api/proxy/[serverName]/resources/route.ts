@@ -49,9 +49,9 @@ async function resolveCallerAndServer(req: NextRequest, serverName: string) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { serverName: string } }
+  { params }: { params: Promise<{ serverName: string }> }
 ) {
-  const { serverName } = params;
+  const { serverName } = await params;
   const ip = extractIp(req);
 
   const rl = await rateLimit(`proxy:resources:${ip}`, LIMITS.proxy);
@@ -96,9 +96,9 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { serverName: string } }
+  { params }: { params: Promise<{ serverName: string }> }
 ) {
-  const { serverName } = params;
+  const { serverName } = await params;
   const ip = extractIp(req);
 
   const rl = await rateLimit(`proxy:resources:${ip}`, LIMITS.proxy);

@@ -297,7 +297,7 @@ describe('Proxy DLP blocking', () => {
       { Authorization: 'Bearer sk_mcp_test' }
     );
 
-    const res = await POST(req, { params: { serverName: 'stripe', toolName: 'charge' } });
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'stripe', toolName: 'charge' }) });
     const body = await toJson(res);
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/credential|blocked/i);
@@ -335,7 +335,7 @@ describe('Proxy DLP blocking', () => {
       { Authorization: 'Bearer sk_mcp_test' }
     );
 
-    const res = await POST(req, { params: { serverName: 'shell-test', toolName: 'run' } });
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'shell-test', toolName: 'run' }) });
     const body = await toJson(res);
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/injection|blocked/i);
@@ -361,7 +361,7 @@ describe('Proxy DLP blocking', () => {
       {},
       { Authorization: 'Bearer sk_mcp_test' }
     );
-    const res = await POST(req, { params: { serverName: 'nonexistent', toolName: 'tool' } });
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'nonexistent', toolName: 'tool' }) });
     expect(res.status).toBe(404);
   });
 });

@@ -4,8 +4,9 @@ import { resolveUser } from '@/lib/auth-server';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { name: string } }
+  { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
   const supabase = createClient();
   const serversTable = supabase.from('servers') as any;
   const scanResultsTable = supabase.from('scan_results') as any;
@@ -17,7 +18,7 @@ export async function GET(
 
   const { data: serverRow, error } = await serversTable
     .select('*, profiles!author_id ( username, github_username, avatar_url )')
-    .eq('name', params.name)
+    .eq('name', name)
     .single();
 
   const server = serverRow as any;
@@ -31,7 +32,7 @@ export async function GET(
 
   const { data: sameSource } = await serversTable
     .select(relatedSelect)
-    .neq('name', params.name)
+    .neq('name', name)
     .eq('status', 'active')
     .eq('source', server.source)
     .order('trust_score', { ascending: false })
@@ -44,7 +45,7 @@ export async function GET(
   if (related.length < 6 && primaryTag) {
     const { data: sameTag } = await serversTable
       .select(relatedSelect)
-      .neq('name', params.name)
+      .neq('name', name)
       .eq('status', 'active')
       .contains('tags', [primaryTag])
       .order('trust_score', { ascending: false })

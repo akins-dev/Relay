@@ -51,9 +51,9 @@ async function resolveCallerAndServer(req: NextRequest, serverName: string) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { serverName: string } }
+  { params }: { params: Promise<{ serverName: string }> }
 ) {
-  const { serverName } = params;
+  const { serverName } = await params;
   const rl = await rateLimit(`proxy:prompts:${extractIp(req)}`, LIMITS.proxy);
   if (!rl.allowed) return apiError('Rate limit exceeded', 429);
 

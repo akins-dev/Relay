@@ -21,9 +21,9 @@ import { BRAND }                             from '@/lib/brand';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { serverName: string; promptName: string } }
+  { params }: { params: Promise<{ serverName: string; promptName: string }> }
 ) {
-  const { serverName, promptName } = params;
+  const { serverName, promptName } = await params;
   const ip = extractIp(req);
 
   const rl = await rateLimit(`proxy:prompts:${ip}`, LIMITS.proxy);
