@@ -16,7 +16,7 @@ Create a project at [supabase.com](https://supabase.com). Run migrations in orde
 
 ```
 supabase/migrations/001_initial_schema.sql      ← full schema, RLS, FTS, RPCs
-supabase/migrations/002_seed_data.sql           ← 8 demo servers for local dev (sign up first)
+supabase/migrations/002_seed_data.sql           ← retired no-op placeholder (demo seed rows removed)
 supabase/migrations/003_source_and_cve.sql      ← source provenance + CVE fields
 supabase/migrations/004_mcp_server_and_schemas.sql ← tool schemas + mcp_connections
 supabase/migrations/005_metering.sql            ← per-call metering + revenue views
@@ -33,9 +33,16 @@ supabase/migrations/015_final_schema_fixes.sql  ← schema alignment fixes
 supabase/migrations/016_fix_global_stats.sql    ← global_stats RPC fix
 supabase/migrations/017_dedup_by_github_url.sql ← cross-source dedup by GitHub URL
 supabase/migrations/018_operations_tracking.sql ← cron job tracking, upstream timestamps, admin ops views
+supabase/migrations/019_add_vendor_source.sql   ← legacy source expansion
+supabase/migrations/020_add_github_url_to_search.sql ← legacy search RPC variant
+supabase/migrations/021_add_new_sources.sql     ← legacy source expansion
+supabase/migrations/022_analytics_intelligence_layer.sql ← search/invoke learning layer
+supabase/migrations/023_security_hardening.sql  ← rate limit config + official name conflict checks
+supabase/migrations/024_new_sources_and_partner_rename.sql ← vendor→partner rename + new sources
+supabase/migrations/025_ingest_mvp_contract_fixes.sql ← current ingest/search contract alignment
 ```
 
-> **Note on 002:** Seed data is for local development only — it gives you 8 demo servers so the UI is not empty while developing. Once ingest runs, seeded servers are replaced by real data. You can skip 002 in production.
+> **Note on 002:** This migration is now intentionally a no-op. Historical demo rows were removed so fresh environments start clean and ingest remains the only source of server truth.
 >
 > **Note on 011:** Read the header first and confirm your Supabase project keeps statement logging at `ddl` or `none`. This is an ongoing operational requirement for any route that stores secrets or OAuth tokens, not just a one-time migration concern.
 
@@ -52,6 +59,8 @@ cp .env.example .env.local
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (never expose) |
 | `CRON_SECRET` | Yes | Any random string — protects cron routes |
 | `SMITHERY_API_KEY` | Optional | Free at smithery.ai — needed for Smithery ingest |
+| `SANDBOX_URL` | Optional | Required if you want stdio schema extraction through the sandbox |
+| `SANDBOX_AUTH_TOKEN` | Optional | Auth token shared with the sandbox service |
 | `UPSTASH_REDIS_REST_URL` | Optional | Production rate limiting (console.upstash.com) |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Required with above |
 | `NEXT_PUBLIC_ADMIN_UID` | Optional | Supabase Auth user ID allowed to open `/admin` and trigger admin-only ingest |
@@ -63,8 +72,6 @@ cp .env.example .env.local
 ```bash
 bun dev
 # → http://localhost:3000
-
-# Sign up at /login, then re-run 002_seed_data.sql in Supabase SQL Editor
 ```
 
 ---
@@ -103,7 +110,7 @@ If a repository is ingested without a configured Sandbox, Relay will safely fall
 
 ## Ingest
 
-Ingest pulls from five sources, scans everything, and upserts into Supabase.
+Ingest normalizes upstream registries into canonical `servers` rows, probes remote MCP endpoints when possible, falls back to sandbox/README extraction for `stdio` rows, runs CVE checks, computes trust, and upserts into Supabase.
 
 ```bash
 # Ingest all sources at once (recommended)
@@ -114,21 +121,59 @@ curl -X POST http://localhost:3000/api/ingest \
 
 # Or trigger individual sources:
 # "official"  — MCP official registry (~87 servers, highest trust, no key needed)
-# "smithery"  — 7,300+ servers (SMITHERY_API_KEY required)
-# "glama"     — 14,274 servers (no key needed)
-# "pulsemcp"  — 11,800+ servers (no key needed)
+# "partner"   — verified organization / company controlled sources
+# "smithery"  — large registry (SMITHERY_API_KEY required)
+# "glama"     — public directory
+# "pulsemcp"  — handler exists, currently returns empty because public API is unavailable
 # "github"    — curated github.com/modelcontextprotocol/servers
+# "claudemcp" — curated directory
+# "mcpso"     — curated directory with API
+# "mcp_run"   — hosted MCP platform
+# "composio"  — MCP-compatible app/integration source
   -d '{"source": "official"}'
 ```
 
 Expected response includes a JSON breakdown of successful indexing and rejections per source.
+
+Important current behavior:
+
+- `stdio` rows are stored even when they are not cloud-invocable.
+- If a `stdio` server exposes no tools and has no useful description, ingest tries sandbox extraction first.
+- If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
+- If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
+
+### Manual cron routes
+
+These are the cron-backed routes exposed by the app:
+
+```bash
+# ingest
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"all"}'
+
+# uptime
+curl -X POST http://localhost:3000/api/cron/uptime-check \
+  -H "Authorization: Bearer $CRON_SECRET"
+
+# schema drift
+curl -X POST http://localhost:3000/api/cron/schema-drift \
+  -H "Authorization: Bearer $CRON_SECRET"
+
+# daily call reset
+curl -X POST http://localhost:3000/api/cron/reset-daily-calls \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+The corresponding script entrypoints live in `src/scripts/cron-*.ts` and are what GitHub Actions should run for long jobs.
 
 ---
 
 ## Tests
 
 ```bash
-bun test
+npm test
 # 40+ unit tests across all 14 security layers with real attack payloads
 ```
 
@@ -208,4 +253,5 @@ Ensure all required env vars are set in Vercel:
 - `CRON_SECRET` (random, strong)
 - `NEXT_PUBLIC_ADMIN_UID` (your Supabase Auth user ID)
 - `SMITHERY_API_KEY` (get free at smithery.ai)
+- `SANDBOX_URL` + `SANDBOX_AUTH_TOKEN` (if you want stdio extraction)
 - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (production rate limiting)

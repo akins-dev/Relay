@@ -102,6 +102,15 @@ The important point is that these are not random feature ideas. They are the nex
 
 ## Roadmap
 
+### Sprint 3A — Ingest Hardening
+
+- make cron trust recomputation consume the same persisted security findings ingest writes
+- tighten endpoint/repo dedup and trusted-source overwrite rules
+- improve transport truth so cron and search do not reason from stale heuristics
+- replace weak GitHub `stdio` sandbox execution assumptions with a more reliable extraction strategy
+- add ingest-quality metrics for extraction coverage, schema coverage, duplicate collisions, and bad-row rate
+- clean up the migration/documentation drift around source labels, search RPC shape, and local setup
+
 ### Sprint 3 — Sampling Security + OAuth
 
 - `sampling/createMessage` rate limit and audit logging
