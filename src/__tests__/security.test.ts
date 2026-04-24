@@ -437,7 +437,8 @@ describe('L5 — computeTrustScore', () => {
 
   test('dlpRatePct small penalty triggers >5 branch', () => {
     const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 50, daysSinceChange: 30 });
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 50, daysSinceChange: 30, dlpRatePct: 6 });
+    // dlpRatePct=6 gives penalty ((6-5)/100)*10=0.1 which rounds to 0; use 20 for visible penalty
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 50, daysSinceChange: 30, dlpRatePct: 20 });
     expect(penalised).toBeLessThan(base);
   });
 
@@ -593,7 +594,8 @@ describe('S-14 — scanNpmDependencies', () => {
   });
 
   test('contextLeakScan deduplicates and includes DLP matches', () => {
-    const text = 'Authorization: Bearer eyJ... AKIAIOSFODNN7EXAMPLE';
+    // Bearer pattern requires 20+ chars from [a-zA-Z0-9_-] after "Bearer "
+    const text = 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9abcdefgh AKIAIOSFODNN7EXAMPLE';
     const issues = contextLeakScan(text);
     expect(issues).toContain('Bearer token in response body');
     expect(issues).toContain('AWS access key');
