@@ -8,46 +8,26 @@ import { cn } from '@/lib/cn';
 import { AnimatedHeading, AnimatedParagraph, AnimatedLabel, AnimatedSection } from '@/components/AnimatedText';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import { getAgentBootstrapPrompt, getNativeMcpConfigSnippet } from '@/lib/agent-guidance';
 
 const SNIPPETS = {
   'claude-desktop': {
     label: 'Claude Desktop',
     lang:  'json',
     file:  '~/Library/Application Support/Claude/claude_desktop_config.json',
-    code: `{
-  "mcpServers": {
-    "${BRAND.name}": {
-      "url": "${SITE_URL}/api/mcp-server"
-    }
-  }
-}`,
+    code: getNativeMcpConfigSnippet(),
   },
   cursor: {
     label: 'Cursor',
     lang:  'json',
     file:  '~/.cursor/mcp.json',
-    code: `{
-  "mcpServers": {
-    "${BRAND.name}": {
-      "url": "${SITE_URL}/api/mcp-server"
-    }
-  }
-}`,
+    code: getNativeMcpConfigSnippet(),
   },
   'system-prompt': {
     label: 'System Prompt',
     lang:  'text',
     file:  'Any agent framework',
-    code: `## Tool Discovery
-
-You have access to ${BRAND.name}, the trust layer for remote MCP tools.
-Read ${SITE_URL}${BRAND.agentMdRoute} once before your first tool call.
-
-Search:  GET ${SITE_URL}/api/servers/search?q={intent}
-Invoke:  POST ${SITE_URL}/api/proxy/{serverName}/{toolName}
-
-Prefer servers with trust_score > 80.
-Always use the returned inputSchema before invoking a tool.`,
+    code: getAgentBootstrapPrompt(),
   },
   langchain: {
     label: 'LangChain / Python',

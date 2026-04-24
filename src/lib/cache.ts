@@ -34,7 +34,7 @@ class MemLRU {
   // Clear expired automatically occasionally
   cleanup() {
     const now = Date.now();
-    for (const [k, v] of this.cache) {
+    for (const [k, v] of Array.from(this.cache.entries())) {
       if (now > v.expiresAt) this.cache.delete(k);
     }
   }

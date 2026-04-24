@@ -3,15 +3,16 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { name: string } }
+  { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
   const supabase = createClient();
 
   // Server must exist and be active or owned by caller
   const { data: server } = await supabase
     .from('servers')
     .select('id, author_id, status, trust_score, total_calls, calls_today, latency_ms, uptime_pct')
-    .eq('name', params.name)
+    .eq('name', name)
     .single();
 
   if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });

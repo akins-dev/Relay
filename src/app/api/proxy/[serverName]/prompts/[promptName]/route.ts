@@ -15,15 +15,15 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveUser }                       from '@/lib/auth-server';
 import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
 import { extractIp, apiError }               from '@/lib/api';
-import { isSafeUrl, readBoundedResponse }    from '@/lib/utils';
+import { isSafeUrlForServerFetch, readBoundedResponse }    from '@/lib/utils';
 import { indirectInjectionScan, dlpScan }    from '@/lib/security';
 import { BRAND }                             from '@/lib/brand';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { serverName: string; promptName: string } }
+  { params }: { params: Promise<{ serverName: string; promptName: string }> }
 ) {
-  const { serverName, promptName } = params;
+  const { serverName, promptName } = await params;
   const ip = extractIp(req);
 
   const rl = await rateLimit(`proxy:prompts:${ip}`, LIMITS.proxy);
@@ -51,7 +51,7 @@ export async function POST(
     .single();
 
   if (!server) return apiError(`Server '${serverName}' not found`, 404);
-  if (!isSafeUrl(server.endpoint)) return apiError('Endpoint failed safety check', 400);
+  if (!(await isSafeUrlForServerFetch(server.endpoint))) return apiError('Endpoint failed safety check', 400);
 
   // Parse and validate arguments
   let promptArguments: Record<string, string> = {};

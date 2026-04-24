@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { BRAND } from '@/lib/brand';
 import { SITE_URL } from '@/lib/site';
+import {
+  API_KEY_HEADER,
+  SCHEMA_GUIDANCE,
+  SEARCH_ACTIVATION_CASES,
+  SEARCH_DECISION_RULE,
+  SEARCH_DEFLECTION_CASES,
+  STDIO_GUIDANCE,
+  TRUST_GUIDANCE,
+  getAgentBootstrapPrompt,
+  getNativeMcpConfigSnippet,
+} from '@/lib/agent-guidance';
 
 /**
  * GET /agents.md
@@ -18,6 +29,9 @@ export async function GET() {
   const activeServers   = s.active_servers   ?? 'thousands of';
   const verifiedServers = s.verified_servers ?? '0';
   const callsToday      = s.calls_today      ?? '0';
+  const callSearchList  = SEARCH_ACTIVATION_CASES.map(item => `- ${item}`).join('\n');
+  const avoidSearchList = SEARCH_DEFLECTION_CASES.map(item => `- ${item}`).join('\n');
+  const nativeMcpConfig = getNativeMcpConfigSnippet();
 
   const md = `# ${BRAND.name}
 
@@ -26,6 +40,16 @@ ${BRAND.tagline} ${activeServers} active servers. Zero local setup.
 > "Every agent framework is hitting the same wall: too many pre-loaded tools, shrinking context windows, and brittle integrations wired before the agent runs. ${BRAND.name} removes that wall."
 >
 > Agents describe what they need. ${BRAND.name} finds it, verifies it, and invokes it at runtime. The context window cost stays focused on just two tools: search and invoke.
+
+## Activation rules — when to use this registry
+
+**CALL search_tools when you need to:**
+${callSearchList}
+
+**DO NOT call search_tools when:**
+${avoidSearchList}
+
+**Decision rule:** ${SEARCH_DECISION_RULE}
 
 ## What you can do
 
@@ -36,14 +60,14 @@ ${BRAND.tagline} ${activeServers} active servers. Zero local setup.
 - **Trust every result** — each server scanned across 14 security layers before listing
 - **Autodiscover this registry** — \`GET /.well-known/mcp.json\` returns a machine-readable manifest
 
-**About stdio servers:** stdio servers appear in search results with \`proxy_available: false\`. They are not invocable through the web proxy today. ${BRAND.cli} (planned) will bridge them locally. For now, skip results where \`proxy_available\` is \`false\`.
+**About stdio servers:** stdio servers appear in search results with \`proxy_available: false\`. They are not invocable through the web proxy today. ${STDIO_GUIDANCE}
 
 ## Live stats (as of this request)
 
 - Active servers: ${activeServers} (all transports — stdio, SSE, HTTP)
 - Verified servers: ${verifiedServers}
 - Calls today: ${callsToday}
-- Sources: Official MCP Registry + Smithery + Glama + PulseMCP + GitHub
+- Sources: Official MCP Registry + Smithery + Glama + GitHub + ClaudeMCP + MCP.so
 - MCP spec version: 2025-03-26 (also supports 2024-11-05)
 
 ---
@@ -140,7 +164,7 @@ GET /api/servers/search?q=send transactional email&limit=3
 
 \`\`\`
 POST ${SITE_URL}/api/proxy/{serverName}/{toolName}
-Authorization: Bearer sk_mcp_<your-key>
+${API_KEY_HEADER}
 Content-Type: application/json
 
 { ...tool arguments from inputSchema }
@@ -198,18 +222,14 @@ If your framework supports MCP, connect to ${BRAND.name} once and get
 \`search_tools\` and \`invoke_tool\` as native MCP tools:
 
 \`\`\`json
-{
-  "mcpServers": {
-    "${BRAND.slug}": {
-      "url": "${SITE_URL}/api/mcp-server"
-    }
-  }
-}
+${nativeMcpConfig}
 \`\`\`
 
 Then call:
 - \`search_tools({ intent: "send an email" })\` — returns verified servers with full schemas
 - \`invoke_tool({ server: "sendgrid-mail", tool: "send_email", args: {...} })\` — proxied securely
+- ${TRUST_GUIDANCE}
+- ${SCHEMA_GUIDANCE}
 
 ---
 
@@ -269,7 +289,13 @@ Returns full endpoint map, all security layers, and this prompt template.
 If you are running in a CLI-first agent framework (OpenClaw, shell-based agents): ${BRAND.name} integrates with one config line today for remote MCP discovery and invocation. A dedicated local CLI bridge for stdio servers is planned next.
 
 \`\`\`json
-{ "mcpServers": { "${BRAND.slug}": { "url": "${SITE_URL}/api/mcp-server" } } }
+${nativeMcpConfig}
+\`\`\`
+
+## Bootstrap prompt for non-MCP frameworks
+
+\`\`\`
+${getAgentBootstrapPrompt()}
 \`\`\`
 
 ## Coming soon / In progress

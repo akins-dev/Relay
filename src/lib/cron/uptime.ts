@@ -8,9 +8,13 @@ export async function runUptimeCheck() {
   const results = { checked: 0, up: 0, down: 0, errors: 0 };
 
   // Track cron job run for admin dashboard
-  const { data: cronRun } = await svc.from('cron_job_runs').insert({
-    job_name: 'uptime_check', status: 'running',
-  }).select('id').single().catch(() => ({ data: null }));
+  let cronRun: { id: string } | null = null;
+  try {
+    const { data } = await svc.from('cron_job_runs').insert({
+      job_name: 'uptime_check', status: 'running',
+    }).select('id').single();
+    cronRun = (data as any) ?? null;
+  } catch {}
 
   const { data: servers, error } = await svc
     .from('servers')
@@ -20,9 +24,9 @@ export async function runUptimeCheck() {
 
   if (error) {
     if (cronRun?.id) {
-      await svc.from('cron_job_runs').update({
+      await (svc.from('cron_job_runs') as any).update({
         finished_at: new Date().toISOString(), status: 'error', error: error.message,
-      }).eq('id', cronRun.id).catch(() => {});
+      }).eq('id', cronRun.id);
     }
     return { error: error.message };
   }
@@ -100,9 +104,9 @@ export async function runUptimeCheck() {
 
   // Record completion in cron_job_runs
   if (cronRun?.id) {
-    await svc.from('cron_job_runs').update({
+    await (svc.from('cron_job_runs') as any).update({
       finished_at: new Date().toISOString(), status: 'success', result: results,
-    }).eq('id', cronRun.id).catch(() => {});
+    }).eq('id', cronRun.id);
   }
 
   return {

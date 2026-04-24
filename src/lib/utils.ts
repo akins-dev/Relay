@@ -3,6 +3,7 @@
  * Timing-safe comparison, HMAC signing, response size guards
  */
 import { createHmac, timingSafeEqual } from 'crypto';
+import * as dns from 'dns/promises';
 
 // ── Timing-safe string comparison ─────────────────────────────────────────────
 // Prevents timing attacks on secret comparisons.
@@ -80,16 +81,124 @@ const BLOCKED_PATTERNS = [
   /169\.254\.169\.254/,                  // AWS IMDS (catch without protocol)
 ];
 
+function isPrivateIpv4(host: string): boolean {
+  return (
+    /^127\./.test(host) ||
+    /^0\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^100\.64\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+  );
+}
+
+function isPrivateIpv6(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === '::1' ||
+    h === '0:0:0:0:0:0:0:1' ||
+    h.startsWith('fe80:') ||
+    h.startsWith('fc') ||
+    h.startsWith('fd') ||
+    h.startsWith('::ffff:127.')
+  );
+}
+
+function isPrivateIpLiteral(host: string): boolean {
+  return isPrivateIpv4(host) || isPrivateIpv6(host);
+}
+
+const dnsSafetyCache = new Map<string, { ok: boolean; checkedAt: number }>();
+const DNS_SAFETY_TTL_MS = 10 * 60 * 1000;
+
+function isAllowedLocalPrototypeUrl(parsed: URL): boolean {
+  if (process.env.ALLOW_LOCAL_PROTOTYPE_ENDPOINTS !== '1') return false;
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  if (!['localhost', '127.0.0.1'].includes(parsed.hostname)) return false;
+
+  const expectedPort = process.env.PROTOTYPE_MCP_PORT ?? '4010';
+  const actualPort = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+
+  return actualPort === expectedPort;
+}
+
 export function isSafeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    if (isAllowedLocalPrototypeUrl(parsed)) return true;
     for (const pattern of BLOCKED_PATTERNS) {
       if (pattern.test(url)) return false;
     }
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function isSafeUrlForServerFetch(url: string): Promise<boolean> {
+  try {
+    const parsed = new URL(url);
+    if (!isSafeUrl(url)) return false;
+    if (isAllowedLocalPrototypeUrl(parsed)) return true;
+    if (isPrivateIpLiteral(parsed.hostname)) return false;
+
+    const host = parsed.hostname.toLowerCase();
+    const cached = dnsSafetyCache.get(host);
+    if (cached && (Date.now() - cached.checkedAt) < DNS_SAFETY_TTL_MS) {
+      return cached.ok;
+    }
+
+    const records = await dns.lookup(host, { all: true, verbatim: true });
+    const ok = records.length > 0 && records.every(record => !isPrivateIpLiteral(record.address));
+    dnsSafetyCache.set(host, { ok, checkedAt: Date.now() });
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function resolveSafeRedirectUrl(location: string, baseUrl: string): Promise<string | null> {
+  try {
+    if (!location) return null;
+    const resolved = new URL(location, baseUrl).toString();
+    return (await isSafeUrlForServerFetch(resolved)) ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface GitHubUrlParts {
+  owner: string;
+  repo: string;
+  branch: string | null;
+  subpath: string | null;
+}
+
+export function parseGitHubUrl(url: string): GitHubUrlParts | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'github.com') return null;
+
+    const parts = parsed.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+
+    const owner = parts[0];
+    const repo = parts[1].replace(/\.git$/, '');
+    if (!owner || !repo) return null;
+
+    let branch: string | null = null;
+    let subpath: string | null = null;
+
+    if ((parts[2] === 'tree' || parts[2] === 'blob') && parts[3]) {
+      branch = parts[3];
+      subpath = parts.slice(4).join('/') || null;
+    }
+
+    return { owner, repo, branch, subpath };
+  } catch {
+    return null;
   }
 }
 

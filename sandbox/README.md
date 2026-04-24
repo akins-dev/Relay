@@ -6,7 +6,7 @@ The **Sandbox** is a lightweight, isolated Node.js Express microservice that bri
 
 This service is used **exclusively during the ingestion pipeline (`/api/ingest`)**. 
 
-When the openMCP registry ingests a server marked with the `stdio` transport, it means the server isn't an HTTP endpoint—it is a piece of code that must be executed via the command line (e.g., `npx -y github.com/user/repo`). 
+When the openMCP registry ingests a server marked with the `stdio` transport, it means the server isn't an HTTP endpoint. It is a piece of code that must be executed via the command line, typically through a known package entrypoint such as Smithery or a repo-root npm package. If the registry cannot derive a safe executable command, ingestion falls back to README parsing instead of guessing.
 
 Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without risking severe security or architecture limitations, openMCP offloads this task to this Sandbox. 
 
@@ -45,4 +45,4 @@ SANDBOX_URL=https://mcp-sandbox-xyz.onrender.com
 SANDBOX_AUTH_TOKEN=super-secret-sandbox-token-123!
 ```
 
-Once linked, any future full database ingestion will automatically query your sandbox to extract real tool schemas from `stdio` GitHub servers!
+Once linked, future ingestion runs will automatically query the sandbox for `stdio` servers when the registry has a safe execution strategy. Otherwise, the ingest pipeline falls back to README extraction and description enrichment.

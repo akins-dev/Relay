@@ -117,10 +117,9 @@ async function resolveApiKeyUser(req: NextRequest): Promise<string | null> {
 
   if (!data) return null;
 
-  svc.from('api_keys')
+  void svc.from('api_keys')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id)
-    .catch(() => {});
+    .eq('id', data.id);
 
   return data.user_id;
 }
@@ -155,8 +154,17 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = createClient();
 
-    const { data: results, error } = await supabase
+    let rpcResult = await (supabase as any)
       .rpc('search_servers', { query_text: q, result_limit: limit, include_stdio: true });
+
+    // Backwards/forwards compatibility with environments where search_servers()
+    // was migrated back to the 2-arg signature.
+    if (rpcResult?.error) {
+      rpcResult = await (supabase as any)
+        .rpc('search_servers', { query_text: q, result_limit: limit });
+    }
+
+    const { data: results, error } = rpcResult;
 
     if (error) {
       console.error('[search] RPC error:', error.message);
@@ -222,7 +230,7 @@ export async function GET(req: NextRequest) {
           : (s.tools ?? []).map((name: string) => ({ name })),
 
         // Credential transparency
-        auth_type,
+        auth_type: authType,
         auth_setup_url: s.auth_setup_url ?? null,
         credential_note: authType === 'none'
           ? 'This server is public — no credentials required.'

@@ -5,7 +5,7 @@ import { resolveUser } from '@/lib/auth-server';
 import { z } from 'zod';
 
 const AdminIngestSchema = z.object({
-  source: z.enum(['all','official','smithery','glama','pulsemcp','github']).default('official'),
+  source: z.enum(['all','official','smithery','glama','pulsemcp','github','partner','vendor','claudemcp','mcpso','mcp_run','composio']).default('official'),
 });
 
 const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID ?? '';

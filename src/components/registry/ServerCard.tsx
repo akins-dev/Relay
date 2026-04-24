@@ -19,6 +19,7 @@ interface ServerCardProps {
     tags:         string[];
     source?:      string;
     is_new?:      boolean;
+    github_url?:  string | null;
     profiles?:    { username: string; avatar_url?: string } | null;
   };
   /** Active search query — passed down to highlight matched text */
@@ -58,9 +59,17 @@ export function ServerCard({ server: s, query = '' }: ServerCardProps) {
                 <Badge variant="new" className="text-[10px]">NEW</Badge>
               )}
             </div>
-            <p className="mt-0.5 text-sm font-medium text-foreground">
-              {highlight(s.display_name, query)}
-            </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">
+              {s.github_url && s.github_url.includes('github.com/') ? (
+                <>
+                  <span className="text-muted-foreground hover:text-foreground transition-colors" title={s.github_url}>
+                    {s.github_url.replace(/.*github\.com\//i, '').split('/')[0]}
+                  </span>
+                  <span className="text-muted-foreground/40">/</span>
+                </>
+              ) : null}
+              <span>{highlight(s.display_name, query)}</span>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
             <Star size={12} />

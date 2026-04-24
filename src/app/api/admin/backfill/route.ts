@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/utils';
+import { buildSandboxCommand } from '@/lib/ingest';
 
 export const maxDuration = 300; // Allow up to 5 minutes execution time for backfills on Vercel
 export const dynamic = 'force-dynamic';
@@ -44,9 +45,13 @@ export async function POST(req: Request) {
     const results = { successful: 0, failed: 0, logs: [] as string[] };
 
     for (const server of servers) {
-      const target = server.smithery_id || server.github_url;
-      if (!target) {
-        results.logs.push(`Skipped ${server.name} - no github or smithery ID`);
+      const sandboxCommand = buildSandboxCommand({
+        smithery_id: server.smithery_id ?? undefined,
+        github_url: server.github_url ?? undefined,
+      });
+
+      if (!sandboxCommand) {
+        results.logs.push(`Skipped ${server.name} - no safe sandbox command could be derived`);
         results.failed++;
         continue;
       }
@@ -60,10 +65,7 @@ export async function POST(req: Request) {
             'Content-Type': 'application/json', 
             'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}` 
           },
-          body: JSON.stringify({
-            command: 'npx',
-            args: ['-y', '@smithery/cli@latest', 'run', target]
-          }),
+          body: JSON.stringify(sandboxCommand),
           signal: AbortSignal.timeout(60_000),
         });
 

@@ -1,6 +1,6 @@
-import { isSafeUrl } from '@/lib/utils';
+import { isSafeUrl, isSafeUrlForServerFetch, parseGitHubUrl } from '@/lib/utils';
 /**
- * openMCP — Registry Ingest Pipeline
+ * Relay — Registry Ingest Pipeline
  *
  * Pulls servers from five upstream sources:
  *   1. Official MCP Registry (registry.modelcontextprotocol.io)
@@ -17,7 +17,7 @@ import { isSafeUrl } from '@/lib/utils';
  *   - Upserted into Supabase
  */
 
-import { scanServer, computeTrustScore, scanNpmDependencies } from '@/lib/security';
+import { computeTrustScore, scanNpmDependencies } from '@/lib/security';
 import { probeMCPServer } from '@/lib/mcp-probe';
 import { createHash } from 'crypto';
 
@@ -40,13 +40,17 @@ export interface IngestServer {
   tags:             string[];
   tools:            string[];
   tool_schemas:     ToolSchema[];
-  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' | 'direct';
+  source:           'official' | 'smithery' | 'github' | 'glama' | 'pulsemcp' |
+                    'direct' | 'partner' | 'claudemcp' | 'mcpso' |
+                    'mcp_run' | 'composio' | 'zapier' | 'langchain_hub';
   smithery_id?:     string;
   official_id?:     string;
   glama_id?:        string;
   verified?:        boolean;
   transport?:       'stdio' | 'sse' | 'streamable_http' | 'unknown';
-  upstream_updated_at?: string; // ISO 8601 — when upstream source last modified this server
+  upstream_updated_at?: string;
+  description_quality?: 'auto_generated' | 'readme_parsed' | 'upstream' | 'manual';
+  readme_url?:      string;
 }
 
 /**
@@ -64,8 +68,9 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
   prompts:     Array<{ name: string; description?: string }>;
   protocolVersion: string | null;
   mcpCompliant: boolean;
+  transport: 'stdio' | 'sse' | 'streamable_http' | 'unknown';
 }> {
-  const empty = { toolSchemas: [], resources: [], prompts: [], protocolVersion: null, mcpCompliant: false };
+  const empty = { toolSchemas: [], resources: [], prompts: [], protocolVersion: null, mcpCompliant: false, transport: 'unknown' as const };
 
   if (!endpoint || !isSafeUrl(endpoint)) {
     // Fallback: parse README for tool hints
@@ -90,6 +95,7 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
       prompts:         probe.prompts,
       protocolVersion: probe.protocolVersion,
       mcpCompliant:    probe.mcpCompliant,
+      transport:       probe.transport,
     };
   }
 
@@ -99,6 +105,7 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
     prompts:         probe.prompts,
     protocolVersion: probe.protocolVersion,
     mcpCompliant:    probe.mcpCompliant,
+    transport:       probe.transport,
   };
 }
 
@@ -135,19 +142,8 @@ export interface IngestResult {
  */
 export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[]> {
   try {
-    // Convert github.com URL to raw.githubusercontent.com
-    const rawUrl = githubUrl
-      .replace('github.com', 'raw.githubusercontent.com')
-      .replace(/\/tree\/[^/]+/, '')
-      + '/main/README.md';
-
-    if (!isSafeUrl(rawUrl)) return [];
-    const res = await fetch(rawUrl, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) return [];
-    const text = await res.text();
+    const text = await fetchFirstGithubText(githubUrl, ['README.md', 'readme.md']);
+    if (!text) return [];
 
     const tools: ToolSchema[] = [];
     const seen = new Set<string>();
@@ -196,6 +192,39 @@ export async function parseReadmeSchemas(githubUrl: string): Promise<ToolSchema[
   }
 }
 
+function buildGitHubRawCandidates(githubUrl: string, filenames: string[]): string[] {
+  const parts = parseGitHubUrl(githubUrl);
+  if (!parts) return [];
+
+  const branches = parts.branch ? [parts.branch, 'main', 'master'] : ['main', 'master'];
+  const subpaths = parts.subpath ? [parts.subpath, null] : [null];
+  const urls: string[] = [];
+
+  for (const branch of branches) {
+    for (const subpath of subpaths) {
+      for (const filename of filenames) {
+        const cleanSubpath = subpath?.replace(/^\/+|\/+$/g, '');
+        const path = cleanSubpath ? `${cleanSubpath}/${filename}` : filename;
+        urls.push(`https://raw.githubusercontent.com/${parts.owner}/${parts.repo}/${branch}/${path}`);
+      }
+    }
+  }
+
+  return [...new Set(urls)];
+}
+
+async function fetchFirstGithubText(githubUrl: string, filenames: string[]): Promise<string | null> {
+  for (const rawUrl of buildGitHubRawCandidates(githubUrl, filenames)) {
+    if (!(await isSafeUrlForServerFetch(rawUrl))) continue;
+    const res = await fetch(rawUrl, {
+      headers: { 'User-Agent': 'relay-ingest/0.1' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (res.ok) return await res.text();
+  }
+  return null;
+}
+
 
 // ── Official MCP Registry ─────────────────────────────────────────────────────
 
@@ -209,7 +238,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       : 'https://registry.modelcontextprotocol.io/v0/servers?limit=100';
 
     const pageRes: Response = await fetch(pageUrl, {
-      headers: { 'User-Agent': 'openMCP-ingest/0.1' },
+      headers: { 'User-Agent': 'relay-ingest/0.1' },
       signal: AbortSignal.timeout(15_000),
     });
     if (!pageRes.ok) break;
@@ -292,7 +321,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'User-Agent': 'openMCP-ingest/0.1',
+          'User-Agent': 'relay-ingest/0.1',
         },
         signal: AbortSignal.timeout(15_000),
       }
@@ -348,7 +377,7 @@ export async function fetchGitHubServers(): Promise<IngestServer[]> {
     const res = await fetch(
       'https://api.github.com/repos/modelcontextprotocol/servers/contents/src',
       {
-        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
         signal: AbortSignal.timeout(10_000),
       }
     );
@@ -399,6 +428,49 @@ export async function fetchGitHubServers(): Promise<IngestServer[]> {
   }
 }
 
+// ── Verified Vendor Servers ────────────────────────────────────────────────────
+// Curated list of elite enterprise providers and the official GitHub MCP directory.
+
+export async function fetchVendorServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    // 1. Fetch from the official github.com/mcp registry ORG
+    const res = await fetch('https://api.github.com/orgs/mcp/repos?per_page=100', {
+      headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/vnd.github.v3+json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    
+    if (res.ok) {
+      const repos: any[] = await res.json();
+      for (const repo of repos) {
+        if (repo.archived || repo.disabled) continue;
+        const name = repo.name;
+        
+        servers.push({
+          name:         slugify(name),
+          display_name: repo.name,
+          description:  repo.description || 'Official Vendor MCP Server',
+          endpoint:     '', // Discovered lazily
+          version:      '1.0.0',
+          github_url:   repo.html_url,
+          homepage_url: repo.homepage || undefined,
+          license:      repo.license?.spdx_id || 'MIT',
+          tags:         ['partner', 'official'],
+          tools:        [],
+          tool_schemas: [],
+          source:       'partner',
+          verified:     true,
+          transport:    'stdio', // Assume stdio default for github repos
+          upstream_updated_at: repo.updated_at,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[ingest:vendor] Error fetching vendor servers:', e);
+  }
+  return servers;
+}
+
 // ── PulseMCP ──────────────────────────────────────────────────────────────────
 // PulseMCP does NOT have a public API (returns 403).
 // This fetcher is kept as a scaffold for when they open access or provide API keys.
@@ -415,17 +487,17 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
 
   while (true) {
     try {
-      const url = cursor
+      const url: string = cursor
         ? `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}&after=${cursor}`
         : `https://glama.ai/api/mcp/v1/servers?perPage=${perPage}`;
 
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'openMCP-ingest/0.1', 'Accept': 'application/json' },
+      const res: Response = await fetch(url, {
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data: any = await res.json();
       const items: any[] = data.servers ?? [];
       if (items.length === 0) break;
 
@@ -475,14 +547,282 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
 }
 
 
+// ── ClaudeMCP ─────────────────────────────────────────────────────────────────
+// claudemcp.com/servers — curated directory, scrape-based (no public API).
+// Uses the JSON data endpoint that the page fetches client-side.
+
+export async function fetchClaudeMCPServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    // claudemcp.com serves a JSON list at this endpoint (confirmed via network inspection)
+    const res = await fetch('https://claudemcp.com/api/servers', {
+      headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      // Fallback: attempt to parse the static JSON data embedded in the page
+      const pageRes = await fetch('https://claudemcp.com/servers', {
+        headers: { 'User-Agent': 'relay-ingest/0.1' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!pageRes.ok) {
+        console.warn('[ingest:claudemcp] Both API and page fetch failed — skipping');
+        return [];
+      }
+      const html = await pageRes.text();
+      // Extract JSON from __NEXT_DATA__ script tag
+      const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      if (!match) return [];
+      try {
+        const nextData = JSON.parse(match[1]);
+        const items: any[] = nextData?.props?.pageProps?.servers ?? [];
+        return parseClaudeMCPItems(items);
+      } catch {
+        return [];
+      }
+    }
+
+    const data = await res.json();
+    const items: any[] = data?.servers ?? data ?? [];
+    return parseClaudeMCPItems(items);
+  } catch (e: any) {
+    console.warn('[ingest:claudemcp] Error:', e.message);
+    return [];
+  }
+}
+
+function parseClaudeMCPItems(items: any[]): IngestServer[] {
+  const servers: IngestServer[] = [];
+  for (const s of items) {
+    const name = slugify(s.name ?? s.slug ?? s.id ?? '');
+    if (!name) continue;
+    const endpoint = s.endpoint ?? s.url ?? s.serverUrl ?? '';
+    const isStdio  = !endpoint || s.transport === 'stdio' || s.type === 'local';
+    servers.push({
+      name,
+      display_name:  s.name ?? name,
+      description:   s.description ?? s.shortDescription ?? '',
+      endpoint:      isStdio ? '' : endpoint,
+      version:       s.version ?? '1.0.0',
+      github_url:    s.githubUrl ?? s.repository ?? s.github ?? undefined,
+      homepage_url:  s.websiteUrl ?? s.homepage ?? undefined,
+      license:       s.license ?? 'MIT',
+      tags:          s.tags ?? s.categories ?? [],
+      tools:         s.tools?.map((t: any) => t.name ?? t) ?? [],
+      tool_schemas:  [],
+      source:        'claudemcp',
+      verified:      s.verified ?? s.featured ?? false,
+      transport:     isStdio ? 'stdio' : (s.transport ?? undefined),
+      upstream_updated_at: s.updatedAt ?? s.lastUpdated ?? undefined,
+    });
+  }
+  return servers;
+}
+
+// ── MCP.so ────────────────────────────────────────────────────────────────────
+// mcp.so — curated MCP server directory with a discoverable API.
+
+export async function fetchMcpSoServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  let page = 1;
+
+  while (true) {
+    try {
+      const res = await fetch(`https://mcp.so/api/servers?page=${page}&limit=100`, {
+        headers: { 'User-Agent': 'relay-ingest/0.1', 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) break;
+
+      const data = await res.json();
+      const items: any[] = data?.data ?? data?.servers ?? data ?? [];
+      if (!Array.isArray(items) || items.length === 0) break;
+
+      for (const s of items) {
+        const name = slugify(s.name ?? s.slug ?? '');
+        if (!name) continue;
+        const endpoint = s.endpoint ?? s.url ?? '';
+        const isStdio  = !endpoint || s.transport === 'stdio';
+        servers.push({
+          name,
+          display_name:  s.name ?? name,
+          description:   s.description ?? '',
+          endpoint:      isStdio ? '' : endpoint,
+          version:       s.version ?? '1.0.0',
+          github_url:    s.githubUrl ?? s.github ?? undefined,
+          homepage_url:  s.websiteUrl ?? undefined,
+          license:       s.license ?? 'MIT',
+          tags:          s.tags ?? s.categories ?? [],
+          tools:         s.tools?.map((t: any) => t.name ?? t) ?? [],
+          tool_schemas:  [],
+          source:        'mcpso',
+          verified:      s.verified ?? s.official ?? false,
+          transport:     isStdio ? 'stdio' : undefined,
+          upstream_updated_at: s.updatedAt ?? undefined,
+        });
+      }
+
+      if (items.length < 100) break;
+      page++;
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e: any) {
+      console.warn('[ingest:mcp.so] Error on page', page, ':', e.message);
+      break;
+    }
+  }
+
+  console.log(`[ingest:mcp.so] Fetched ${servers.length} servers`);
+  return servers;
+}
+
 /**
- * Detect MCP server transport type from endpoint URL.
- * This determines whether the server is invokable through the openMCP proxy.
+ * This determines whether the server is invokable through the Relay proxy.
  *
  * stdio: local process — cannot be reached over HTTP, excluded from agent search
  * sse | streamable_http: public HTTP endpoint — invokable through proxy
  * unknown: no clear signal — treated as stdio (excluded) until proven otherwise
  */
+// ── README description extraction ─────────────────────────────────────────────
+// Fetches a GitHub README and extracts the first meaningful paragraph as a
+// description. Used when upstream registry provides no description or a
+// placeholder. Returns null if fetch fails or README has no extractable text.
+
+export async function parseReadmeDescription(githubUrl: string): Promise<{
+  description: string | null;
+  long_description: string | null;
+  readme_url: string;
+} | null> {
+  try {
+    let text: string | null = null;
+    let readmeUrl = '';
+
+    for (const candidate of buildGitHubRawCandidates(githubUrl, ['README.md', 'readme.md'])) {
+      readmeUrl = candidate;
+      if (!(await isSafeUrlForServerFetch(readmeUrl))) continue;
+      const res = await fetch(readmeUrl, {
+        headers: { 'User-Agent': 'relay-ingest/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (res.ok) { text = await res.text(); break; }
+    }
+    if (!text) return null;
+
+    // Strip markdown title and badges
+    const lines = text
+      .split('\n')
+      .filter(l => !l.startsWith('#'))           // strip headings
+      .filter(l => !l.startsWith('!['))           // strip image badges
+      .filter(l => !l.startsWith('[!['))          // strip badge links
+      .filter(l => l.trim().length > 0);
+
+    // First meaningful paragraph (at least 30 chars)
+    const paragraphs = text.split('\n\n')
+      .map(p => p.replace(/^#+\s+.*/gm, '').replace(/!\[.*?\]\(.*?\)/g, '').replace(/\[(.+?)\]\(.+?\)/g, '$1').trim())
+      .filter(p => p.length >= 30 && !p.startsWith('```'));
+
+    const description = paragraphs[0]?.slice(0, 300) ?? null;
+    const long_description = paragraphs.slice(0, 5).join('\n\n').slice(0, 2000) ?? null;
+
+    return { description, long_description, readme_url: readmeUrl };
+  } catch {
+    return null;
+  }
+}
+
+// ── MCP.run ───────────────────────────────────────────────────────────────────
+// mcp.run — hosted MCP server platform with REST API
+
+export async function fetchMcpRunServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    const res = await fetch('https://mcp.run/api/servers?limit=100', {
+      headers: { 'User-Agent': 'relay-ingest/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      console.warn('[ingest:mcp.run] API returned', res.status, '— skipping');
+      return [];
+    }
+    const data = await res.json();
+    const items: any[] = data?.servers ?? data?.data ?? data ?? [];
+    for (const s of items) {
+      const name = slugify(s.name ?? s.slug ?? s.id ?? '');
+      if (!name) continue;
+      const endpoint = s.endpoint ?? s.url ?? s.serverUrl ?? '';
+      servers.push({
+        name,
+        display_name:       s.name ?? name,
+        description:        s.description ?? '',
+        endpoint:           endpoint || '',
+        version:            s.version ?? '1.0.0',
+        github_url:         s.githubUrl ?? s.repository ?? undefined,
+        homepage_url:       s.homepageUrl ?? `https://mcp.run/servers/${s.slug ?? name}`,
+        license:            s.license ?? 'MIT',
+        tags:               s.tags ?? s.categories ?? [],
+        tools:              s.tools?.map((t: any) => t.name ?? t) ?? [],
+        tool_schemas:       [],
+        source:             'mcp_run',
+        verified:           s.verified ?? s.official ?? false,
+        transport:          endpoint ? undefined : 'stdio',
+        description_quality: s.description ? 'upstream' : 'auto_generated',
+        upstream_updated_at: s.updatedAt ?? undefined,
+      });
+    }
+  } catch (e: any) {
+    console.warn('[ingest:mcp.run] Error:', e.message);
+  }
+  console.log(`[ingest:mcp.run] Fetched ${servers.length} servers`);
+  return servers;
+}
+
+// ── Composio ──────────────────────────────────────────────────────────────────
+// composio.dev — agent tooling platform with MCP-compatible tool integrations
+
+export async function fetchComposioServers(): Promise<IngestServer[]> {
+  const servers: IngestServer[] = [];
+  try {
+    // Composio exposes their integrations list publicly
+    const res = await fetch('https://backend.composio.dev/api/v1/apps?limit=100', {
+      headers: { 'User-Agent': 'relay-ingest/1.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      console.warn('[ingest:composio] API returned', res.status, '— skipping');
+      return [];
+    }
+    const data = await res.json();
+    const items: any[] = data?.items ?? data?.apps ?? [];
+    for (const s of items) {
+      const name = slugify(`composio-${s.name ?? s.key ?? s.appId ?? ''}`);
+      if (!name || name === 'composio-') continue;
+      // Composio tools are HTTP-accessible via their proxy
+      const endpoint = s.mcpEndpoint ?? s.serverUrl ?? '';
+      servers.push({
+        name,
+        display_name:       s.displayName ?? s.name ?? name,
+        description:        s.description ?? `${s.name ?? name} integration via Composio`,
+        endpoint:           endpoint || '',
+        version:            '1.0.0',
+        github_url:         undefined,
+        homepage_url:       `https://app.composio.dev/apps/${s.key ?? s.name}`,
+        license:            'Proprietary',
+        tags:               s.categories ?? s.tags ?? [],
+        tools:              s.actions?.map((a: any) => a.name ?? a) ?? [],
+        tool_schemas:       [],
+        source:             'composio',
+        verified:           false,
+        transport:          endpoint ? 'streamable_http' : 'stdio',
+        description_quality: s.description ? 'upstream' : 'auto_generated',
+      });
+    }
+  } catch (e: any) {
+    console.warn('[ingest:composio] Error:', e.message);
+  }
+  console.log(`[ingest:composio] Fetched ${servers.length} servers`);
+  return servers;
+}
+
 export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' | 'sse' | 'streamable_http' | 'unknown' {
   if (!endpoint) {
     // No endpoint at all — if there's a github URL, it's stdio
@@ -497,11 +837,13 @@ export function detectTransport(endpoint: string, githubUrl?: string): 'stdio' |
     if (e.includes('github.com/') && !e.includes('/api/') && !e.includes('/sse')) {
       return 'stdio';
     }
-    // StreamableHTTP pattern: /mcp, /api/mcp, /mcp-server
-    if (e.includes('/mcp') || e.includes('/sse') || e.includes('/stream')) {
+    if (e.includes('/sse') || e.includes('/events')) {
+      return 'sse';
+    }
+    if (e.includes('/mcp') || e.includes('/stream')) {
       return 'streamable_http';
     }
-    return 'sse'; // default HTTP assumption
+    return 'unknown';
   }
 
   // Local process indicators
@@ -567,7 +909,7 @@ export async function upsertServers(
   // Includes upstream_updated_at for three-tier skip comparison
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
+    .select('id, name, source, endpoint, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
 
   if (prefetchErr) {
     console.error(`${tag} Pre-fetch FAILED: ${prefetchErr.message}. Will treat all servers as new.`);
@@ -578,6 +920,7 @@ export async function upsertServers(
   const existingByOfficial = new Map<string, any>();
   const existingByGlama    = new Map<string, any>();
   const existingByGithub   = new Map<string, any>();
+  const existingByEndpoint = new Map<string, any>(); // NEW: dedup by HTTP endpoint
 
   for (const row of allExisting ?? []) {
     if (row.name)        existingByName.set(row.name, row);
@@ -585,6 +928,8 @@ export async function upsertServers(
     if (row.official_id) existingByOfficial.set(row.official_id, row);
     if (row.glama_id)    existingByGlama.set(row.glama_id, row);
     if (row.github_url)  existingByGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
+    // Index by normalized endpoint URL — catches cross-source duplicates
+    if (row.endpoint)    existingByEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
   }
 
   console.log(`${tag} Pre-fetched ${existingByName.size} existing servers. Processing ${servers.length} incoming...`);
@@ -624,10 +969,10 @@ export async function upsertServers(
       // Stdio servers are stored with proxy_available=false so users can
       // find them and invoke them via the CLI or a future container bridge.
       const detected = detectTransport(s.endpoint, s.github_url);
-      const transport = (s.transport === 'stdio' || detected === 'stdio') 
+      let transport = (s.transport === 'stdio' || detected === 'stdio') 
         ? 'stdio' 
         : (s.transport && s.transport !== 'unknown' ? s.transport : detected);
-      const proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+      let proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
 
       if (idx < 15) { // Log first 15 to keep it clean
         console.log(`\n[DEBUG-TRACE] ${s.name}`);
@@ -654,6 +999,8 @@ export async function upsertServers(
       if (!existing && s.official_id)       existing = existingByOfficial.get(s.official_id);
       if (!existing && (s as any).glama_id) existing = existingByGlama.get((s as any).glama_id);
       if (!existing && s.github_url)        existing = existingByGithub.get(s.github_url.replace(/\.git$/, '').toLowerCase());
+      // Endpoint dedup: catches the same HTTP server indexed under different names by different sources
+      if (!existing && s.endpoint)          existing = existingByEndpoint.get(s.endpoint.replace(/\/$/, '').toLowerCase());
       if (!existing)                        existing = existingByName.get(s.name);
 
       // ── THREE-TIER SKIP ALGORITHM ──────────────────────────────────────────
@@ -722,50 +1069,53 @@ export async function upsertServers(
         mcpPrompts      = primitives.prompts;
         protocolVersion = primitives.protocolVersion;
         mcpCompliant    = primitives.mcpCompliant;
+        if (primitives.transport !== 'unknown') {
+          transport = primitives.transport;
+          proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+        }
       } else if (transport === 'stdio') {
         if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET B (STDIO BRANCH)`);
         // Stdio server processing tree
         if (!process.env.SANDBOX_URL) {
           if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox] SANDBOX_URL not set`);
+        } else if (!process.env.SANDBOX_AUTH_TOKEN) {
+          if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox-auth] SANDBOX_AUTH_TOKEN not set`);
         } else if (!s.github_url && !s.smithery_id) {
           if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-source] stdio but no github_url or smithery_id`);
         } else {
           if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Preparing Sandbox Req...`);
           // Stdio server with Sandbox integration configured
           try {
-            const isSmithy = Boolean(s.smithery_id);
-            const runTarget = isSmithy
-              ? ['-y', '@smithery/cli@latest', 'run', s.smithery_id]
-              : ['-y', 'tsx', `${s.github_url}`];
-
-            const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN || 'dev-sandbox-token'}` 
-              },
-              body: JSON.stringify({
-                command: 'npx',
-                args: runTarget
-              })
-            });
-            
-            if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox fetch status: ${req.status}`);
-            
-            if (req.ok) {
-              const sandboxResult = await req.json();
-              if (sandboxResult.success && sandboxResult.data) {
-                if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
-                toolSchemas = sandboxResult.data.tools || [];
-                mcpResources = sandboxResult.data.resources || [];
-                mcpPrompts = sandboxResult.data.prompts || [];
-                mcpCompliant = true;
-                protocolVersion = '2024-11-05';
-              } else {
-                if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox returned success=false. Body:`, JSON.stringify(sandboxResult));
-              }
+            const sandboxCommand = buildSandboxCommand(s);
+            if (!sandboxCommand) {
+              if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox-command] no safe executable strategy for source`);
             } else {
-               if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox rejected with status ${req.status}. Body: ${await req.text().catch(()=>'error reading body')}`);
+              const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json', 
+                  'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}` 
+                },
+                body: JSON.stringify(sandboxCommand)
+              });
+              
+              if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox fetch status: ${req.status}`);
+              
+              if (req.ok) {
+                const sandboxResult = await req.json();
+                if (sandboxResult.success && sandboxResult.data) {
+                  if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
+                  toolSchemas = sandboxResult.data.tools || [];
+                  mcpResources = sandboxResult.data.resources || [];
+                  mcpPrompts = sandboxResult.data.prompts || [];
+                  mcpCompliant = true;
+                  protocolVersion = '2024-11-05';
+                } else {
+                  if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox returned success=false. Body:`, JSON.stringify(sandboxResult));
+                }
+              } else {
+                 if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox rejected with status ${req.status}. Body: ${await req.text().catch(()=>'error reading body')}`);
+              }
             }
           } catch (e: any) {
             if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> Sandbox probe FAILED with Exception: ${e.message}`);
@@ -785,19 +1135,6 @@ export async function upsertServers(
         s.tools = toolSchemas.map(t => t.name);
       }
 
-      // L1: Static security scan
-      // CRITICAL FIX: Always provide a fallback description — empty string causes scan
-      // to silently score as if the server has no issues but score 0.
-      // Also: do NOT hard-reject on 'no_tools' (high severity). Many valid servers
-      // only expose tools at runtime (e.g. Smithery stdio wrappers, GitHub-listed servers).
-      const scanResult = scanServer({
-        name:        s.name,
-        description: s.description || s.display_name || 'No description provided',
-        endpoint:    s.endpoint,
-        tools:       s.tools,
-        tags:        s.tags,
-      });
-
       // S-14: npm CVE scan — deduplicated by GitHub repo URL
       // Multiple servers can share the same repo; scanning once per repo saves HTTP calls.
       const repoKey = s.github_url?.replace(/\.git$/, '').toLowerCase();
@@ -811,40 +1148,80 @@ export async function upsertServers(
         }
       }
 
-      // CRITICAL FIX: Only hard-reject CRITICAL issues.
-      // Previously, rejecting on 'high' (which includes 'no_tools') caused almost
-      // ALL ingested servers to be rejected before being written to the DB.
-      const hasCritical    = scanResult.issues.some(i => i.severity === 'critical');
+      // We no longer reject on static heuristics (L1). Only critical CVEs fail ingestion.
       const hasCriticalCve = cveIssues.some(i => i.severity === 'critical');
 
-      if (hasCritical || hasCriticalCve) {
-        const reason = scanResult.issues.find(i => i.severity === 'critical')?.description
-          ?? cveIssues.find(i => i.severity === 'critical')?.cve
-          ?? 'critical issue';
+      if (hasCriticalCve) {
+        const reason = cveIssues.find(i => i.severity === 'critical')?.cve ?? 'critical CVE';
         console.warn(`${tag} ${progress} [REJECT:critical] ${s.name} — ${reason}`);
         result.rejected++;
         continue;
       }
 
-      const trustScore = computeTrustScore({
+      // ── Description quality enrichment ───────────────────────────────────────
+      // If the upstream provided no description or a placeholder, fetch README.
+      // This is the primary fix for stdio servers having empty descriptions.
+      let descriptionQuality = s.description_quality ?? 'upstream';
+      let finalDescription   = s.description || s.display_name || 'No description provided';
+      let finalLongDesc      = s.long_description ?? null;
+      let readmeUrl          = s.readme_url ?? null;
+
+      const needsEnrichment = !s.description
+        || s.description.length < 20
+        || s.description === 'No description provided'
+        || s.description.startsWith('Official MCP reference server:')
+        || s.description === 'Official Partner MCP Server'
+        || s.description === 'Official Vendor MCP Server';
+
+      if (needsEnrichment && s.github_url && isSafeUrl(s.github_url)) {
+        const readme = await parseReadmeDescription(s.github_url);
+        if (readme?.description) {
+          finalDescription   = readme.description;
+          finalLongDesc      = readme.long_description ?? finalLongDesc;
+          readmeUrl          = readme.readme_url;
+          descriptionQuality = 'readme_parsed';
+          if (idx < 15) console.log(`[DEBUG] ${s.name} → enriched description from README`);
+        } else {
+          descriptionQuality = 'auto_generated';
+        }
+      }
+
+      // Set verified flag for trusted sources before computing trust score
+      if (s.source === 'partner' || s.source === 'official') {
+        s.verified = true;
+      }
+
+      // CVE severity classification — must happen before trust score
+      const hasHighSeverity    = cveIssues.some(i => i.severity === 'high');
+      const ingestScanScore    = hasCriticalCve ? 0 : hasHighSeverity ? 50 : 100;
+      const scanIssues = cveIssues.map((issue: any) => ({
+        severity: issue.severity,
+        type: 'cve',
+        description: `${issue.name}@${issue.version} flagged ${issue.cve}`,
+        cve: issue.cve,
+        url: issue.url,
+      }));
+
+      // Official/partner servers get stability credit on first ingest —
+      // they have proven track records. Uptime checks will adjust over time.
+      let trustScore = computeTrustScore({
         verified:        s.verified ? 1 : 0,
-        scanScore:       scanResult.score,
         uptimePct:       100,
-        stars:           0,
-        daysSinceChange: 0,
+        stars:           (s.source === 'official' || s.source === 'partner') ? 50 : 0,
+        daysSinceChange: (s.source === 'official' || s.source === 'partner') ? 90 : 0,
+        scanScore:       ingestScanScore,
       });
 
-      // High issues → pending_review rather than active.
-      // Server is stored for admin review without being surfaced to end users.
-      const hasHighSeverity = scanResult.issues.some(i => i.severity === 'high')
-        || cveIssues.some(i => i.severity === 'high');
+      // High CVE issues → pending_review rather than active.
       const status = hasHighSeverity ? 'pending_review' : 'active';
 
       const serverData: Record<string, any> = {
         name:             s.name,
         display_name:     s.display_name || s.name,
-        description:      s.description  || s.display_name || 'No description provided',
-        long_description: s.long_description ?? null,
+        description:      finalDescription,
+        long_description: finalLongDesc,
+        description_quality: descriptionQuality,
+        readme_url:       readmeUrl,
         version:          s.version || '1.0.0',
         endpoint:         s.endpoint || null,
         github_url:       s.github_url   ?? null,
@@ -866,8 +1243,8 @@ export async function upsertServers(
         verified:         s.verified ?? false,
         status,
         schema_hash:      upstreamHash,
-        scan_status:      (scanResult.passed ? 'passed' : 'failed') as any,
-        scan_issues:      scanResult.issues as any,
+        scan_status:      (hasHighSeverity ? 'failed' : 'passed') as any,
+        scan_issues:      scanIssues as any,
         cve_issues:       cveIssues as any,
         cve_scan_at:      new Date().toISOString(),
         shell_issues:     [] as any,
@@ -879,6 +1256,13 @@ export async function upsertServers(
       let serverId: string | null = existing?.id ?? null;
 
       if (existing) {
+        // Shield Official/Vendor servers from generic registry overwrites
+        if ((existing.source === 'partner' || existing.source === 'official') && s.source !== 'partner' && s.source !== 'official') {
+          console.log(`${tag} ${progress} [SKIP] ${s.name} — Protected official/partner server, ignoring ${s.source} update`);
+          result.skipped++;
+          continue;
+        }
+
         // UPDATE path
         const { error: updateErr } = await svc
           .from('servers')
@@ -930,15 +1314,15 @@ export async function upsertServers(
         }
       }
 
-      // Write scan audit (non-fatal — never blocks ingest)
-      if (serverId) {
+      // Write scan audit (non-fatal — purely for CVE tracking now)
+      if (serverId && cveIssues.length > 0) {
         svc.from('scan_results').insert({
           server_id: serverId,
           scan_type: 'ingest',
-          passed:    scanResult.passed,
-          score:     scanResult.score,
-          issues:    [...scanResult.issues, ...cveIssues] as any,
-          details:   `Source:${s.source} score:${scanResult.score} cves:${cveIssues.length}`,
+          passed:    !hasHighSeverity,
+          score:     hasHighSeverity ? 50 : 100,
+          issues:    cveIssues as any,
+          details:   `Source:${s.source} cves:${cveIssues.length}`,
         }).then(({ error }: { error: any }) => {
           if (error) console.warn(`${tag} [WARN:scan-audit] ${s.name} — ${error.message}`);
         });
@@ -966,4 +1350,23 @@ function slugify(name: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 64);
+}
+
+export function buildSandboxCommand(s: Pick<IngestServer, 'smithery_id' | 'github_url'>): { command: string; args: string[] } | null {
+  if (s.smithery_id) {
+    return {
+      command: 'npx',
+      args: ['-y', '@smithery/cli@latest', 'run', s.smithery_id],
+    };
+  }
+
+  if (!s.github_url) return null;
+  const gh = parseGitHubUrl(s.github_url);
+  if (!gh || gh.subpath) return null;
+
+  const ref = gh.branch ? `github:${gh.owner}/${gh.repo}#${gh.branch}` : `github:${gh.owner}/${gh.repo}`;
+  return {
+    command: 'npx',
+    args: ['-y', ref],
+  };
 }

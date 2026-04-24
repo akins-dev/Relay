@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Look up server OAuth config
-  const { data: server } = await supabase
+  const svc = createServiceClient();
+  const { data: server } = await svc
     .from('servers')
     .select('name, oauth_authorization_url, oauth_client_id, oauth_scopes, auth_type')
     .eq('name', serverName)
@@ -74,7 +75,6 @@ export async function GET(req: NextRequest) {
 
   // Generate CSRF state — 32 random bytes as hex
   const state = randomBytes(32).toString('hex');
-  const svc   = createServiceClient();
 
   // Clean up any existing state for this user+server, store new one
   await svc.from('oauth_states').delete()
