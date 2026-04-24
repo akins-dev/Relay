@@ -138,9 +138,43 @@ Expected response includes a JSON breakdown of successful indexing and rejection
 Important current behavior:
 
 - `stdio` rows are stored even when they are not cloud-invocable.
-- If a `stdio` server exposes no tools and has no useful description, ingest tries sandbox extraction first.
+- If a `stdio` server has a `smithery_id`, ingest derives a concrete sandbox command and tries extraction.
+- If a `stdio` server has a repo-root GitHub URL, ingest can derive a sandbox command and try extraction.
+- If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
+
+### Change detection and reprocessing
+
+Ingest uses three layers before doing expensive work:
+
+1. Tier 1: skip when `upstream_updated_at <= last_scanned_at`
+2. Tier 2: skip when `schema_hash` matches and the row was scanned in the last 24 hours
+3. Tier 3: full extraction, CVE scan, trust recompute, and upsert
+
+This matters operationally:
+
+- Use a normal re-ingest when upstream data changed.
+- Force a reprocess when Relay's own ingest logic changed but upstream data did not.
+- If you newly add the sandbox, or change extraction logic, a normal re-ingest may skip too aggressively.
+
+Least-destructive force reprocess for all current rows:
+
+```sql
+UPDATE public.servers
+SET schema_hash = NULL,
+    last_scanned_at = NULL;
+```
+
+Clean rebuild from scratch:
+
+```sql
+DELETE FROM public.scan_results;
+DELETE FROM public.schema_snapshots;
+DELETE FROM public.cron_job_runs;
+DELETE FROM public.ingest_runs;
+DELETE FROM public.servers;
+```
 
 ### Manual cron routes
 
@@ -154,19 +188,26 @@ curl -X POST http://localhost:3000/api/ingest \
   -d '{"source":"all"}'
 
 # uptime
-curl -X POST http://localhost:3000/api/cron/uptime-check \
+curl http://localhost:3000/api/cron/uptime-check \
   -H "Authorization: Bearer $CRON_SECRET"
 
 # schema drift
-curl -X POST http://localhost:3000/api/cron/schema-drift \
+curl http://localhost:3000/api/cron/schema-drift \
   -H "Authorization: Bearer $CRON_SECRET"
 
 # daily call reset
-curl -X POST http://localhost:3000/api/cron/reset-daily-calls \
+curl http://localhost:3000/api/cron/reset-daily-calls \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
 The corresponding script entrypoints live in `src/scripts/cron-*.ts` and are what GitHub Actions should run for long jobs.
+
+Actual scheduled cadence from `vercel.json`:
+
+- Ingest all sources: daily at `02:00 UTC`
+- Uptime check: every `15 minutes`
+- Schema drift: every `6 hours`
+- Daily call reset: `00:00 UTC`
 
 ---
 
