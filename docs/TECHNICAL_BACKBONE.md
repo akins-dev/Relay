@@ -746,7 +746,7 @@ These fields should be treated as best-effort only:
 - endpoint dedup bug
 - source contract drift (`partner` vs `vendor`, unwired `mcp_run` and `composio`)
 - search RPC/schema drift
-- misleading API key hint prefix drift (`sk_relay_` vs accepted `sk_mcp_`)
+- API key hint prefix drift was present historically (`sk_relay_` vs accepted `sk_mcp_`) and should now be treated as a regression check item rather than current expected behavior.
 - weak GitHub stdio sandbox execution path
 - authoritative transport recording
 

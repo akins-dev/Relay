@@ -380,7 +380,7 @@ function DashboardContent() {
             {keyError && <p className="mt-3 text-[13px] font-medium text-red-500">{keyError}</p>}
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/5 p-3 text-[12px] text-muted-foreground/80">
               <Zap size={14} className="text-amber-400" />
-              <span>Keys give agents <strong>200 calls/min</strong> (vs 30/min anonymous). Pass as <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-brand/90 ring-1 ring-white/10">Authorization: Bearer sk_relay_...</code></span>
+              <span>Keys give agents <strong>200 calls/min</strong> (vs 30/min anonymous). Pass as <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-brand/90 ring-1 ring-white/10">Authorization: Bearer sk_mcp_...</code></span>
             </div>
           </div>
 

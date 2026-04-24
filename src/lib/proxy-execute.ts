@@ -16,6 +16,7 @@ import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/ut
 import { SITE_URL }                          from '@/lib/site';
 import { BRAND }                             from '@/lib/brand';
 import { after }                             from '@/lib/after';
+import { API_KEY_HEADER }                    from '@/lib/agent-guidance';
 import {
   dlpScan, samplingDlpScan, piiScan,
   checkElicitationUrl, contextLeakScan,
@@ -153,7 +154,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   if (!callerUserId) {
     return { status: 401, body: JSON.stringify({
       error: 'Authentication required for invoke_tool',
-      hint: 'Add header: Authorization: Bearer sk_relay_<your-key>',
+      hint: `Add header: ${API_KEY_HEADER}`,
       get_key: `${SITE_URL}/dashboard`,
     }), contentType: 'application/json', headers: {} };
   }

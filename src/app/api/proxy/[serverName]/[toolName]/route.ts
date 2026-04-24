@@ -17,6 +17,7 @@ import { corsHeaders }               from '@/lib/utils';
 import { BRAND }                     from '@/lib/brand';
 import { resolveApiKey }             from '@/lib/auth-server';
 import { executeProxyCall }          from '@/lib/proxy-execute';
+import { getRateLimitAuthHint }      from '@/lib/agent-guidance';
 
 export async function POST(
   req: NextRequest,
@@ -45,7 +46,7 @@ export async function POST(
   const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', hint: 'Add Authorization: Bearer sk_relay_... for 200/min' },
+      { error: 'Rate limit exceeded', hint: getRateLimitAuthHint() },
       { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
     );
   }

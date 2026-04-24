@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import { getAgentBootstrapPrompt, getMcpServerUrl, getSearchUrlExample, getInvokeUrlExample } from '@/lib/agent-guidance';
 
 export async function GET() {
   const supabase = createClient();
@@ -35,10 +36,11 @@ export async function GET() {
       'direct — servers published directly to this registry',
     ],
     endpoints: {
-      search:      'GET  /api/servers/search?q={intent}&limit={n}',
+      search:      `GET  ${getSearchUrlExample()}&limit={n}`,
       browse:      'GET  /api/servers?sort=trust&verified=true&tag={tag}&source={source}&page={n}&page_size={n}',
       server_info: 'GET  /api/servers/{name}',
-      invoke:      'POST /api/proxy/{serverName}/{toolName}',
+      invoke:      `POST ${getInvokeUrlExample()}`,
+      native_mcp:  `POST|GET ${getMcpServerUrl()}`,
       stats:       'GET  /api/servers/stats',
     },
     security_layers: {
@@ -67,16 +69,7 @@ export async function GET() {
       ],
     },
     agent_usage: {
-      system_prompt: [
-        `You have access to ${BRAND.name} — a security-verified registry of thousands of MCP servers.`,
-        'Every server is scanned across 14 layers before listing. Every proxy call is inspected.',
-        `Read ${new URL(BRAND.agentMdRoute, SITE_URL).href} for full documentation before your first tool call.`,
-        'Search: GET /api/servers/search?q={your intent}&limit=5',
-        'Invoke: POST /api/proxy/{serverName}/{toolName}',
-        'If a tool call returns 401: the server needs a credential. The response includes setup_url pointing to your dashboard.',
-        'Never assume a tool does not exist. Always search first.',
-        'Prefer servers with trust_score > 80 for production use.',
-      ].join('\n'),
+      system_prompt: getAgentBootstrapPrompt(),
       trust_score_guide: 'Score 90-100: verified, stable, high uptime. 70-89: good signal. Below 70: use with caution.',
     },
     open_source: `${BRAND.githubUrl} — MIT license`,

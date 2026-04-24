@@ -6,6 +6,7 @@ import { Search, X, ChevronUp, Menu } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import { getAgentBootstrapPrompt, getNativeMcpConfigSnippet } from '@/lib/agent-guidance';
 
 // ─── Section data ──────────────────────────────────────────────────────────────
 
@@ -25,19 +26,9 @@ const SECTIONS = [
 // ─── Code snippets ────────────────────────────────────────────────────────────
 
 const CODE = {
-  systemPrompt: `You have access to ${BRAND.name} — a trust layer for remote MCP servers.
-Read ${SITE_URL}${BRAND.agentMdRoute} before your first tool call.
+  systemPrompt: getAgentBootstrapPrompt(),
 
-Search:  GET ${SITE_URL}/api/servers/search?q={intent}
-Invoke:  POST ${SITE_URL}/api/proxy/{serverName}/{toolName}`,
-
-  mcpConfig: `{
-  "mcpServers": {
-    "${BRAND.name}": {
-      "url": "${SITE_URL}/api/mcp-server"
-    }
-  }
-}`,
+  mcpConfig: getNativeMcpConfigSnippet(),
 
   searchExample: `GET /api/servers/search?q=send+transactional+email
 

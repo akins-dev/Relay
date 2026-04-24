@@ -52,10 +52,16 @@ Your agent gets two tools: `search_tools(intent)` and `invoke_tool(server, tool,
 ### Option 2 — System prompt / agents.md
 
 ```
-You have access to Relay at https://Relay.dev.
-Read https://Relay.dev/agents.md before your first tool call.
+You have access to Relay.
+If your framework supports MCP, connect to https://Relay.dev/api/mcp-server and use search_tools plus invoke_tool.
+Otherwise read https://Relay.dev/agents.md once before your first tool call and use the REST fallback below.
+Before taking any action that affects an external system, search first.
+For knowledge-only questions, answer directly without searching.
+Never put credentials, API keys, or tokens in tool arguments.
 Search:  GET https://Relay.dev/api/servers/search?q={intent}
 Invoke:  POST https://Relay.dev/api/proxy/{serverName}/{toolName}
+Prefer servers with trust_score > 80 for production use.
+Use the returned inputSchema exactly. Do not guess arguments.
 ```
 
 ### Option 3 — REST API

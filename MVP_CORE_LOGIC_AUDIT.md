@@ -215,7 +215,7 @@ Flow:
 
 ### Current invoke flaws
 
-- API key prefix messaging is inconsistent: runtime accepts `sk_mcp_` but several error hints tell users to send `sk_relay_`.
+- API key prefix drift was present and has now been corrected to `sk_mcp_` across the main runtime paths. Re-check any remaining docs/examples before treating this fully closed.
 - the search -> invoke linkage now exists in the MCP path, but it still depends on the caller carrying `search_event_id` and `intent` forward correctly.
 - request/response analytics are asynchronous, which is fine, but the higher-level search and SQL contracts still need cleanup before the feedback loop can be treated as fully trustworthy.
 
