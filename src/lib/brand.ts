@@ -15,7 +15,6 @@
  *
  * Never hardcode brand strings outside this file.
  */
-import { SITE_URL } from '@/lib/site';
 
 const name   = process.env.NEXT_PUBLIC_BRAND_NAME   ?? 'Relay';
 const slug   = process.env.NEXT_PUBLIC_BRAND_SLUG   ?? 'relay';

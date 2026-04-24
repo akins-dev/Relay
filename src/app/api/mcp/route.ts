@@ -29,7 +29,7 @@ export async function GET() {
       calls_today:      s.calls_today      ?? 0,
     },
     sources: [
-      'github.com/mcp — verified vendor repositories (Google, Stripe, etc.)',
+      'github.com/mcp — verified organization repositories (Google, Stripe, etc.)',
       'registry.modelcontextprotocol.io — official Anthropic registry',
       'registry.smithery.ai — 7,300+ community servers (HTTP endpoint servers only returned in agent search)',
       'github.com/modelcontextprotocol/servers — GitHub-verified servers',
@@ -45,7 +45,7 @@ export async function GET() {
     },
     security_layers: {
       publish_time: [
-        'L1: Identity & Telemetry — verified vendors receive base trust. Signals encompass Stars, Uptime, Schema Stability.',
+        'L1: Identity & Telemetry — verified publishers receive base trust. Signals encompass Stars, Uptime, Schema Stability.',
         'L3: Schema pinning — SHA-256 hash at publish, auto-suspend on any drift (rug-pull protection)',
         'L8: Typosquatting — pg_trgm similarity blocks names too close to verified servers',
         'L14: npm CVE scan — package.json scanned against npm audit API for supply chain attacks',

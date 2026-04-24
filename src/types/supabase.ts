@@ -16,13 +16,22 @@ export type Database = {
         Row: {
           id: string; name: string; display_name: string; description: string;
           long_description: string | null; author_id: string; version: string;
-          endpoint: string; homepage_url: string | null; github_url: string | null;
+          endpoint: string | null; homepage_url: string | null; github_url: string | null;
           license: string; tags: string[]; tools: string[];
-          status: 'pending' | 'active' | 'rejected' | 'suspended';
+          tool_schemas?: Json; resources?: Json; prompts?: Json;
+          status: 'pending' | 'active' | 'pending_review' | 'rejected' | 'suspended';
           verified: boolean; stars: number; total_calls: number; calls_today: number;
           latency_ms: number | null; uptime_pct: number; trust_score: number;
           schema_hash: string | null; last_scanned_at: string | null;
           scan_status: 'pending' | 'passed' | 'failed'; scan_issues: Json;
+          source?: string; smithery_id?: string | null; official_id?: string | null; glama_id?: string | null;
+          cve_issues?: Json; cve_scan_at?: string | null; shell_issues?: Json;
+          transport?: string; proxy_available?: boolean;
+          protocol_version?: string | null; mcp_compliant?: boolean | null;
+          auth_type?: string; auth_setup_url?: string | null;
+          oauth_authorization_url?: string | null;
+          upstream_updated_at?: string | null;
+          description_quality?: string | null; readme_url?: string | null;
           name_normalized: string; search_vector: unknown;
           created_at: string; updated_at: string;
         };
@@ -74,7 +83,7 @@ export type Database = {
     };
     Functions: {
       global_stats:      { Args: Record<never, never>; Returns: Json };
-      search_servers:    { Args: { query_text: string; result_limit?: number }; Returns: Database['public']['Tables']['servers']['Row'][] };
+      search_servers:    { Args: { query_text: string; result_limit?: number; include_stdio?: boolean }; Returns: Json[] };
       find_similar_names:{ Args: { candidate: string }; Returns: { name: string; similarity: number }[] };
       increment_stars:   { Args: { server_id: string }; Returns: void };
       decrement_stars:   { Args: { server_id: string }; Returns: void };

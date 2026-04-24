@@ -887,7 +887,7 @@ export async function upsertServers(
   // Includes upstream_updated_at for three-tier skip comparison
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
+    .select('id, name, source, endpoint, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
 
   if (prefetchErr) {
     console.error(`${tag} Pre-fetch FAILED: ${prefetchErr.message}. Will treat all servers as new.`);
@@ -1169,6 +1169,13 @@ export async function upsertServers(
       // CVE severity classification — must happen before trust score
       const hasHighSeverity    = cveIssues.some(i => i.severity === 'high');
       const ingestScanScore    = hasCriticalCve ? 0 : hasHighSeverity ? 50 : 100;
+      const scanIssues = cveIssues.map((issue: any) => ({
+        severity: issue.severity,
+        type: 'cve',
+        description: `${issue.name}@${issue.version} flagged ${issue.cve}`,
+        cve: issue.cve,
+        url: issue.url,
+      }));
 
       // Official/partner servers get stability credit on first ingest —
       // they have proven track records. Uptime checks will adjust over time.
@@ -1211,8 +1218,8 @@ export async function upsertServers(
         verified:         s.verified ?? false,
         status,
         schema_hash:      upstreamHash,
-        scan_status:      'passed' as any,
-        scan_issues:      [] as any,
+        scan_status:      (hasHighSeverity ? 'failed' : 'passed') as any,
+        scan_issues:      scanIssues as any,
         cve_issues:       cveIssues as any,
         cve_scan_at:      new Date().toISOString(),
         shell_issues:     [] as any,
@@ -1226,7 +1233,7 @@ export async function upsertServers(
       if (existing) {
         // Shield Official/Vendor servers from generic registry overwrites
         if ((existing.source === 'partner' || existing.source === 'official') && s.source !== 'partner' && s.source !== 'official') {
-          console.log(`${tag} ${progress} [SKIP] ${s.name} — Protected official/vendor server, ignoring ${s.source} update`);
+          console.log(`${tag} ${progress} [SKIP] ${s.name} — Protected official/partner server, ignoring ${s.source} update`);
           result.skipped++;
           continue;
         }
