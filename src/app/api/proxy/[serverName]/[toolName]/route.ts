@@ -21,9 +21,9 @@ import { getRateLimitAuthHint }      from '@/lib/agent-guidance';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { serverName: string; toolName: string } }
+  { params }: { params: Promise<{ serverName: string; toolName: string }> }
 ) {
-  const { serverName, toolName } = params;
+  const { serverName, toolName } = await params;
   const ip       = extractIp(req);
   const supabase = createClient();
 
@@ -74,12 +74,13 @@ export async function POST(
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { serverName: string; toolName: string } }
+  { params }: { params: Promise<{ serverName: string; toolName: string }> }
 ) {
+  const { serverName, toolName } = await params;
   const { data: server } = await createClient()
     .from('servers')
     .select('name, display_name, description, tools, trust_score, latency_ms, uptime_pct, verified, auth_type, transport, proxy_available')
-    .eq('name', params.serverName)
+    .eq('name', serverName)
     .eq('status', 'active')
     .single();
 
