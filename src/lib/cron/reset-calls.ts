@@ -10,8 +10,7 @@ export async function runResetDailyCalls() {
     cronRun = (data as any) ?? null;
   } catch {}
 
-  const { error } = await svc.from('servers').update({ calls_today: 0 }).neq('id', '');
-
+  const { error } = await svc.from('servers').update({ calls_today: 0 }).not('id', 'is', null);
   if (error) {
     if (cronRun?.id) {
       await (svc.from('cron_job_runs') as any).update({
