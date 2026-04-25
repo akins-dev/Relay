@@ -1,6 +1,6 @@
 # Relay — Overview & Roadmap
 
-> *The agent-centric runtime layer for the practical MCP configuration ceiling.*
+> *The agent-centric capability access layer for the practical MCP configuration ceiling.*
 > Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
 
 ---
@@ -9,7 +9,9 @@
 
 Relay solves the practical MCP configuration ceiling.
 
-MCP does not lack servers. The problem is that usable capacity collapses once teams have to keep discovering, evaluating, wiring, authenticating, exposing, and maintaining more and more servers by hand. Long before the ecosystem runs out of capability, humans and agents hit a sanity ceiling:
+MCP standardized the connection layer, but it did not solve open-world capability access across a large and growing server ecosystem.
+
+The problem is that usable capacity collapses once teams have to keep discovering, evaluating, wiring, authenticating, exposing, and maintaining more and more servers by hand. Long before the ecosystem runs out of capability, humans and agents hit a sanity ceiling:
 
 - too many servers to configure explicitly
 - too many tools to expose cleanly
@@ -17,7 +19,7 @@ MCP does not lack servers. The problem is that usable capacity collapses once te
 - too much model confusion once the surface gets large
 - too many 1:1 integration projects for each new capability
 
-Recent advances in RAG and orchestration frameworks do not replace this need. RAG improves knowledge retrieval. LangChain and LangGraph improve coordination, state, and multi-step execution. None of them solve open-ecosystem MCP discovery, context bloat across large tool surfaces, or centralized security and credential handling across thousands of possible integrations.
+Recent advances in RAG and orchestration frameworks do not replace this need. RAG improves knowledge retrieval. LangChain and LangGraph improve coordination, state, and multi-step execution. None of them solve open-world MCP capability discovery, context bloat across large tool surfaces, or centralized security, trust, and credential handling across thousands of possible integrations.
 
 Relay changes the model from explicit preload to runtime capability resolution.
 
@@ -29,7 +31,7 @@ invoke_tool({ server: "sendgrid-mail", tool: "send_email", args: {...} })
 -> executes through one guarded runtime path
 ```
 
-The two-tool interface is the current implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, auth, trust, and execution happen at runtime.
+The two-tool interface is the current implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, ranking, auth, trust, and execution happen at runtime.
 
 The deeper differentiator is the learning loop. Relay is designed to record which server/tool combinations actually worked for which intents so routing gets better over time instead of staying static.
 

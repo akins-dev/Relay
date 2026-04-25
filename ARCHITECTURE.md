@@ -6,21 +6,21 @@
 
 ## 1. What We Are Building
 
-An **agent-first runtime discovery and execution layer** for the MCP ecosystem — not a generic registry marketplace.
+An **agent-first capability access layer** for the MCP ecosystem — not a generic registry marketplace.
 
 ### The Core Insight
 
 > "Agent development will never scale if every new capability still behaves like a 1:1 integration."
 
-The core problem is the practical MCP cap. Long before the ecosystem runs out of servers, developers and agents hit a sanity ceiling: too many servers to configure explicitly, too much auth and transport complexity to manage manually, and too much context pressure when the exposed tool surface keeps growing.
+The core problem is the practical MCP cap. MCP standardized the connection layer, but it did not solve open-world capability access. Long before the ecosystem runs out of servers, developers and agents hit a sanity ceiling: too many servers to configure explicitly, too much auth and transport complexity to manage manually, and too much context pressure when the exposed tool surface keeps growing.
 
-This is why Relay should be read as infrastructure that complements the rest of the modern agent stack. RAG improves knowledge retrieval. LangChain and LangGraph improve orchestration and multi-step workflows. Relay solves the separate runtime problem of secure MCP discovery and invocation across a large fragmented tool ecosystem.
+This is why Relay should be read as infrastructure that complements the rest of the modern agent stack. RAG improves knowledge retrieval. LangChain and LangGraph improve orchestration and multi-step workflows. Relay solves the separate runtime problem of secure MCP capability discovery, governed invocation, and outcome-driven routing across a large fragmented tool ecosystem.
 
 Relay's current implementation solves this with two native MCP tools:
 - `search_tools({ intent })` — find servers by what the agent needs to do
 - `invoke_tool({ server, tool, args })` — invoke through a security proxy
 
-The two-tool interface is the implementation approach, not the thesis by itself. The thesis is that the agent should do the heavy lifting at runtime instead of depending on ever-expanding explicit pre-configuration.
+The two-tool interface is the implementation approach, not the thesis by itself. The thesis is that the agent should resolve capability at runtime instead of depending on ever-expanding explicit pre-configuration.
 
 ### The Problem Space
 

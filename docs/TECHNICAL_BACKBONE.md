@@ -1,6 +1,6 @@
 # Relay Technical Backbone
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 Status: Canonical living technical reference
 
 ## 1. Purpose
@@ -32,7 +32,7 @@ The problem decomposes into:
 - much of the ecosystem is `stdio`-only, so discovery and invocation are not the same problem
 - public directory data is noisy, duplicative, incomplete, or operationally uneven
 
-Relay's thesis is that the winning system is not another directory page and not merely another gateway. It is an agent-centric runtime layer that:
+Relay's thesis is that the winning system is not another directory page and not merely another gateway. It is an agent-centric capability access layer that:
 
 - lets the agent discover capability by intent at runtime
 - reduces the need for explicit pre-configuration
@@ -46,9 +46,9 @@ Relay is complementary to modern RAG and agent orchestration systems, not a repl
 
 - RAG improves retrieval over documents, databases, and other knowledge sources
 - LangChain and LangGraph improve workflow coordination, state management, and multi-step execution
-- Relay solves a different infrastructure problem: runtime discovery and guarded invocation across a large MCP ecosystem
+- Relay solves a different infrastructure problem: runtime discovery, governed invocation, and outcome-driven routing across a large MCP ecosystem
 
-This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, or centralized credential and policy enforcement. Relay sits underneath that stack as the discovery and execution layer that makes broad MCP capability usable at runtime.
+This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, open-world tool retrieval, or centralized credential and policy enforcement. Relay sits underneath that stack as the capability access layer that makes broad MCP capability usable at runtime.
 
 ## 3. Product Model
 
@@ -904,3 +904,15 @@ The docs should avoid drifting into:
 - Chameleon: https://arxiv.org/abs/2304.09842
 - ToolLLM: https://arxiv.org/abs/2307.16789
 - APIBank (cited in agent evaluation literature): https://aclanthology.org/2023.emnlp-main.187/
+- ToolRet: https://aclanthology.org/2025.findings-acl.1258/
+- ToolHop: https://aclanthology.org/2025.acl-long.150/
+- Meta-Tool / Meta-Bench: https://aclanthology.org/2025.acl-long.1481/
+- ToolSandbox: https://machinelearning.apple.com/research/toolsandbox-stateful-conversational-llm-benchmark
+- Tau-bench: https://github.com/sierra-research/tau2-bench
+- Tau-Knowledge: https://taubench.com/blog/tau-knowledge.html
+- BFCL leaderboard: https://gorilla.cs.berkeley.edu/leaderboard
+- BFCL V4 web search note: https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html
+- MCP specification: https://modelcontextprotocol.io/specification/
+- MCP 2026 roadmap: https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/
+- MCP landscape and security threats: https://arxiv.org/abs/2503.23278
+- Beyond the Protocol: https://arxiv.org/abs/2506.02040

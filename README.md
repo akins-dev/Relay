@@ -15,7 +15,7 @@ Project narrative and roadmap: [`OVERVIEW_AND_ROADMAP.md`](OVERVIEW_AND_ROADMAP.
 
 ## The Problem: The Practical MCP Cap
 
-MCP solved interoperability beautifully. It did not solve the practical ceiling teams hit when they try to use a large and growing number of MCP servers in real agent systems.
+MCP standardized the client-server connection layer beautifully. It did not solve the practical ceiling teams hit when they try to use a large and growing number of MCP servers in real agent systems.
 
 The real bottleneck is **explicit pre-configuration**:
 
@@ -24,13 +24,13 @@ The real bottleneck is **explicit pre-configuration**:
 - larger tool surfaces increase token cost, routing ambiguity, and failure risk
 - credentials, transport differences, and runtime security add even more operational complexity
 
-Even with strong progress in **RAG** and orchestration frameworks like **LangChain** and **LangGraph**, the infrastructure problem remains: agents still need a clean, secure, and scalable way to discover and invoke tools at runtime across a fragmented ecosystem without pre-loading everything.
+Even with strong progress in **RAG** and orchestration frameworks like **LangChain** and **LangGraph**, the infrastructure problem remains: agents still need a clean, secure, and scalable way to discover, rank, authorize, and invoke tools at runtime across a fragmented ecosystem without pre-loading everything.
 
 ## The Vision: Relay
 
 **Relay removes the practical MCP configuration ceiling.**
 
-Relay is a secure runtime discovery layer that lets agents:
+Relay is a secure capability access layer that lets agents:
 
 - discover relevant MCP tools by natural-language intent at runtime
 - invoke them through one controlled and guarded path

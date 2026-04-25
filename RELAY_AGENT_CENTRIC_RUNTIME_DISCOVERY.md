@@ -3,15 +3,15 @@
 Subtitle: Why agent-centric runtime discovery is the right abstraction for a large MCP ecosystem
 
 Status: Draft article / technical essay
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 ## Abstract
 
-Model Context Protocol solved interoperability. It did not solve the practical configuration ceiling teams hit when they try to use a growing number of MCP servers in real agent systems.
+Model Context Protocol standardized the client-server connection layer for tools, resources, and prompts. It did not solve open-world capability access across a growing MCP ecosystem.
 
-The bottleneck is explicit pre-configuration. A human still has to discover servers, decide which ones belong in the environment, manage credentials, handle transport differences, and expose a bounded tool surface to the model. That works for small setups. It becomes brittle as the ecosystem grows.
+The bottleneck is explicit pre-configuration. A human still has to discover servers, decide which ones belong in the environment, manage credentials, handle transport differences, evaluate trust, and expose a bounded tool surface to the model. That works for small setups. It becomes brittle as the ecosystem grows.
 
-Relay is built around a simple claim: the next major MCP problem is not protocol compatibility, but making a large capability universe usable without turning every new server into another manual integration project. The response is an agent-centric runtime layer that lets the agent discover capability by intent, invoke through one guarded path, and improve future routing from real outcomes.
+Relay is built around a simple claim: the next major MCP problem is not basic protocol compatibility, but making a large capability universe discoverable, governable, and usable at runtime without turning every new server into another manual integration project. The response is an agent-centric runtime layer that lets the agent discover capability by intent, invoke through one guarded path, and improve future routing from real outcomes.
 
 ## 1. The Practical MCP Cap
 
@@ -210,29 +210,71 @@ LangChain and LangGraph improve orchestration, state management, and multi-step 
 
 In that sense, Relay sits underneath them as runtime infrastructure: RAG helps the agent know, orchestration helps the agent plan, and Relay helps the agent safely discover and do.
 
-Relay is also adjacent to several strands of tool-use research.
+Relay is also adjacent to several strands of tool and agent research, but the most relevant frame in 2026 is not generic "tool use." It is open-world capability access.
 
-### Toolformer
+### Early Tool-Use Precursors
 
-Toolformer supports the general idea that tool use can become part of model behavior rather than a purely external scripting layer.
+The classic 2023 papers still matter, but mainly as precursors:
 
-### Chameleon
+- Toolformer established that models can learn when to call external tools instead of treating tool use as a purely hand-written wrapper.
+- Chameleon showed that heterogeneous tools can be composed inside a reasoning pipeline.
+- ToolLLM and ToolBench pushed the field toward large real API collections rather than toy calculators and search demos.
+- APIBank helped establish runnable tool-use evaluation instead of anecdotal agent demos.
 
-Chameleon is relevant because it treats tool use as compositional reasoning over heterogeneous capabilities.
+These papers are historically important. They are not the best direct framing for Relay's thesis.
 
-### ToolLLM / ToolBench
+### Open-World Tool Retrieval And Function Calling
 
-These are especially relevant because they show that retrieval and ranking across large API collections matter, and that tool-use performance can improve with better training and selection.
+More recent work is closer to Relay's actual problem.
 
-### APIBank
+- Tool retrieval benchmarks such as ToolRet show that once the candidate tool universe becomes large, retrieval quality itself becomes the bottleneck. End-to-end tool use degrades when the system cannot first identify the right capability from a broad catalog.
+- Open-world function-calling work such as Meta-Tool and Meta-Bench makes the same point from a different angle: success depends on discovering, selecting, and grounding the right capability under realistic tool-set scale, not merely formatting a valid function call.
+- ToolHop extends this into multi-hop settings and shows that multi-step tool use remains far from solved even for strong frontier models.
 
-APIBank and similar benchmarks are useful because they force precision around what tool-augmented systems can actually do.
+This is the research lane Relay fits most naturally: not "can a model emit a tool call at all?" but "how does an agent runtime make a large external capability universe operationally usable?"
 
-Relay sits one layer lower than these papers. It is not mainly a benchmark or a model-training recipe. It is runtime infrastructure for making large-scale MCP capability resolution workable in live agent systems.
+### Stateful And Agentic Evaluation
+
+The newer evaluation trend also supports Relay's framing.
+
+- ToolSandbox moves beyond stateless API invocation and measures tool use under stateful conversational interaction.
+- Tau-bench and Tau-Knowledge show that realistic agent tasks remain difficult when tools must be discovered, documentation must be read, and actions must be taken under interactive constraints.
+- BFCL has expanded from narrow function-calling format checks into broader agentic evaluation including web search, memory, and format sensitivity.
+
+These benchmarks matter because Relay is not optimizing for a toy "single JSON function call" setting. It is trying to make live capability access work under retrieval, state, auth, and execution constraints.
+
+### MCP-Specific Security And Governance
+
+Relay is also adjacent to the emerging MCP-specific security literature.
+
+Recent MCP work emphasizes that standardizing protocol shape does not remove trust-boundary problems. Malicious servers, schema drift, prompt injection, weak auditability, and ambiguous permission boundaries all remain open issues in real deployments.
+
+That strengthens one of Relay's core claims: guarded execution, policy enforcement, trust scoring, and credential isolation are not optional operational details around MCP. They are part of what makes large-scale runtime capability access viable.
+
+### The Right Layer To Compare Relay Against
+
+Relay sits below orchestration frameworks and beside model-training recipes.
+
+It is not mainly:
+
+- a benchmark
+- a model fine-tuning method
+- a workflow graph framework
+- a static registry page
+
+It is a capability access plane for MCP systems:
+
+- discover capability by intent
+- rank and trim what the model sees
+- invoke through one governed path
+- record real outcomes
+- improve future routing
+
+That is why Relay should be framed less as "another tool-using agent system" and more as runtime infrastructure for open-world MCP capability access.
 
 ## 11. Conclusion
 
-MCP removed protocol fragmentation. It did not remove the operational ceiling created by explicit configuration.
+MCP standardized the connection layer. It did not remove the operational ceiling created by explicit configuration, open-world discovery, trust boundaries, and governed execution.
 
 Relay's answer is to move capability resolution into the runtime loop: discover by intent, invoke through one guarded path, record outcomes, and improve over time. The current two-tool model is the bootstrap form of that architecture. The later roadmap turns that same loop into speculative execution, adaptive tool surfacing, and learned routing.
 
@@ -244,3 +286,15 @@ The story only works when it stays simple. The problem is the practical MCP cap.
 - Chameleon: https://arxiv.org/abs/2304.09842
 - ToolLLM: https://arxiv.org/abs/2307.16789
 - APIBank benchmark reference: https://aclanthology.org/2023.emnlp-main.187/
+- ToolRet: https://aclanthology.org/2025.findings-acl.1258/
+- ToolHop: https://aclanthology.org/2025.acl-long.150/
+- Meta-Tool / Meta-Bench: https://aclanthology.org/2025.acl-long.1481/
+- ToolSandbox: https://machinelearning.apple.com/research/toolsandbox-stateful-conversational-llm-benchmark
+- Tau-bench: https://github.com/sierra-research/tau2-bench
+- Tau-Knowledge: https://taubench.com/blog/tau-knowledge.html
+- BFCL leaderboard: https://gorilla.cs.berkeley.edu/leaderboard
+- BFCL V4 web search note: https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html
+- MCP specification: https://modelcontextprotocol.io/specification/
+- MCP 2026 roadmap: https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/
+- MCP landscape and security threats: https://arxiv.org/abs/2503.23278
+- Beyond the Protocol: https://arxiv.org/abs/2506.02040

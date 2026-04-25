@@ -310,7 +310,7 @@ ${getAgentBootstrapPrompt()}
 
 ---
 
-*${BRAND.name} — MIT licensed — built by ${BRAND.org}*
+*${BRAND.name} — Apache 2.0 licensed — built by ${BRAND.org}*
 *${BRAND.githubUrl}*
 \`;`
 
