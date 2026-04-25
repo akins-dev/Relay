@@ -215,7 +215,7 @@ Actual scheduled cadence from `vercel.json`:
 
 ```bash
 npm test
-# 40+ unit tests across all 14 security layers with real attack payloads
+# unit tests covering the security stack with real attack payloads
 ```
 
 ---

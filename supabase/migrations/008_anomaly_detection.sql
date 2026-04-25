@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 008: Anomaly detection views
+-- relay — Migration 008: Anomaly detection views
 -- Visibility into suspicious traffic patterns without automatic blocking.
 -- Query these from the admin panel or Supabase SQL Editor.
 -- ─────────────────────────────────────────────────────────────────────────────

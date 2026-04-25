@@ -107,7 +107,7 @@ export interface MCPProbeResult {
 // ── Client identity we send in initialize ─────────────────────────────────────
 
 const CLIENT_INFO = {
-  name:    'openMCP-registry',
+  name:    'relay-registry',
   version: '1.0.0',
 };
 
@@ -141,7 +141,7 @@ async function mcpInitialize(
       headers: {
         'Content-Type': 'application/json',
         'Accept':        'application/json, text/event-stream',
-        'User-Agent':    'openMCP-registry/1.0',
+        'User-Agent':    'relay-registry/1.0',
         'X-Registry-Probe': 'initialize',
       },
       body: JSON.stringify({
@@ -181,7 +181,7 @@ async function mcpInitialize(
       method: 'POST',
       headers: {
         'Content-Type':     'application/json',
-        'User-Agent':       'openMCP-registry/1.0',
+        'User-Agent':       'relay-registry/1.0',
         'X-Registry-Probe': 'initialized',
       },
       body: JSON.stringify({
@@ -216,7 +216,7 @@ async function listTools(endpoint: string, timeoutMs = 8_000): Promise<MCPToolSc
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'openMCP-registry/1.0' },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
         body: JSON.stringify({
           jsonrpc: '2.0', id: 2, method: 'tools/list',
           params: cursor ? { cursor } : {},
@@ -249,7 +249,7 @@ async function listResources(endpoint: string, timeoutMs = 8_000): Promise<MCPRe
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'openMCP-registry/1.0' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -271,7 +271,7 @@ async function listPrompts(endpoint: string, timeoutMs = 8_000): Promise<MCPProm
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'openMCP-registry/1.0' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -303,7 +303,7 @@ async function detectTransportFromLiveProbe(
     // Try SSE GET — if the server opens an event stream, it's SSE or Streamable HTTP
     const res = await fetch(endpoint, {
       method:  'GET',
-      headers: { 'Accept': 'text/event-stream', 'User-Agent': 'openMCP-registry/1.0' },
+      headers: { 'Accept': 'text/event-stream', 'User-Agent': 'relay-registry/1.0' },
       signal:  AbortSignal.timeout(5_000),
     });
     const ct = res.headers.get('content-type') ?? '';
@@ -436,7 +436,7 @@ export async function probeUptime(
   try {
     const res = await fetch(endpoint, {
       method: 'HEAD',
-      headers: { 'User-Agent': 'openMCP-registry/1.0', 'X-Registry-Probe': 'uptime' },
+      headers: { 'User-Agent': 'relay-registry/1.0', 'X-Registry-Probe': 'uptime' },
       signal: AbortSignal.timeout(5_000),
     });
     if (res.ok || res.status === 405 || res.status === 401) {
@@ -450,7 +450,7 @@ export async function probeUptime(
     if (await isSafeUrlForServerFetch(healthUrl)) {
       const res = await fetch(healthUrl, {
         signal: AbortSignal.timeout(4_000),
-        headers: { 'User-Agent': 'openMCP-registry/1.0' },
+        headers: { 'User-Agent': 'relay-registry/1.0' },
       });
       if (res.ok) return { up: true, latencyMs: Date.now() - start, mcpCompliant: false };
     }

@@ -7,7 +7,7 @@
  *   1. Authorization: Bearer <supabase-jwt> header (preferred)
  *   2. Supabase SSR cookie session (browser fallback)
  *
- * resolveApiKey — resolves an Agentrail API key (sk_mcp_...) to a user.
+ * resolveApiKey — resolves an relay API key (sk_mcp_...) to a user.
  *   Single source of truth — previously duplicated across mcp-server and proxy routes.
  *   Caches the key lookup in Redis/memory for 5 minutes to avoid repeated DB hits.
  *

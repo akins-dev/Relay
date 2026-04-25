@@ -86,7 +86,7 @@ Relay already has the main MVP loop in place.
 
 ### Security and credential layer
 
-- 14-layer security model around search, invoke, auth, and policy
+- security stack around search, invoke, auth, and policy
 - vault-backed secret storage and injection
 - structured auth/setup responses when credentials are missing
 - drift detection and re-scan behavior for changed servers
@@ -198,7 +198,19 @@ That is what later enables:
 
 ## 10. Relation To Research
 
-Relay is adjacent to several strands of tool-use research.
+Relay is also adjacent to the current agent stack that people actually deploy in 2026.
+
+### RAG
+
+RAG improves retrieval over documents, databases, and other knowledge sources. It does not solve open-ecosystem tool discovery, MCP transport fragmentation, or guarded runtime invocation across many possible servers.
+
+### LangChain / LangGraph
+
+LangChain and LangGraph improve orchestration, state management, and multi-step workflows. They can consume MCP tools and expose agents as MCP surfaces, but they still depend on the underlying MCP capability layer being discoverable, governable, and efficient to present to the model.
+
+In that sense, Relay sits underneath them as runtime infrastructure: RAG helps the agent know, orchestration helps the agent plan, and Relay helps the agent safely discover and do.
+
+Relay is also adjacent to several strands of tool-use research.
 
 ### Toolformer
 

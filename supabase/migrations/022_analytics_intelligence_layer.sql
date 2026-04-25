@@ -1,5 +1,5 @@
 -- ═════════════════════════════════════════════════════════════════════════════
--- Agentrail — Migration 022: Intelligence & Analytics Data Layer
+-- relay — Migration 022: Intelligence & Analytics Data Layer
 --
 -- This is the core business asset. Three tables:
 --
@@ -16,7 +16,7 @@
 --    Answers: "Did the suggested server work? How fast? Did it fail?"
 --    The signal that drives ranking improvement.
 --
--- Together these three tables are Agentrail's moat. The longer the system
+-- Together these three tables are relay's moat. The longer the system
 -- runs, the smarter the search becomes, and the harder the dataset is to
 -- replicate.
 -- ═════════════════════════════════════════════════════════════════════════════

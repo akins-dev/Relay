@@ -55,7 +55,7 @@ app.post('/extract', async (req, res) => {
   });
 
   const client = new Client(
-    { name: "agentrail-sandbox", version: "1.0.0" },
+    { name: "relay-sandbox", version: "1.0.0" },
     { capabilities: {} }
   );
 
@@ -129,5 +129,5 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Agentrail MCP Sandbox listening on port ${PORT}`);
+  console.log(`relay MCP Sandbox listening on port ${PORT}`);
 });

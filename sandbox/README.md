@@ -1,4 +1,4 @@
-# openMCP Sandbox
+# Relay Sandbox
 
 The **Sandbox** is a lightweight, isolated Node.js Express microservice that bridges the gap between secure web environments and command-line MCP servers.
 
@@ -6,14 +6,14 @@ The **Sandbox** is a lightweight, isolated Node.js Express microservice that bri
 
 This service is used **exclusively during the ingestion pipeline (`/api/ingest`)**. 
 
-When the openMCP registry ingests a server marked with the `stdio` transport, it means the server isn't an HTTP endpoint. It is a piece of code that must be executed via the command line, typically through a known package entrypoint such as Smithery or a repo-root npm package. If the registry cannot derive a safe executable command, ingestion falls back to README parsing instead of guessing.
+When Relay ingests a server marked with the `stdio` transport, it means the server is not an HTTP endpoint. It is a piece of code that must be executed via the command line, typically through a known package entrypoint such as Smithery or a repo-root npm package. If Relay cannot derive a safe executable command, ingestion falls back to README parsing instead of guessing.
 
-Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without risking severe security or architecture limitations, openMCP offloads this task to this Sandbox. 
+Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without severe security and architecture tradeoffs, Relay offloads this task to this Sandbox.
 
 1. `ingest.ts` sends a secure HTTP POST to the Sandbox with the CLI command. 
 2. The Sandbox spawns the subprocess and attaches native `stdin/stdout`.
 3. The Sandbox completes the MCP handshake, extracts the schemas (Tools, Resources, Prompts) via RPC, and shuts the process down. 
-4. The Sandbox returns only the safe JSON schemas back to the main openMCP database.
+4. The Sandbox returns only the safe JSON schemas back to the main Relay database.
 
 ---
 
@@ -26,7 +26,7 @@ Here is the exact step-by-step to get this Sandbox live on Render:
 ### Step 1: Deploy the Service
 1. Log into your **Render.com** dashboard.
 2. Click **New +** and select **Web Service**.
-3. Connect your GitHub repository containing the `mcp-registry-next` code.
+3. Connect your GitHub repository containing the `Relay` code.
 4. **CRITICAL:** When configuring the service, look for the field called **Root Directory** and type: `sandbox`
 5. Render should automatically detect the runtime as **Docker** (because it finds `sandbox/Dockerfile`). If asked explicitly, select Docker.
 

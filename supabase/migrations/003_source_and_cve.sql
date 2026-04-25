@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 003: Source provenance + CVE scanning fields
+-- relay — Migration 003: Source provenance + CVE scanning fields
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Add source provenance field

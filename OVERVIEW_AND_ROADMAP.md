@@ -9,13 +9,15 @@
 
 Relay solves the practical MCP configuration ceiling.
 
-The problem is not that MCP lacks servers. The problem is that usable capacity collapses once teams have to keep discovering, wiring, authenticating, exposing, and maintaining more and more servers by hand. Long before the ecosystem runs out of capability, humans and agents hit a sanity ceiling:
+MCP does not lack servers. The problem is that usable capacity collapses once teams have to keep discovering, evaluating, wiring, authenticating, exposing, and maintaining more and more servers by hand. Long before the ecosystem runs out of capability, humans and agents hit a sanity ceiling:
 
 - too many servers to configure explicitly
 - too many tools to expose cleanly
 - too much auth and transport complexity to manage by hand
 - too much model confusion once the surface gets large
 - too many 1:1 integration projects for each new capability
+
+Recent advances in RAG and orchestration frameworks do not replace this need. RAG improves knowledge retrieval. LangChain and LangGraph improve coordination, state, and multi-step execution. None of them solve open-ecosystem MCP discovery, context bloat across large tool surfaces, or centralized security and credential handling across thousands of possible integrations.
 
 Relay changes the model from explicit preload to runtime capability resolution.
 
@@ -30,6 +32,12 @@ invoke_tool({ server: "sendgrid-mail", tool: "send_email", args: {...} })
 The two-tool interface is the current implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, auth, trust, and execution happen at runtime.
 
 The deeper differentiator is the learning loop. Relay is designed to record which server/tool combinations actually worked for which intents so routing gets better over time instead of staying static.
+
+In that sense, Relay complements the rest of the 2026 agent stack:
+
+- RAG helps answer knowledge-heavy questions with better retrieval
+- LangChain and LangGraph help orchestrate the agent's reasoning and workflow
+- Relay helps the agent discover and use MCP capability at runtime without exploding the model-facing surface
 
 ---
 
@@ -56,7 +64,7 @@ The deeper differentiator is the learning loop. Relay is designed to record whic
 
 ### Security and execution control
 
-- 14-layer security stack across scan, invoke, auth, DLP, SSRF, and confirmation paths
+- security stack across scan, invoke, auth, DLP, SSRF, and confirmation paths
 - Schema drift detection with automatic suspension on post-approval mutation
 - Re-scan on drift events
 - Rate limiting and response-size guards
@@ -184,5 +192,5 @@ That is the whole story. Security, vault, confidence scoring, training, stdio br
 
 ---
 
-*Relay — MIT licensed — built by TheSeventeen*
-*https://github.com/the-17/Relay*
+*Relay — Apache 2.0 licensed — built by Akinbobola Emmanuel*
+*https://github.com/akins-dev/Relay*

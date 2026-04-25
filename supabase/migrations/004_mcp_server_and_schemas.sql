@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 004: Tool schemas + Glama source + MCP server config
+-- relay — Migration 004: Tool schemas + Glama source + MCP server config
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Add Glama as a valid source

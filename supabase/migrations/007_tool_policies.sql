@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 007: Tool policies (user-controlled safety layer)
+-- relay — Migration 007: Tool policies (user-controlled safety layer)
 -- Lets users define which tools their agents can call, and which are blocked.
 -- ─────────────────────────────────────────────────────────────────────────────
 

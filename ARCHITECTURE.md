@@ -1,4 +1,4 @@
-# Agentrail / Relay — Architecture Deep-Dive
+# Relay — Architecture Deep-Dive
 *Last updated: April 2026*
 *Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)*
 
@@ -13,6 +13,8 @@ An **agent-first runtime discovery and execution layer** for the MCP ecosystem �
 > "Agent development will never scale if every new capability still behaves like a 1:1 integration."
 
 The core problem is the practical MCP cap. Long before the ecosystem runs out of servers, developers and agents hit a sanity ceiling: too many servers to configure explicitly, too much auth and transport complexity to manage manually, and too much context pressure when the exposed tool surface keeps growing.
+
+This is why Relay should be read as infrastructure that complements the rest of the modern agent stack. RAG improves knowledge retrieval. LangChain and LangGraph improve orchestration and multi-step workflows. Relay solves the separate runtime problem of secure MCP discovery and invocation across a large fragmented tool ecosystem.
 
 Relay's current implementation solves this with two native MCP tools:
 - `search_tools({ intent })` — find servers by what the agent needs to do

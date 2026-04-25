@@ -1,5 +1,5 @@
 {
-  "name": "agentrail-sandbox",
+  "name": "relay-sandbox",
   "version": "1.0.0",
   "description": "Ephemeral sandbox for dynamically extracting MCP stdio server schemas",
   "main": "index.js",

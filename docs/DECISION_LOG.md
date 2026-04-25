@@ -106,3 +106,43 @@ Consequences:
 
 - source contract drift and dedup defects should be fixed before major new product expansion
 - new features should not outrun registry correctness
+
+## ADR-006
+
+Date: 2026-04-25
+Status: accepted
+
+Decision:
+
+Narrative docs should present Relay first through a consistent "Problem" and "Vision" structure, and should explicitly position Relay as complementary to RAG and orchestration frameworks rather than competing with them.
+
+Rationale:
+
+- the clearest product story starts with the practical MCP configuration ceiling
+- Relay is runtime infrastructure, not a replacement for reasoning, retrieval, or orchestration layers
+- external messaging becomes weaker when this comparison is left implicit or scattered
+
+Consequences:
+
+- the README and major narrative docs should foreground the practical MCP cap before feature detail
+- docs should explain how Relay fits alongside RAG, LangChain, and LangGraph where that comparison helps
+- future documentation updates should preserve this framing rather than drifting into feature-first prose
+
+## ADR-007
+
+Date: 2026-04-25
+Status: accepted
+
+Decision:
+
+Markdown docs should avoid hard-coding a numbered security-layer count unless the implementation and product surfaces are aligned on the same count.
+
+Rationale:
+
+- the repository currently contains count drift between "14-layer" and "15-layer" wording
+- mismatched numbers reduce trust faster than count-neutral wording
+
+Consequences:
+
+- narrative docs should prefer "security stack" or equivalent until the count is fully reconciled
+- future count-specific wording should be introduced only after a deliberate implementation census

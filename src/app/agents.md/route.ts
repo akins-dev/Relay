@@ -107,7 +107,7 @@ GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 **Response fields you need:**
 - \`name\` — server identifier, used for invocation
 - \`transport\` — \`streamable_http\` | \`sse\` | \`stdio\`
-- \`proxy_available\` — \`true\` = call through web proxy; \`false\` = use CLI bridge (\`openmcp run {name}\`)
+- \`proxy_available\` — \`true\` = call through web proxy; \`false\` = use CLI bridge (\`relay run {name}\`)
 - \`mcp_compliant\` — server passed MCP initialize handshake
 - \`protocol_version\` — e.g. \`2025-03-26\` or \`2024-11-05\`
 - \`tools[].name\` — tool name, used for invocation
@@ -153,7 +153,7 @@ GET /api/servers/search?q=send transactional email&limit=3
       "transport": "stdio",
       "proxy_available": false,
       "tools": ["read_file", "write_file", "list_directory"],
-      "_hint": "Run locally: openmcp run filesystem"
+      "_hint": "Run locally: relay run filesystem"
     }
   ]
 \`\`\`

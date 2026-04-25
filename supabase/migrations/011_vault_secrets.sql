@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
--- openMCP — Migration 011: Vault-based credential storage
+-- relay — Migration 011: Vault-based credential storage
 -- ═══════════════════════════════════════════════════════════════════════════════
 --
 -- ⚠️  CRITICAL — READ BEFORE RUNNING ⚠️
@@ -13,7 +13,7 @@
 --     FROM pg_settings
 --     WHERE name IN ('log_statement', 'pgaudit.log', 'pgaudit.log_parameter');
 --
---   Safe baseline for openMCP:
+--   Safe baseline for relay:
 --     log_statement = 'ddl' or 'none'
 --     pgaudit.log = 'none'
 --     pgaudit.log_parameter = 'off'
@@ -89,7 +89,7 @@ DECLARE
   v_old_vault_id UUID;
 BEGIN
   -- Build a unique key for this secret in the vault
-  v_secret_key := 'openmcp:' || p_user_id::TEXT || ':' || COALESCE(p_server_name, '_global') || ':' || p_secret_name;
+  v_secret_key := 'relay:' || p_user_id::TEXT || ':' || COALESCE(p_server_name, '_global') || ':' || p_secret_name;
 
   -- Check if secret already exists (update case)
   SELECT vault_id INTO v_old_vault_id

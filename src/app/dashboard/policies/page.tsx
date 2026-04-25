@@ -125,7 +125,7 @@ export default function PoliciesPage() {
           <div>
             <h1 className="mb-1 text-2xl font-bold tracking-tight">Agent Permissions</h1>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              Control what operations your agents can perform through openMCP. Applied globally across all MCP servers.
+              Control what operations your agents can perform through relay. Applied globally across all MCP servers.
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={resetAll}>Reset defaults</Button>

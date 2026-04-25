@@ -30,3 +30,17 @@ This file is append-only.
 ### Policy Going Forward
 
 - Architecture or roadmap changes should update `TECHNICAL_BACKBONE.md`, `DECISION_LOG.md`, and `CHANGELOG.md` together.
+
+## 2026-04-25
+
+### Updated
+
+- Reframed the main narrative docs around a more explicit `Problem` and `Vision` structure.
+- Clarified that Relay complements RAG, LangChain, and LangGraph rather than competing with them.
+- Normalized the likely MVP public URL in Markdown examples to `https://relay.vercel.app`.
+- Removed stale naming drift such as `Agentrail` and `openMCP` from the Markdown docs that were updated.
+
+### Normalized
+
+- Replaced hard-coded numbered security-layer phrasing in key narrative docs with count-neutral `security stack` wording where the repo had drift.
+- Aligned roadmap ownership and footer metadata in narrative docs with the current Relay project identity.

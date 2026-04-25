@@ -40,6 +40,16 @@ Relay's thesis is that the winning system is not another directory page and not 
 - centralizes auth, trust, policy, and execution controls
 - accumulates empirical outcome data so routing improves over time
 
+## 2.1 Relation To RAG And Orchestration Frameworks
+
+Relay is complementary to modern RAG and agent orchestration systems, not a replacement for them.
+
+- RAG improves retrieval over documents, databases, and other knowledge sources
+- LangChain and LangGraph improve workflow coordination, state management, and multi-step execution
+- Relay solves a different infrastructure problem: runtime discovery and guarded invocation across a large MCP ecosystem
+
+This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, or centralized credential and policy enforcement. Relay sits underneath that stack as the discovery and execution layer that makes broad MCP capability usable at runtime.
+
 ## 3. Product Model
 
 Relay is best understood as four coupled systems in service of one product goal: remove the practical MCP cap by moving capability resolution into the runtime loop.
@@ -810,7 +820,7 @@ The following are essential because they directly support the core loop:
 - ingest from several sources because the ecosystem is fragmented
 - canonical registry normalization because runtime search quality depends on it
 - vault-backed secrets and OAuth because many useful servers need credentials
-- 14-layer security and policy enforcement because runtime execution without controls is unacceptable
+- security and policy enforcement because runtime execution without controls is unacceptable
 - confidence scoring because search needs a measurable ranking layer before learned routing exists
 - analytics tables because training data does not appear by magic
 - CLI and cloud stdio bridges because discovery without invocation is incomplete

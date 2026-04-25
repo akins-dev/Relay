@@ -1,9 +1,9 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 009: Transport type + stdio exclusion from agent search
+-- relay — Migration 009: Transport type + stdio exclusion from agent search
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Add transport column to servers table
--- Determines whether a server is invokable through the openMCP proxy
+-- Determines whether a server is invokable through the relay proxy
 ALTER TABLE public.servers
   ADD COLUMN IF NOT EXISTS transport TEXT NOT NULL DEFAULT 'unknown'
     CHECK (transport IN ('stdio', 'sse', 'streamable_http', 'unknown'));
