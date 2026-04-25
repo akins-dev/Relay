@@ -3,7 +3,7 @@
 **The agent-centric capability access layer for MCP servers.**
 
 Canonical technical reference: [`docs/README.md`](docs/README.md)
-Project narrative: [`OVERVIEW_AND_ROADMAP.md`](OVERVIEW_AND_ROADMAP.md)
+Architecture flows: [`docs/ARCHITECTURE_FLOWS.md`](docs/ARCHITECTURE_FLOWS.md)
 
 > "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
@@ -119,13 +119,15 @@ Most MCP servers require API keys. Store them once in the Relay Vault. The proxy
 
 ## Core Documentation
 
-- [OVERVIEW_AND_ROADMAP.md](OVERVIEW_AND_ROADMAP.md): problem, thesis, current solution, and full-system picture
 - [docs/DELIVERY_ROADMAP.md](docs/DELIVERY_ROADMAP.md): canonical sprint-by-sprint delivery plan
 - [docs/TECHNICAL_BACKBONE.md](docs/TECHNICAL_BACKBONE.md): canonical technical reference for ingest, runtime, data model, vault, analytics, and roadmap alignment
+- [docs/ARCHITECTURE_FLOWS.md](docs/ARCHITECTURE_FLOWS.md): high-level Relay flows for presentations, diagrams, and Excalidraw-style visuals
 - [docs/RATE_LIMITS.md](docs/RATE_LIMITS.md): exact default limits, keying model, and config behavior
-- [SECURITY.md](SECURITY.md): security stack and trust model
-- [ARCHITECTURE.md](ARCHITECTURE.md): runtime and infrastructure design
-- [DEVELOPMENT.md](DEVELOPMENT.md): local setup, migrations, and contributor workflow
+- [docs/SECURITY.md](docs/SECURITY.md): security stack and trust model
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): local setup, migrations, and contributor workflow
+- [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md): MVP testing and validation paths
+- [docs/PROTOTYPE_GUIDE.md](docs/PROTOTYPE_GUIDE.md): deterministic local prototype path
+- [docs/articles/RELAY_AGENT_CENTRIC_RUNTIME_DISCOVERY.md](docs/articles/RELAY_AGENT_CENTRIC_RUNTIME_DISCOVERY.md): article-style technical essay
 
 ---
 

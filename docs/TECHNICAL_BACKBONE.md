@@ -855,7 +855,7 @@ The docs should avoid drifting into:
 
 ## 14. Recommended Next Work Sequence
 
-The canonical sprint-by-sprint plan now lives in [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md).
+The canonical sprint-by-sprint plan now lives in [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md).
 
 This file should keep the why and the dependency logic:
 
