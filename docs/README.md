@@ -6,8 +6,12 @@ This directory is the project's technical source of truth.
 
 - `TECHNICAL_BACKBONE.md`
   The living technical reference for the product, system model, infrastructure, ingest pipeline, data model, analytics, risks, and roadmap.
+- `ARCHITECTURE_SYSTEM_MAP.md`
+  The deepest code-grounded architecture walkthrough, spanning runtime, maintenance, auth, Vault, security, and analytics as one system.
 - `ARCHITECTURE_FLOWS.md`
   The presentation-friendly architecture view built around explicit Relay flows that can be drawn directly in Excalidraw or slides.
+- `diagrams/relay-system-overview.excalidraw`
+  A single-canvas Excalidraw scene for the full system workflow, importable into Excalidraw or Obsidian.
 - `DELIVERY_ROADMAP.md`
   The canonical sprint-by-sprint delivery plan. Detailed sprint scope should live here, not in architecture narratives.
 - `RATE_LIMITS.md`
@@ -41,8 +45,10 @@ When implementation changes touch any of the areas below, these docs should be u
 ## How To Use This Set
 
 1. Start with `TECHNICAL_BACKBONE.md` to understand the current system.
-2. Read `DECISION_LOG.md` to understand why the system looks this way.
-3. Read `CHANGELOG.md` to track how the architecture and plan evolved over time.
+2. Read `ARCHITECTURE_SYSTEM_MAP.md` for the end-to-end control, data, and maintenance flows.
+3. Open `diagrams/relay-system-overview.excalidraw` if you need the visual canvas immediately.
+4. Read `DECISION_LOG.md` to understand why the system looks this way.
+5. Read `CHANGELOG.md` to track how the architecture and plan evolved over time.
 
 ## Conflict Resolution
 

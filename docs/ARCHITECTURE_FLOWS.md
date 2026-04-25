@@ -4,6 +4,8 @@ Last updated: 2026-04-25
 Status: High-level presentation architecture
 
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
+Deep code-grounded system map: [`ARCHITECTURE_SYSTEM_MAP.md`](ARCHITECTURE_SYSTEM_MAP.md)
+Companion scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw)
 Canonical sprint plan: [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md)
 
 This file is intentionally flow-oriented. It is the version of Relay architecture that can be translated directly into Excalidraw, slides, or other visual system diagrams.

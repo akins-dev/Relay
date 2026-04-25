@@ -121,7 +121,9 @@ Most MCP servers require API keys. Store them once in the Relay Vault. The proxy
 
 - [docs/DELIVERY_ROADMAP.md](docs/DELIVERY_ROADMAP.md): canonical sprint-by-sprint delivery plan
 - [docs/TECHNICAL_BACKBONE.md](docs/TECHNICAL_BACKBONE.md): canonical technical reference for ingest, runtime, data model, vault, analytics, and roadmap alignment
+- [docs/ARCHITECTURE_SYSTEM_MAP.md](docs/ARCHITECTURE_SYSTEM_MAP.md): deep code-grounded end-to-end architecture map
 - [docs/ARCHITECTURE_FLOWS.md](docs/ARCHITECTURE_FLOWS.md): high-level Relay flows for presentations, diagrams, and Excalidraw-style visuals
+- [docs/diagrams/relay-system-overview.excalidraw](docs/diagrams/relay-system-overview.excalidraw): single-canvas Excalidraw overview for Obsidian or Excalidraw imports
 - [docs/RATE_LIMITS.md](docs/RATE_LIMITS.md): exact default limits, keying model, and config behavior
 - [docs/SECURITY.md](docs/SECURITY.md): security stack and trust model
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): local setup, migrations, and contributor workflow
