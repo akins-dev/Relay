@@ -3,7 +3,7 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { detectTransport, parseReadmeDescription } from '../lib/ingest';
+import { buildSandboxCommand, detectTransport, parseReadmeDescription } from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -46,6 +46,17 @@ describe('ingest hardening logic', () => {
 
     expect(result?.description).toContain('Read and write files safely');
     expect(result?.readme_url).toContain('/src/filesystem/README.md');
+  });
+
+  test('buildSandboxCommand only derives commands for smithery-backed stdio servers', () => {
+    expect(buildSandboxCommand({ smithery_id: 'agenttrust/mcp-server' })).toEqual({
+      command: 'npx',
+      args: ['-y', '@smithery/cli@latest', 'run', 'agenttrust/mcp-server'],
+    });
+
+    expect(buildSandboxCommand({
+      github_url: 'https://github.com/agenttrust/mcp-server',
+    })).toBeNull();
   });
 
   test('resolveSafeRedirectUrl allows safe relative redirects against the upstream base', async () => {

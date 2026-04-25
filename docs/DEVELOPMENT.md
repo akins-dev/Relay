@@ -139,7 +139,7 @@ Important current behavior:
 
 - `stdio` rows are stored even when they are not cloud-invocable.
 - If a `stdio` server has a `smithery_id`, ingest derives a concrete sandbox command and tries extraction.
-- If a `stdio` server has a repo-root GitHub URL, ingest can derive a sandbox command and try extraction.
+- Relay does not guess an execution command from a plain GitHub repo URL; repo-backed stdio rows fall back to README parsing unless a concrete launcher is known.
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.

@@ -6,7 +6,7 @@ The **Sandbox** is a lightweight, isolated Node.js Express microservice that bri
 
 This service is used **exclusively during the ingestion pipeline (`/api/ingest`)**. 
 
-When Relay ingests a server marked with the `stdio` transport, it means the server is not an HTTP endpoint. It is a piece of code that must be executed via the command line, typically through a known package entrypoint such as Smithery or a repo-root npm package. If Relay cannot derive a safe executable command, ingestion falls back to README parsing instead of guessing.
+When Relay ingests a server marked with the `stdio` transport, it means the server is not an HTTP endpoint. It is a piece of code that must be executed via the command line, typically through a known package entrypoint such as Smithery. If Relay cannot derive a safe executable command, ingestion falls back to README parsing instead of guessing.
 
 Because serverless environments like Vercel cannot safely spawn child Unix processes or execute random `npx` / `pip` packages without severe security and architecture tradeoffs, Relay offloads this task to this Sandbox.
 

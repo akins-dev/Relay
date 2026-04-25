@@ -112,7 +112,8 @@ export default function ServerDetailPage() {
   const authorName = (server as any).profiles?.username ?? (server as any).author_name ?? 'unknown';
 
   const isStdio        = (server as any).transport === 'stdio';
-  const proxyAvailable = (server as any).proxy_available !== false; // default true for older records
+  const proxyAvailable = (server as any).proxy_available
+    ?? (!isStdio && Boolean((server as any).endpoint));
   const mcpCompliant   = (server as any).mcp_compliant ?? false;
   const protocolVer    = (server as any).protocol_version ?? null;
   const previewTools = server.tools.slice(0, 12);

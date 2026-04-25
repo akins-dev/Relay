@@ -1360,13 +1360,8 @@ export function buildSandboxCommand(s: Pick<IngestServer, 'smithery_id' | 'githu
     };
   }
 
-  if (!s.github_url) return null;
-  const gh = parseGitHubUrl(s.github_url);
-  if (!gh || gh.subpath) return null;
-
-  const ref = gh.branch ? `github:${gh.owner}/${gh.repo}#${gh.branch}` : `github:${gh.owner}/${gh.repo}`;
-  return {
-    command: 'npx',
-    args: ['-y', ref],
-  };
+  // Do not guess repo-root GitHub execution. Many repos are not directly
+  // invokable MCP entrypoints, and speculative `npx github:owner/repo`
+  // calls cause long sandbox timeouts before README fallback.
+  return null;
 }
