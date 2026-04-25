@@ -6,6 +6,10 @@ This directory is the project's technical source of truth.
 
 - `TECHNICAL_BACKBONE.md`
   The living technical reference for the product, system model, infrastructure, ingest pipeline, data model, analytics, risks, and roadmap.
+- `DELIVERY_ROADMAP.md`
+  The canonical sprint-by-sprint delivery plan. Detailed sprint scope should live here, not in architecture narratives.
+- `RATE_LIMITS.md`
+  The canonical reference for exact enforced rate limits, keying, and configuration behavior.
 - `DECISION_LOG.md`
   Append-only architecture decision log. New decisions are added; old decisions are never deleted.
 - `CHANGELOG.md`
@@ -22,6 +26,7 @@ When implementation changes touch any of the areas below, these docs should be u
 - runtime proxy behavior, auth injection, policy enforcement, or security scanning
 - infrastructure dependencies, free-tier assumptions, migration strategy, or backup/export paths
 - roadmap, MVP scope, or major product/design decisions
+- enforced rate limits, rate-limit configuration, or route-level throttling behavior
 
 ## How To Use This Set
 

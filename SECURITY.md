@@ -1,6 +1,7 @@
 # Security & Trust Models
 
 Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
+Exact rate-limit defaults and keying rules: [`docs/RATE_LIMITS.md`](docs/RATE_LIMITS.md)
 
 Every server scanned before listing. Every proxy call inspected.
 

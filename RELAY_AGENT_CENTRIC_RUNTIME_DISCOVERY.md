@@ -253,7 +253,7 @@ That strengthens one of Relay's core claims: guarded execution, policy enforceme
 
 ### The Right Layer To Compare Relay Against
 
-Relay sits below orchestration frameworks and beside model-training recipes.
+Relay belongs to a different comparison category than orchestration frameworks or model-training recipes.
 
 It is not mainly:
 
@@ -269,6 +269,14 @@ It is a capability access plane for MCP systems:
 - invoke through one governed path
 - record real outcomes
 - improve future routing
+
+There is no single standard benchmark today that fully measures Relay's problem statement. The right comparison axes are:
+
+- retrieval quality over large capability sets
+- invocation success under auth and policy constraints
+- context efficiency of the model-facing surface
+- reachability across transports including `stdio`
+- improvement in routing quality from real runtime outcomes
 
 That is why Relay should be framed less as "another tool-using agent system" and more as runtime infrastructure for open-world MCP capability access.
 

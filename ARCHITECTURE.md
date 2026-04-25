@@ -1,6 +1,7 @@
 # Relay — Architecture Deep-Dive
 *Last updated: April 2026*
 *Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)*
+*Canonical sprint plan: [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md)*
 
 ---
 
@@ -21,6 +22,8 @@ Relay's current implementation solves this with two native MCP tools:
 - `invoke_tool({ server, tool, args })` — invoke through a security proxy
 
 The two-tool interface is the implementation approach, not the thesis by itself. The thesis is that the agent should resolve capability at runtime instead of depending on ever-expanding explicit pre-configuration.
+
+The full loop is discovery -> governed invocation -> recorded outcome -> better future routing. That learning loop is part of the architecture, not a later add-on.
 
 ### The Problem Space
 
@@ -110,7 +113,7 @@ To bypass Vercel Hobby tier timeout limits (10s–60s) on background execution t
 3. **Vault integration** — AES-256-GCM via Supabase pgsodium. Correct approach.
 4. **Trust score EWMA** — Exponential moving average prevents gaming by new servers.
 5. **Policy system** — Allow/Confirm/Block per tool pattern is the right UX.
-6. **Rate limiting** — Per-user vs per-IP tiering (200 req/min authed, 20 anonymous).
+6. **Rate limiting** — Mixed per-user and per-IP limits with DB-backed defaults for core contexts and route-specific protections for account-management flows. Exact current defaults live in `docs/RATE_LIMITS.md`.
 7. **Native MCP interface** — `search_tools` + `invoke_tool` eliminates REST integration work for agents.
 8. **Three primary integration surfaces** — Native MCP Server (clients), `agents.md` (LLMs), and REST API (frameworks) cover every possible approach.
 9. **Protocol compliance** — MCP initialize handshake, all 3 primitives (tools/resources/prompts), JSON-RPC.
@@ -297,62 +300,22 @@ Both SDKs wrap the REST API and handle:
 
 ---
 
-## 7. Complete Implementation Roadmap
+## 7. Delivery Roadmap Authority
 
-### ✅ Sprint 1 — Core Protocol Correctness (DONE)
-- [x] MCP initialize handshake in probe (`mcp-probe.ts`)
-- [x] `tools/call` via JSON-RPC single endpoint (not REST URL)
-- [x] Resources + Prompts proxy routes
-- [x] tools/list pagination with nextCursor
-- [x] All 3 MCP primitives (tools/resources/prompts) fetched and stored
-- [x] Stdio servers ingested for discovery (`proxy_available=false`)
-- [x] Redirect SSRF guard (`redirect: 'manual'` + location validation)
-- [x] Content-type sanitization (`X-Content-Type-Options: nosniff`)
+Detailed sprint scope no longer lives in this file. The canonical sprint-by-sprint plan is [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md).
 
-### ✅ Sprint 2 — Discovery & Security Hardening (DONE)
-- [x] `GET /.well-known/mcp.json` runtime discovery document
-- [x] CORS policy with explicit allowlist (`corsHeaders()`)
-- [x] IPv6 SSRF completion (ffff-mapped loopback, link-local, unique-local)
-- [x] OPTIONS preflight handler on proxy routes
-- [x] `proxy_available` field on all ingested servers
-- [x] Bearer-token-first auth across all routes
-- [x] Ingest bugs fixed (description fallback, stdio indexed, no_tools not hard-rejected)
-- [x] Boot-time Zod environment variable parsing (`src/lib/env.ts` / `instrumentation.ts`)
+Architecture should explain:
 
-### 🔜 Sprint 3 — Sampling Security + OAuth Refresh (1-2 weeks)
-- [ ] `sampling/createMessage` rate limiting (max 5/min per server)
-- [ ] Sampling audit log — record every server-initiated LLM call
-- [ ] OAuth token refresh in proxy (detect 401 → refresh → retry once)
-- [ ] Schema-drift cron re-scans tool descriptions for injection (not just at ingest)
-- [ ] Regenerate Supabase TypeScript types (fix all `never` errors)
+- what the system is
+- what works today
+- what the architectural gaps are
+- why those gaps matter
 
-### 🔜 Sprint 4 — Streaming + Session Optimization (2-3 weeks)
-- [ ] SSE pass-through for streaming tool results (chunked transfer)
-- [ ] Stateless probe mode for 2025-03-26 servers (skip initialize if stateless)
-- [ ] Session warm cache (Upstash Redis): reuse initialized sessions for 5min
-- [ ] `progress` notification handling
+The delivery roadmap should explain:
 
-### 🔜 Sprint 5 — CLI as Native MCP Server (3-4 weeks)
-- [ ] `@relay/cli` npm package
-- [ ] `relay search/info/login/publish` commands
-- [ ] `relay serve` — starts as native MCP server over stdio
-- [ ] Subprocess lifecycle manager (the `npx` style runner)
-- [ ] Local DLP + policy enforcement (offline security)
-- [ ] Async audit log sync to registry
-
-### 🔜 Sprint 6 — SDKs + Publisher Tooling (4-6 weeks)
-- [ ] `@relay/sdk` TypeScript SDK
-- [ ] `relay` Python SDK (PyPI)
-- [ ] Verified Publisher Program (GitHub OIDC signing)
-- [ ] `relay publish` + `relay validate` CLI commands
-- [ ] Tool Schema Registry (versioned JSON Schema store)
-- [ ] Behavioral trust signals (call failure rate, DLP trigger rate)
-
-### 🔜 Sprint 7 — Cloud stdio Bridge (6-8 weeks)
-- [ ] Container-based stdio bridge (Fly.io Machines)
-- [ ] Cold start < 3s, warm < 100ms target
-- [ ] Container pool per server (scale-to-zero)
-- [ ] Usage-based billing
+- what ships in each sprint
+- which sprint is current
+- how sprint scope changes over time
 
 ---
 

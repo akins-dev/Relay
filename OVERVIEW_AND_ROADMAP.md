@@ -2,6 +2,7 @@
 
 > *The agent-centric capability access layer for the practical MCP configuration ceiling.*
 > Canonical technical reference: [`docs/TECHNICAL_BACKBONE.md`](docs/TECHNICAL_BACKBONE.md)
+> Canonical sprint plan: [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md)
 
 ---
 
@@ -110,74 +111,19 @@ The important point is that these are not random feature ideas. They are the nex
 
 ---
 
-## Roadmap
+## Roadmap Summary
 
-### Sprint 3A — Ingest Hardening
+The canonical sprint-by-sprint plan now lives in [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md).
 
-- make cron trust recomputation consume the same persisted security findings ingest writes
-- tighten endpoint/repo dedup and trusted-source overwrite rules
-- improve transport truth so cron and search do not reason from stale heuristics
-- replace weak GitHub `stdio` sandbox execution assumptions with a more reliable extraction strategy
-- add ingest-quality metrics for extraction coverage, schema coverage, duplicate collisions, and bad-row rate
-- clean up the migration/documentation drift around source labels, search RPC shape, and local setup
-- add sandbox/backfill parity so every stdio extraction path derives commands the same way
-- add explicit stdio extraction provenance fields so ranking can distinguish sandbox-derived vs README-derived vs upstream-provided metadata
-- support source-provided launch manifests or publisher-declared execution commands for monorepo/subdirectory stdio servers
-- improve GitHub URL parsing to handle branch names with slashes and reduce tree/blob ambiguity
-- replace `last_scanned_at` as a schema-stability proxy with a real `last_schema_change_at` or equivalent stability metric
-- add ingest observability for sandbox call attempts, sandbox success rate, README fallback rate, and unresolved stdio rows
-- define stricter retention and ranking rules for weak stdio rows with no extracted tools so MVP discovery quality stays high
-- harden sandbox execution policy further if new runners are introduced beyond `npx`
+The roadmap sequence is:
 
-### Sprint 3 — Sampling Security + OAuth
+1. harden ingest and source truth
+2. tighten runtime safety and streaming behavior
+3. ship the CLI bridge for `stdio` reachability
+4. add stronger behavioral intelligence and publisher tooling
+5. move common intents onto a learned-routing fast path
 
-- `sampling/createMessage` rate limit and audit logging
-- OAuth token refresh and retry-once flow
-- bearer-only auth hardening
-- type regeneration after the current migration chain
-
-### Sprint 4 — Performance + Streaming
-
-- session pooling for repeated MCP handshakes
-- stateless probe mode for compliant servers
-- SSE streaming pass-through and `progress` handling
-- speculative invocation for very high-confidence single matches
-- prompt caching for warm knowledge on top servers
-
-### Sprint 5 — CLI As Native MCP Server
-
-- `@Relay/cli`
-- `Relay search`, `Relay info`, `Relay login`
-- `Relay serve` as a native stdio MCP server
-- subprocess lifecycle manager for local stdio execution
-- local DLP and policy enforcement for offline execution
-- async audit sync back to the registry
-
-This sprint closes the largest remaining practical gap in the ecosystem: many discovered servers are `stdio` and need a local runtime bridge.
-
-### Sprint 6 — Intelligence + Publisher Program
-
-- Lever 3B learned classifier replacing the current heuristic gate
-- stronger behavioral trust signals from runtime outcomes
-- hybrid retrieval reranker only if lexical misses justify it
-- verified publisher pipeline
-- TypeScript and Python SDKs
-- schema registry and publisher tooling
-
-### Sprint 7 — Cloud Stdio Bridge
-
-- container-based stdio invocation for agents that cannot run the CLI
-- per-request isolation
-- scale-to-zero execution
-
-### Sprint 8+ — Learned Routing Layer
-
-- train a routing model on `search_events`, `invoke_outcomes`, and `intent_server_mappings`
-- route common intents directly to `(server, tool, confidence)` without a search step
-- surface tools adaptively when confidence is strong enough
-- turn `search_tools` into the fallback path for novel, ambiguous, or low-confidence intents
-
-This is the long-term fast path: common intents stop paying the full search cost while the same registry, policy, security, and auth systems remain underneath.
+That ordering matters. Relay is not a collection of independent features. It is one delivery path from runtime discovery to governed execution to learned routing.
 
 ---
 

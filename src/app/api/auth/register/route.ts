@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 
 const Schema = z.object({
   email:    z.string().email(),
@@ -12,7 +12,8 @@ const Schema = z.object({
 export async function POST(req: NextRequest) {
   // Rate limit: 10 registrations per IP per minute — account creation spam protection
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl  = await rateLimit(`register:${ip}`, LIMITS.auth);
+  const rlConfig = await getLimitConfig('auth');
+  const rl  = await rateLimit(`register:${ip}`, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Too many registration attempts. Please wait a minute.' },

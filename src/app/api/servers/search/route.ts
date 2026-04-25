@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
   const ip = extractIp(req);
   const apiKeyUserId = await resolveApiKeyUser(req);
   const rlKey = apiKeyUserId ? `search:user:${apiKeyUserId}` : `search:ip:${ip}`;
-  const rlConfig = apiKeyUserId ? LIMITS.proxyAuth : LIMITS.search;
+  const rlConfig = apiKeyUserId ? await getLimitConfig('proxyAuth') : await getLimitConfig('search');
   const rl  = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(

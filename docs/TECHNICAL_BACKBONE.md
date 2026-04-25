@@ -48,7 +48,7 @@ Relay is complementary to modern RAG and agent orchestration systems, not a repl
 - LangChain and LangGraph improve workflow coordination, state management, and multi-step execution
 - Relay solves a different infrastructure problem: runtime discovery, governed invocation, and outcome-driven routing across a large MCP ecosystem
 
-This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, open-world tool retrieval, or centralized credential and policy enforcement. Relay sits underneath that stack as the capability access layer that makes broad MCP capability usable at runtime.
+This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, open-world tool retrieval, or centralized credential and policy enforcement. Relay addresses a different bottleneck in the same broader agent system: making broad MCP capability usable at runtime under discovery, auth, trust, and execution constraints.
 
 ## 3. Product Model
 
@@ -855,39 +855,14 @@ The docs should avoid drifting into:
 
 ## 14. Recommended Next Work Sequence
 
-### Sprint 3
+The canonical sprint-by-sprint plan now lives in [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md).
 
-- finish sampling security controls
-- finish OAuth refresh/retry behavior
-- keep auth and audit flows aligned with the current runtime contract
+This file should keep the why and the dependency logic:
 
-### Sprint 4
-
-- add speculative invocation
-- add session pooling / stateless invoke optimizations
-- complete streaming support
-
-### Sprint 5
-
-- ship the CLI `stdio` bridge
-- apply local DLP and policy enforcement in the CLI path
-- keep async audit sync intact
-
-### Sprint 6
-
-- replace the heuristic gate with the learned Lever 3B classifier
-- add behavioral trust penalties from runtime outcomes
-- only add richer reranking if analytics proves lexical recall is insufficient
-
-### Sprint 7
-
-- add the cloud `stdio` bridge for non-CLI agent hosts
-
-### Sprint 8+
-
-- train the learned routing layer
-- add adaptive or ephemeral tool surfacing where confidence is strong enough
-- move common intents onto the learned fast path while keeping lexical search as fallback
+- finish runtime safety and auth correctness before optimizing latency
+- solve `stdio` reachability before claiming broad capability access
+- keep analytics quality high before training learned routing
+- treat learned routing as the fast path that compounds from the current loop, not as a separate product
 
 ## 15. Operational Rules Going Forward
 
@@ -895,7 +870,8 @@ The docs should avoid drifting into:
 - Any future feature that introduces state must declare whether it is canonical, reconstructible, or disposable.
 - New ingestion sources must define source contract, dedup key, transport semantics, extraction path, failure modes, and backfill strategy.
 - New analytics must land in Postgres if they matter for product learning, trust scoring, or routing quality.
-- Changes to the architecture or roadmap must update this file, `DECISION_LOG.md`, and `CHANGELOG.md`.
+- Changes to the architecture or roadmap must update this file, [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md), `DECISION_LOG.md`, and `CHANGELOG.md`.
+- Changes to enforced limits or throttling behavior must update [`RATE_LIMITS.md`](RATE_LIMITS.md) in the same workstream.
 - Narrative docs must describe Relay first as a solution to the practical MCP configuration ceiling and only secondarily as a collection of supporting subsystems.
 
 ## 16. References

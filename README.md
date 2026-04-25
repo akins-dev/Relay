@@ -1,9 +1,9 @@
 # ⬡ Relay
 
-**The agent-centric runtime discovery and invocation layer for MCP servers.**
+**The agent-centric capability access layer for MCP servers.**
 
 Canonical technical reference: [`docs/README.md`](docs/README.md)
-Project narrative and roadmap: [`OVERVIEW_AND_ROADMAP.md`](OVERVIEW_AND_ROADMAP.md)
+Project narrative: [`OVERVIEW_AND_ROADMAP.md`](OVERVIEW_AND_ROADMAP.md)
 
 > "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
@@ -36,8 +36,20 @@ Relay is a secure capability access layer that lets agents:
 - invoke them through one controlled and guarded path
 - keep the model-facing surface small with just `search_tools` and `invoke_tool`
 - benefit from centralized security, trust scoring, policy enforcement, and credential injection
+- record search and invoke outcomes so future routing improves from real usage
 
 Instead of forcing humans to preload and maintain dozens of servers, Relay moves capability resolution into the runtime loop and records outcomes so future routing improves from real usage.
+
+## Thesis
+
+Relay's thesis is explicit:
+
+- large MCP ecosystems should be resolved at runtime, not preloaded by hand
+- the model-facing surface should stay small even when the capability universe is large
+- auth, trust, policy, and execution should stay behind one governed path
+- search and invoke outcomes should compound into better routing over time
+
+The two-tool interface is the current bootstrap implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, ranking, auth, trust, execution, and learning happen at runtime.
 
 That is why Relay complements, rather than competes with, modern RAG and agent orchestration stacks:
 
@@ -107,8 +119,10 @@ Most MCP servers require API keys. Store them once in the Relay Vault. The proxy
 
 ## Core Documentation
 
-- [OVERVIEW_AND_ROADMAP.md](OVERVIEW_AND_ROADMAP.md): problem, current solution, full-system picture, and upcoming sprint work
+- [OVERVIEW_AND_ROADMAP.md](OVERVIEW_AND_ROADMAP.md): problem, thesis, current solution, and full-system picture
+- [docs/DELIVERY_ROADMAP.md](docs/DELIVERY_ROADMAP.md): canonical sprint-by-sprint delivery plan
 - [docs/TECHNICAL_BACKBONE.md](docs/TECHNICAL_BACKBONE.md): canonical technical reference for ingest, runtime, data model, vault, analytics, and roadmap alignment
+- [docs/RATE_LIMITS.md](docs/RATE_LIMITS.md): exact default limits, keying model, and config behavior
 - [SECURITY.md](SECURITY.md): security stack and trust model
 - [ARCHITECTURE.md](ARCHITECTURE.md): runtime and infrastructure design
 - [DEVELOPMENT.md](DEVELOPMENT.md): local setup, migrations, and contributor workflow
