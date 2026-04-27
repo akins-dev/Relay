@@ -5,6 +5,7 @@ import { extractIp, apiError } from '@/lib/api';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
 import { resolveApiKey } from '@/lib/auth-server';
+import { ensureRuntimeContracts } from '@/lib/runtime-contracts';
 
 // ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
@@ -129,6 +130,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    await ensureRuntimeContracts();
     const supabase = createClient();
 
     const { data: results, error } = await (supabase as any)

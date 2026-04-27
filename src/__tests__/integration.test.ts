@@ -19,6 +19,7 @@ const mockEq        = jest.fn();
 const mockSelect    = jest.fn();
 const mockInsert    = jest.fn();
 const mockResolveApiKey = jest.fn();
+const mockExecuteProxyCall = jest.fn();
 
 // Chainable query builder mock
 const queryChain = () => {
@@ -75,6 +76,14 @@ jest.mock('@/lib/ratelimit', () => ({
   },
 }));
 
+jest.mock('@/lib/runtime-contracts', () => ({
+  ensureRuntimeContracts: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('@/lib/proxy-execute', () => ({
+  executeProxyCall: (...args: any[]) => mockExecuteProxyCall(...args),
+}));
+
 import { NextRequest, type NextRequest as NR } from 'next/server';
 type NRInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
@@ -105,6 +114,7 @@ async function toJson(response: Response) {
 beforeEach(() => {
   mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
   mockRpc.mockResolvedValue({ data: 'allowed', error: null });
+  mockExecuteProxyCall.mockReset();
 });
 
 // ── Security scanner — unit regression ───────────────────────────────────────
@@ -351,6 +361,89 @@ describe('Server analytics summary consistency', () => {
     expect(body.summary.total_calls).toBe(2);
     expect(body.summary.total_errors).toBe(1);
     expect(body.summary.error_rate).toBe('50.0');
+  });
+});
+
+describe('MCP search -> invoke chain wiring', () => {
+  test('invoke_tool forwards search_event_id and intent linkage to proxy execution', async () => {
+    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === 'search_servers') {
+        return Promise.resolve({
+          data: [{ id: 'srv-1', name: 'demo-server', trust_score: 90, tools: ['send_email'] }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: 'allowed', error: null });
+    });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'servers') {
+        const serversRows = [{
+          id: 'srv-1',
+          name: 'demo-server',
+          display_name: 'Demo Server',
+          description: 'Demo',
+          tools: ['send_email'],
+          tool_schemas: [{ name: 'send_email', inputSchema: { type: 'object' } }],
+          trust_score: 90,
+          latency_ms: 100,
+          uptime_pct: 99,
+          source: 'official',
+          verified: true,
+          scan_status: 'passed',
+          proxy_available: true,
+          transport: 'streamable_http',
+          endpoint: 'https://example.com/mcp',
+          status: 'active',
+        }];
+        return {
+          select: jest.fn().mockReturnValue({
+            in: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({ data: serversRows, error: null }),
+            }),
+            eq: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({ data: serversRows[0], error: null }),
+            }),
+          }),
+        };
+      }
+      return queryChain();
+    });
+
+    mockExecuteProxyCall.mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ ok: true }),
+      contentType: 'application/json',
+      headers: {},
+    });
+
+    const { POST } = await import('../app/api/mcp-server/route');
+    const invokeReq = makeRequest('POST', 'http://localhost/api/mcp-server', {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'invoke_tool',
+        arguments: {
+          server: 'demo-server',
+          tool: 'send_email',
+          args: { to: 'a@example.com' },
+          search_event_id: 'evt-123',
+          intent: 'send onboarding email',
+        },
+      },
+    }, { Authorization: 'Bearer sk_mcp_test' });
+
+    const res = await POST(invokeReq);
+    expect(res.status).toBe(200);
+    expect(mockExecuteProxyCall).toHaveBeenCalledWith(expect.objectContaining({
+      searchEventId: 'evt-123',
+      intentText: 'send onboarding email',
+      callerUserId: 'user-123',
+      serverName: 'demo-server',
+      toolName: 'send_email',
+    }));
   });
 });
 

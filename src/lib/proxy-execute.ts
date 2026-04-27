@@ -130,6 +130,18 @@ async function callUpstreamMcpTool(
   responseTruncated: boolean;
   upstreamError: string | null;
 }> {
+  const now = Date.now();
+  const state = getCircuitState(endpoint, now);
+  if (state.openUntil > now) {
+    return {
+      responseBody: JSON.stringify({ error: 'Upstream temporarily unavailable (circuit open)' }),
+      upstreamStatus: 503,
+      upstreamContentType: 'application/json',
+      responseTruncated: false,
+      upstreamError: 'circuit_open',
+    };
+  }
+
   let responseBody = '';
   let upstreamStatus = 502;
   let upstreamContentType = 'application/json';
@@ -181,6 +193,35 @@ async function callUpstreamMcpTool(
     responseBody = JSON.stringify({ error: 'Upstream unreachable', message: err.message });
   }
 
+  if ((upstreamStatus >= 500 || upstreamError) && state.openUntil <= now) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      const retry = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: mcpBody,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20_000),
+      });
+      upstreamStatus = retry.status;
+      upstreamContentType = retry.headers.get('content-type') ?? 'application/json';
+      const bounded = await readBoundedResponse(retry);
+      responseBody = bounded.body;
+      responseTruncated = bounded.truncated;
+      upstreamError = null;
+    } catch (err: any) {
+      upstreamStatus = 502;
+      upstreamError = err.message;
+      responseBody = JSON.stringify({ error: 'Upstream unreachable', message: err.message });
+    }
+  }
+
+  if (upstreamStatus >= 500 || upstreamError) {
+    recordCircuitFailure(endpoint, now);
+  } else {
+    recordCircuitSuccess(endpoint);
+  }
+
   return {
     responseBody,
     upstreamStatus,
@@ -188,6 +229,32 @@ async function callUpstreamMcpTool(
     responseTruncated,
     upstreamError,
   };
+}
+
+type CircuitState = { failures: number; openUntil: number };
+const endpointCircuit = new Map<string, CircuitState>();
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_OPEN_MS = 60_000;
+
+function getCircuitState(endpoint: string, now: number): CircuitState {
+  const existing = endpointCircuit.get(endpoint);
+  if (!existing) return { failures: 0, openUntil: 0 };
+  if (existing.openUntil > 0 && existing.openUntil <= now) {
+    endpointCircuit.set(endpoint, { failures: 0, openUntil: 0 });
+    return { failures: 0, openUntil: 0 };
+  }
+  return existing;
+}
+
+function recordCircuitFailure(endpoint: string, now: number): void {
+  const current = getCircuitState(endpoint, now);
+  const failures = current.failures + 1;
+  const openUntil = failures >= CIRCUIT_FAILURE_THRESHOLD ? now + CIRCUIT_OPEN_MS : current.openUntil;
+  endpointCircuit.set(endpoint, { failures, openUntil });
+}
+
+function recordCircuitSuccess(endpoint: string): void {
+  endpointCircuit.set(endpoint, { failures: 0, openUntil: 0 });
 }
 
 function audit(svc: ReturnType<typeof createServiceClient>, data: {

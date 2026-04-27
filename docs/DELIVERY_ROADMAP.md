@@ -44,11 +44,21 @@ The MVP is launchable only when all P0 gates are green for two consecutive weekl
 - search quality benchmark report and schema contract checks
 - invocation SLO report (success, latency, error taxonomy)
 - security/audit completeness report
+- release gate report endpoint: `GET /api/admin/release-report` (admin session required)
 
 ### Release Rule
 
 - Green across all P0 gates for two consecutive runs: Go
 - Any red P0 gate: No-Go until corrected and re-validated
+
+### Reporting Access
+
+- Admin UI: `/admin` (overview, ingest, security, operations, analytics tabs)
+- API release gate report: `GET /api/admin/release-report`
+- Recommended weekly cadence:
+  - run full ingest
+  - refresh `/admin` and capture KPI screenshots
+  - call release-report API and archive the JSON output for the sprint review
 
 ## Completed Foundation
 

@@ -31,6 +31,7 @@ import { corsHeaders }                  from '@/lib/utils';
 import { after }                        from '@/lib/after';
 import { executeProxyCall }             from '@/lib/proxy-execute';
 import { getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
+import { ensureRuntimeContracts }       from '@/lib/runtime-contracts';
 import {
   hashIntent, getIntentCache, setIntentCache,
   getIntentBoosts, trimSchemasToIntent, computeConfidence,
@@ -568,6 +569,14 @@ function mcpError(id: any, code: number, message: string) {
 
 // ── StreamableHTTP transport ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  try {
+    await ensureRuntimeContracts();
+  } catch (e: any) {
+    return NextResponse.json(
+      { jsonrpc: '2.0', id: null, error: { code: -32000, message: `Runtime contract check failed: ${e?.message ?? 'unknown'}` } },
+      { status: 500 }
+    );
+  }
   let body: any;
   try {
     body = await req.json();

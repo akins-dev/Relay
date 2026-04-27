@@ -100,8 +100,21 @@ interface UptimeIssue {
   transport: string; uptime_pct: number; latency_ms: number;
   trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
 }
+interface ReleaseGate {
+  name: string;
+  state: 'pass' | 'fail' | 'warn';
+  value: string;
+  rule: string;
+  notes: string | null;
+}
+interface ReleaseReport {
+  generated_at: string;
+  release: 'go' | 'no-go';
+  blocking_failures: ReleaseGate[];
+  gates: ReleaseGate[];
+}
 
-type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations' | 'analytics' | 'config';
+type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations' | 'analytics' | 'release' | 'config';
 const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
@@ -127,6 +140,7 @@ export default function AdminPage() {
   const [serverReliability,setServerReliability]= useState<any[]>([]);
   // Rate limit config
   const [rateLimits,       setRateLimits]       = useState<any[]>([]);
+  const [releaseReport,    setReleaseReport]    = useState<ReleaseReport | null>(null);
   const [rlSaving,         setRlSaving]         = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
@@ -194,6 +208,10 @@ export default function AdminPage() {
       if (sqRes?.data)     setSearchQuality(sqRes.data as any);
       if (srRes?.data)     setServerReliability(srRes.data as any);
       if (rlRes?.data)     setRateLimits(rlRes.data as any);
+      const releaseRes = await fetch('/api/admin/release-report')
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (releaseRes) setReleaseReport(releaseRes as ReleaseReport);
       setLastRefresh(new Date());
     } catch (error: any) {
       setAdminError(error.message ?? 'Could not load admin dashboard');
@@ -403,7 +421,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px', overflowX: 'auto' }}>
-        {(['overview','ingest','security','servers','threats','operations','analytics','config'] as Tab[]).map(t => (
+        {(['overview','ingest','security','servers','threats','operations','analytics','release','config'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
@@ -929,6 +947,48 @@ export default function AdminPage() {
               )
             }
           </div>
+        </div>
+      )}
+
+      {/* ── RELEASE ────────────────────────────────────────────────────────── */}
+      {tab === 'release' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {!releaseReport ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              Release report not available yet.
+            </div>
+          ) : (
+            <>
+              <div style={{ padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>
+                  Release Decision
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: releaseReport.release === 'go' ? C.green : C.red, fontFamily: 'var(--mono)' }}>
+                  {releaseReport.release.toUpperCase()}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>
+                  Generated {ago(releaseReport.generated_at)}
+                </div>
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <thead><tr><TH>Gate</TH><TH>Status</TH><TH>Value</TH><TH>Rule</TH><TH>Notes</TH></tr></thead>
+                <tbody>
+                  {releaseReport.gates.map((g) => (
+                    <tr key={g.name}>
+                      <TD>{g.name}</TD>
+                      <TD color={g.state === 'pass' ? C.green : g.state === 'fail' ? C.red : C.orange}>
+                        {g.state}
+                      </TD>
+                      <TD mono>{g.value}</TD>
+                      <TD mono>{g.rule}</TD>
+                      <TD>{g.notes ?? '—'}</TD>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
 
