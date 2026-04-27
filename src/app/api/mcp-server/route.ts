@@ -358,6 +358,7 @@ async function handleSearchTools(
     const trimmedTools = trimSchemasToIntent(rawTools, intent);
 
     const proxyAvailable = s.proxy_available ?? ((s.transport ?? 'streamable_http') !== 'stdio' && Boolean(s.endpoint));
+    const isStdio = s.transport === 'stdio';
 
     return {
       name:           s.name,
@@ -379,7 +380,9 @@ async function handleSearchTools(
       proxy_available: proxyAvailable,
       transport: s.transport ?? null,
       usage: proxyAvailable === false
-        ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
+        ? isStdio
+          ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
+          : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
         : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
       is_new: s.is_new ?? false,
     };

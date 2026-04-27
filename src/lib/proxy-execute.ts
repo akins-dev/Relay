@@ -177,10 +177,16 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   if (!server) return { status: 404, body: JSON.stringify({ error: `Server '${serverName}' not found` }), contentType: 'application/json', headers: {} };
 
   if (server.proxy_available === false) {
+    const isStdio = server.transport === 'stdio';
     return { status: 400, body: JSON.stringify({
-      error: `'${serverName}' is a stdio server — not invocable via Cloud Proxy.`,
-      resolution: `Use ${BRAND.cli}: npx -y @${BRAND.slug}/cli invoke ${serverName} ${toolName}`,
-      is_stdio: true,
+      error: isStdio
+        ? `'${serverName}' is a stdio server — not invocable via Cloud Proxy.`
+        : `'${serverName}' is not invocable via Cloud Proxy.`,
+      resolution: isStdio
+        ? `Use ${BRAND.cli}: npx -y @${BRAND.slug}/cli invoke ${serverName} ${toolName}`
+        : `Open the server detail page and verify its transport and proxy metadata before invoking.`,
+      is_stdio: isStdio,
+      transport: server.transport ?? 'unknown',
     }), contentType: 'application/json', headers: {} };
   }
 

@@ -303,6 +303,54 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
 
 // ── Smithery ──────────────────────────────────────────────────────────────────
 
+function normalizeDeclaredRemoteTransport(
+  rawType: unknown,
+  url?: string
+): IngestServer['transport'] {
+  const type = typeof rawType === 'string' ? rawType.toLowerCase() : '';
+
+  if (type === 'stdio') return 'stdio';
+  if (type.includes('sse')) return 'sse';
+  if (type.includes('http') || type.includes('stream')) return 'streamable_http';
+
+  if (url) {
+    const detected = detectTransport(url);
+    if (detected === 'sse' || detected === 'streamable_http') return detected;
+    return 'streamable_http';
+  }
+
+  return 'unknown';
+}
+
+export function selectSmitheryConnection(
+  connections: any[] | undefined,
+  deploymentUrl?: string | null
+): { endpoint: string; transport: IngestServer['transport'] } | null {
+  const declaredConnections = Array.isArray(connections) ? connections : [];
+
+  for (const connection of declaredConnections) {
+    const url = typeof connection?.url === 'string' ? connection.url.trim() : '';
+    const transport = normalizeDeclaredRemoteTransport(connection?.type, url);
+    if (url && transport !== 'stdio') {
+      return { endpoint: url, transport };
+    }
+  }
+
+  const remoteDeploymentUrl = typeof deploymentUrl === 'string' ? deploymentUrl.trim() : '';
+  if (remoteDeploymentUrl) {
+    return {
+      endpoint: remoteDeploymentUrl,
+      transport: normalizeDeclaredRemoteTransport('streamable-http', remoteDeploymentUrl),
+    };
+  }
+
+  if (declaredConnections.some((connection) => normalizeDeclaredRemoteTransport(connection?.type) === 'stdio')) {
+    return { endpoint: '', transport: 'stdio' };
+  }
+
+  return null;
+}
+
 
 export async function fetchSmitheryServers(): Promise<IngestServer[]> {
   const apiKey = process.env.SMITHERY_API_KEY;
@@ -336,14 +384,18 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       const name = slugify(s.qualifiedName ?? s.displayName ?? '');
       if (!name) continue;
 
-      const rawEndpoint = s.connections?.[0]?.url ?? s.url ?? '';
-      const isStdio = s.connections?.[0]?.type === 'stdio' || !rawEndpoint;
+      const selectedConnection = selectSmitheryConnection(
+        s.connections,
+        s.deploymentUrl ?? s.url ?? null
+      );
+      const endpoint = selectedConnection?.endpoint ?? '';
+      const transport = selectedConnection?.transport ?? 'unknown';
 
       servers.push({
         name,
         display_name: s.displayName ?? name,
         description:  s.description ?? '',
-        endpoint:     isStdio ? '' : rawEndpoint, // do not fabricate HTTP endpoints for stdio servers
+        endpoint,
         version:      '1.0.0',
         github_url:   s.repository ?? undefined,
         license:      'MIT',
@@ -353,7 +405,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
         source:       'smithery',
         smithery_id:  s.qualifiedName ?? undefined,
         verified:     s.security?.scanPassed ?? false,
-        transport:    isStdio ? 'stdio' : undefined,
+        transport,
         upstream_updated_at: s.updatedAt ?? s.createdAt ?? undefined,
       });
     }
@@ -508,8 +560,15 @@ export async function fetchGlamaServers(): Promise<IngestServer[]> {
         // Detect transport from Glama's 'attributes' array
         const attrs: string[] = s.attributes ?? [];
         let transport: IngestServer['transport'] = 'unknown';
-        if (attrs.some(a => a.includes('remote'))) transport = 'sse';
-        else if (attrs.some(a => a.includes('local-only'))) transport = 'stdio';
+        if (attrs.some(a => a.includes('local-only'))) {
+          transport = 'stdio';
+        } else if (attrs.some(a => a.includes('remote'))) {
+          transport = s.url
+            ? (detectTransport(s.url) === 'sse' ? 'sse' : 'streamable_http')
+            : 'streamable_http';
+        } else if (s.url) {
+          transport = detectTransport(s.url);
+        }
 
         servers.push({
           name,

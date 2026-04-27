@@ -111,26 +111,44 @@ export default function ServerDetailPage() {
   const trustColor = server.trust_score >= 90 ? 'var(--green)' : server.trust_score >= 70 ? 'var(--yellow)' : 'var(--red)';
   const authorName = (server as any).profiles?.username ?? (server as any).author_name ?? 'unknown';
 
-  const isStdio        = (server as any).transport === 'stdio';
+  const rawTransport   = (server as any).transport ?? 'unknown';
+  const isStdio        = rawTransport === 'stdio';
+  const isSse          = rawTransport === 'sse';
+  const isHttp         = rawTransport === 'streamable_http';
+  const isUnknown      = !isStdio && !isSse && !isHttp;
   const proxyAvailable = (server as any).proxy_available
     ?? (!isStdio && Boolean((server as any).endpoint));
+  const localOnly      = !proxyAvailable;
   const mcpCompliant   = (server as any).mcp_compliant ?? false;
   const protocolVer    = (server as any).protocol_version ?? null;
   const previewTools = server.tools.slice(0, 12);
 
-  const transportLabel = isStdio ? 'stdio' :
-    (server as any).transport === 'sse' ? 'sse' : 'http';
-  const transportColor = isStdio ? 'var(--yellow)' :
-    (server as any).transport === 'sse' ? 'var(--blue)' : 'var(--green)';
+  const transportLabel = isStdio ? 'stdio' : isSse ? 'sse' : isHttp ? 'http' : 'unknown';
+  const transportColor = isStdio
+    ? 'var(--yellow)'
+    : isSse
+      ? 'var(--blue)'
+      : isHttp
+        ? 'var(--green)'
+        : 'var(--text-3)';
+  const nonProxyTitle = isStdio
+    ? `⬡ stdio Server — ${BRAND.cli} Coming Soon`
+    : 'Transport Not Verified';
+  const nonProxyDescription = isStdio
+    ? `This server runs as a local subprocess (stdio transport). It cannot be called through the web proxy. ${BRAND.cli} will bridge stdio servers locally when it launches. For now, check the GitHub repo for installation instructions.`
+    : 'This server is listed in the catalog, but Relay has not verified a proxyable remote transport for it yet. Check the upstream metadata or GitHub instructions before attempting invocation.';
+  const nonProxyBadge = isStdio ? '⬡ stdio · CLI coming soon' : '⚠ transport unverified';
+  const proxyLabel = proxyAvailable ? '✓ available' : isStdio ? '✗ CLI only' : '✗ unavailable';
 
-  const promptSnippet = isStdio
+  const promptSnippet = localOnly
     ? `# ${BRAND.cli} (coming soon)
-# This server uses stdio transport.
-# When ${BRAND.cli} launches, you will be able to run:
-#   ${BRAND.slug} run ${server.name}
+# This server is currently not invocable through Relay Cloud Proxy.
+# Transport: ${transportLabel}
+# ${isStdio ? `When ${BRAND.cli} launches, you will be able to run:` : 'Check the upstream registry page or GitHub repo for installation and transport details.'}
+${isStdio ? `#   ${BRAND.slug} run ${server.name}` : ''}
 #
 # For now, this server is discoverable but not invocable
-# through the web proxy. Use the GitHub repo to run locally.`
+# through the web proxy. ${server.github_url ? `Use the GitHub repo for setup: ${server.github_url}` : 'Use the upstream source metadata for setup.'}`
     : `## MCP Tools — ${server.display_name}
 
 POST /api/proxy/${server.name}/{toolName}
@@ -139,10 +157,10 @@ Available tools: ${server.tools.join(', ')}
 # Auto-discover via registry:
 GET /.well-known/mcp.json`;
 
-  const curlSnippet = isStdio
+  const curlSnippet = localOnly
     ? `# ${BRAND.cli} is not yet available.
-# This stdio server must be run locally.
-# See the GitHub repo for installation instructions.
+# This server is not invocable through Relay Cloud Proxy today.
+# Transport: ${transportLabel}
 ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL available.'}`
     : `curl -X POST ${SITE_URL}/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
   -H "Authorization: Bearer sk_mcp_..." \\
@@ -175,9 +193,9 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               </span>
             )}
             {/* Stdio warning */}
-            {isStdio && (
+            {localOnly && (
               <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', padding: '2px 8px', borderRadius: '4px', background: '#2b2000', border: '1px solid #713f12', color: 'var(--yellow)' }}>
-                ⬡ stdio · CLI coming soon
+                {nonProxyBadge}
               </span>
             )}
             <span style={{ fontSize: '12px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>v{server.version}</span>
@@ -199,7 +217,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
             <a href={server.github_url} target="_blank" rel="noopener" className="btn btn-ghost" style={{ textDecoration: 'none' }}>GitHub →</a>
           )}
           {/* Primary CTA — different for stdio vs HTTP */}
-          {isStdio ? (
+          {localOnly ? (
             server.github_url ? (
               <a href={server.github_url} target="_blank" rel="noopener" className="btn btn-primary" style={{ textDecoration: 'none', fontFamily: 'var(--mono)', fontSize: '12px' }}>
                 ⬡ View on GitHub
@@ -257,13 +275,12 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               </div>
             )}
 
-            {/* stdio callout */}
-            {isStdio && (
+            {/* Non-proxy callout */}
+            {localOnly && (
               <div style={{ padding: '18px 20px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>⬡ stdio Server — {BRAND.cli} Coming Soon</div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>{nonProxyTitle}</div>
                 <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: '12px' }}>
-                  This server runs as a local subprocess (stdio transport). It cannot be called through the web proxy.
-                  {BRAND.cli} will bridge stdio servers locally when it launches. For now, check the GitHub repo for installation instructions.
+                  {nonProxyDescription}
                 </p>
                 {server.github_url && (
                   <a href={server.github_url} target="_blank" rel="noopener" style={{ fontFamily: 'var(--mono)', fontSize: '12px', background: 'var(--bg-3)', padding: '10px 14px', borderRadius: '6px', color: 'var(--green)', display: 'block', textDecoration: 'none' }}>
@@ -319,14 +336,14 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                 ['Version',   server.version],
                 ['Transport', transportLabel.toUpperCase()],
                 ...(protocolVer ? [['Protocol', protocolVer]] : []),
-                ['MCP',       mcpCompliant ? '✓ compliant' : isStdio ? '— not probed' : '✗ not compliant'],
+                ['MCP',       mcpCompliant ? '✓ compliant' : localOnly ? '— not probed' : '✗ not compliant'],
                 ['Resources', String(resources.length)],
                 ['Prompts',   String(prompts.length)],
-                ['Proxy',     proxyAvailable ? '✓ available' : '✗ CLI only'],
+                ['Proxy',     proxyLabel],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
                   <span style={{ color: 'var(--text-3)' }}>{l}</span>
-                  <span style={{ color: l === 'MCP' && !mcpCompliant && !isStdio ? 'var(--red)' : l === 'MCP' && mcpCompliant ? 'var(--green)' : l === 'Proxy' && !proxyAvailable ? 'var(--yellow)' : 'var(--text)' }}>{v}</span>
+                  <span style={{ color: l === 'MCP' && !mcpCompliant && !localOnly ? 'var(--red)' : l === 'MCP' && mcpCompliant ? 'var(--green)' : l === 'Proxy' && !proxyAvailable ? 'var(--yellow)' : 'var(--text)' }}>{v}</span>
                 </div>
               ))}
             </div>
@@ -344,9 +361,11 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
       {/* Tools */}
       {tab === 'tools' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {isStdio && (
+          {localOnly && (
             <div style={{ padding: '12px 16px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12', fontSize: '13px', color: 'var(--yellow)', marginBottom: '8px' }}>
-              ⬡ stdio server — {BRAND.cli} (coming soon) will enable local invocation of these tools
+              {isStdio
+                ? `⬡ stdio server — ${BRAND.cli} (coming soon) will enable local invocation of these tools`
+                : '⚠ transport not verified — these tools are listed for discovery, not proxy invocation'}
             </div>
           )}
           {server.tools.length === 0 && (
@@ -363,7 +382,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                 </button>
               ) : (
                 <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)' }}>
-                  ⬡ stdio only
+                  {isStdio ? '⬡ stdio only' : '⚠ not proxyable'}
                 </span>
               )}
             </div>
@@ -458,24 +477,22 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
       {/* Integrate */}
       {tab === 'integrate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {isStdio && (
+          {localOnly && (
             <div style={{ padding: '18px 20px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>⬡ stdio Server — {BRAND.cli} Coming Soon</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>{nonProxyTitle}</div>
               <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.6 }}>
-                This server uses the stdio transport and cannot be proxied through the web.
-                When {BRAND.cli} launches, it will bridge stdio servers locally as HTTP endpoints.
-                For now, see the GitHub repo for local setup instructions.
+                {nonProxyDescription}
               </p>
             </div>
           )}
 
           {[{
-            title: isStdio ? `${BRAND.cli} (coming soon)` : 'System Prompt / AGENTS.md',
+            title: localOnly ? (isStdio ? `${BRAND.cli} (coming soon)` : 'Manual Setup') : 'System Prompt / AGENTS.md',
             key:   'prompt',
             code:  promptSnippet,
             color: 'var(--text-2)',
           }, {
-            title: isStdio ? 'Local Setup' : 'cURL',
+            title: localOnly ? 'Local Setup' : 'cURL',
             key:   'curl',
             code:  curlSnippet,
             color: 'var(--green)',
@@ -489,16 +506,20 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
             </div>
           ))}
 
-          <div className="card" style={{ padding: '22px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>
-              {isStdio ? 'CLI Reference' : 'Endpoint Reference'}
+            <div className="card" style={{ padding: '22px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>
+              {localOnly ? (isStdio ? 'CLI Reference' : 'Transport Reference') : 'Endpoint Reference'}
             </div>
-            {isStdio ? (
+            {localOnly ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ padding: '14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--yellow)', marginBottom: '8px', fontWeight: 600 }}>⬡ {BRAND.cli} is not yet available</div>
+                  <div style={{ fontSize: '12px', color: 'var(--yellow)', marginBottom: '8px', fontWeight: 600 }}>
+                    {isStdio ? `⬡ ${BRAND.cli} is not yet available` : '⚠ Cloud proxy unavailable'}
+                  </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5 }}>
-                    When it launches, you&apos;ll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code>
+                    {isStdio
+                      ? <>When it launches, you&apos;ll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code></>
+                      : 'Relay does not currently have verified transport metadata for this server. Check the upstream registry page or GitHub repo before invoking it.'}
                   </div>
                 </div>
                 {server.github_url && (

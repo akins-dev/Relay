@@ -3,7 +3,7 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { buildSandboxCommand, detectTransport, parseReadmeDescription } from '../lib/ingest';
+import { buildSandboxCommand, detectTransport, parseReadmeDescription, selectSmitheryConnection } from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -57,6 +57,16 @@ describe('ingest hardening logic', () => {
     expect(buildSandboxCommand({
       github_url: 'https://github.com/agenttrust/mcp-server',
     })).toBeNull();
+  });
+
+  test('selectSmitheryConnection prefers a remote HTTP connection over a leading stdio connection', () => {
+    expect(selectSmitheryConnection([
+      { type: 'stdio' },
+      { type: 'streamable-http', url: 'https://contextstudios.example.com/mcp' },
+    ])).toEqual({
+      endpoint: 'https://contextstudios.example.com/mcp',
+      transport: 'streamable_http',
+    });
   });
 
   test('resolveSafeRedirectUrl allows safe relative redirects against the upstream base', async () => {

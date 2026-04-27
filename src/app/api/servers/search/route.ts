@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
         auth_type, auth_setup_url, oauth_authorization_url,
-        transport, endpoint,
+        transport, endpoint, proxy_available,
         profiles!author_id ( username )
       `)
       .in('id', ids)
@@ -196,9 +196,9 @@ export async function GET(req: NextRequest) {
       const authType = s.oauth_authorization_url ? 'oauth' : (s.auth_type ?? 'managed');
       const connectUrl = s.oauth_authorization_url ? `${SITE_URL}/registry/${s.name}?connect=1` : null;
       const secretsTutorial = buildCredentialSetup(s.name, authType, connectUrl);
-      const transport = s.transport ?? 'http';
+      const transport = s.transport ?? 'unknown';
       const isStdio = transport === 'stdio';
-      const proxyAvailable = !isStdio && !!s.endpoint;
+      const proxyAvailable = s.proxy_available ?? (!isStdio && !!s.endpoint);
 
       return {
         name:         s.name,
@@ -220,7 +220,9 @@ export async function GET(req: NextRequest) {
         transport,
         proxy_available: proxyAvailable,
         ...(!proxyAvailable && {
-          cli_hint: `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`,
+          cli_hint: isStdio
+            ? `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`
+            : `This server is currently listed for discovery only. Relay has not verified a proxyable remote transport for it yet.`,
         }),
 
         // Full tool schemas — agent MUST read inputSchema before calling
