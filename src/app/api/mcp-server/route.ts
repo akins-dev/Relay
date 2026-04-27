@@ -249,35 +249,84 @@ async function handleSearchTools(
   // Cache hit: return pre-computed results in ~0ms, skip DB entirely.
   const cached = getIntentCache(intentHash);
   if (cached && cached.servers.length > 0) {
+    const supabase = createClient();
+    const cachedOrder = new Map(cached.servers.map((row, idx) => [row.server_name, idx]));
+    const cachedBoostByServer = new Map(cached.servers.map(row => [row.server_name, row]));
+    const serverNames = cached.servers.map(s => s.server_name);
+    const { data: cachedRows } = await (supabase as any)
+      .from('servers')
+      .select(`
+        id, name, display_name, description, tools, tool_schemas,
+        trust_score, latency_ms, uptime_pct, source, verified, scan_status,
+        proxy_available, transport, endpoint
+      `)
+      .in('name', serverNames)
+      .eq('status', 'active');
+    const orderedRows = (cachedRows ?? [])
+      .sort((a: any, b: any) => (cachedOrder.get(a.name) ?? 9999) - (cachedOrder.get(b.name) ?? 9999))
+      .slice(0, limit);
+    const formatted = orderedRows.map((s: any) => {
+      const boost = cachedBoostByServer.get(s.name);
+      const rawTools: any[] = (s.tool_schemas?.length ?? 0) > 0
+        ? s.tool_schemas
+        : (s.tools ?? []).map((t: any) =>
+            typeof t === 'string' ? { name: t } : { name: t.name, description: t.description, inputSchema: t.inputSchema }
+          );
+      const trimmedTools = trimSchemasToIntent(rawTools, intent);
+      const proxyAvailable = s.proxy_available ?? ((s.transport ?? 'streamable_http') !== 'stdio' && Boolean(s.endpoint));
+      const isStdio = s.transport === 'stdio';
+      return {
+        name: s.name,
+        display_name: s.display_name,
+        description: s.description,
+        confidence: boost?.success_rate ?? 0,
+        trust_score: s.trust_score,
+        latency_ms: boost?.avg_latency_ms ?? s.latency_ms,
+        uptime_pct: s.uptime_pct,
+        source: s.source ?? 'direct',
+        verified: s.verified,
+        scan_status: s.scan_status,
+        invoke_history: boost ? {
+          success_rate: Math.round((boost.success_rate ?? 0) * 100),
+          invoke_count: boost.invoke_count ?? 0,
+        } : null,
+        tools: trimmedTools,
+        total_tools: rawTools.length,
+        proxy_available: proxyAvailable,
+        transport: s.transport ?? null,
+        usage: proxyAvailable === false
+          ? isStdio
+            ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
+            : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
+          : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
+        is_new: s.is_new ?? false,
+      };
+    });
+    const topResult = formatted[0];
     after(() => recordSearchEvent({
       searchEventId,
       userId: auth?.userId ?? null, sessionId,
       interface: 'mcp_server', intentText: intent,
-      intentClass: 'action', resultCount: cached.servers.length,
-      resultServers: cached.servers.map(s => s.server_name),
-      topServer: cached.servers[0]?.server_name ?? null,
-      topConfidence: cached.servers[0]?.success_rate ?? null,
+      intentClass: 'action', resultCount: formatted.length,
+      resultServers: formatted.map((s: any) => s.name),
+      topServer: topResult?.name ?? null,
+      topConfidence: topResult?.confidence ?? null,
       cacheHit: true, noToolNeeded: false,
       searchLatencyMs: 0, totalLatencyMs: Date.now() - handlerStart,
     }));
 
-    // Format cached results — these are pre-trimmed server names only.
-    // For full schemas, fall through to DB. Cache is a fast-path for known mappings.
     return mcpResponse(id, {
       content: [{ type: 'text', text: JSON.stringify({
         intent,
         intent_hash: intentHash,
         search_event_id: searchEventId,
-        results: cached.servers.slice(0, limit).map(s => ({
-          name:           s.server_name,
-          confidence:     s.success_rate,
-          invoke_count:   s.invoke_count,
-          avg_latency_ms: s.avg_latency_ms,
-          source:         'intent_cache',
-          note:           'This server has a strong history of successfully serving this intent. Full schema available on invoke.',
-          usage:          `invoke_tool({ server: "${s.server_name}", tool: "${s.tool_name ?? '<tool>'}", args: {...} })`,
-        })),
-        tip: 'Cache hit — these servers have a proven track record for this intent. Use invoke_tool directly.',
+        results: formatted,
+        tip: [
+          'Cache hit — server ordering comes from historical success for this intent.',
+          'Use invoke_tool with the exact server and tool names shown.',
+          'Pass search_event_id and intent through to invoke_tool so Relay can learn from successful chains.',
+          `Schemas trimmed to ${MAX_TOOLS_PER_RESULT} most relevant tools per server — use total_tools to see if more exist.`,
+        ].join(' '),
         cache_hit: true,
       }, null, 2) }],
     });

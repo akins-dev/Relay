@@ -49,6 +49,147 @@ export interface ProxyCallResult {
   confirmRequired?: { token: string; hint: string };
 }
 
+function jsonResult(status: number, payload: unknown): ProxyCallResult {
+  return { status, body: JSON.stringify(payload), contentType: 'application/json', headers: {} };
+}
+
+function buildAuthRequiredResult(): ProxyCallResult {
+  return jsonResult(401, {
+    error: 'Authentication required for invoke_tool',
+    hint: `Add header: ${API_KEY_HEADER}`,
+    get_key: `${SITE_URL}/dashboard`,
+  });
+}
+
+function buildNonProxyableResult(serverName: string, toolName: string, transport: string | null): ProxyCallResult {
+  const isStdio = transport === 'stdio';
+  return jsonResult(400, {
+    error: isStdio
+      ? `'${serverName}' is a stdio server — not invocable via Cloud Proxy.`
+      : `'${serverName}' is not invocable via Cloud Proxy.`,
+    resolution: isStdio
+      ? `Use ${BRAND.cli}: npx -y @${BRAND.slug}/cli invoke ${serverName} ${toolName}`
+      : `Open the server detail page and verify its transport and proxy metadata before invoking.`,
+    is_stdio: isStdio,
+    transport: transport ?? 'unknown',
+  });
+}
+
+function buildUpstreamHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-Forwarded-By': BRAND.slug,
+    'X-Request-Id': crypto.randomUUID(),
+  };
+}
+
+function parseToolArguments(rawBody: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(rawBody);
+    const candidate = parsed?.arguments ?? parsed?.params ?? parsed ?? {};
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      return { input: String(candidate ?? '') };
+    }
+    const args: Record<string, unknown> = { ...candidate };
+    delete args.jsonrpc;
+    delete args.method;
+    delete args.id;
+    return args;
+  } catch {
+    return rawBody ? { input: rawBody } : {};
+  }
+}
+
+function buildAuthSetupResponse(serverName: string, authType: string | null | undefined): ProxyCallResult {
+  const base = serverName.toUpperCase().replace(/-/g, '_').replace(/[^A-Z0-9_]/g, '');
+  if (authType === 'oauth') {
+    return jsonResult(401, {
+      error: 'authentication_required',
+      auth_type: 'oauth',
+      server: serverName,
+      connect_url: `${SITE_URL}/registry/${serverName}?connect=1`,
+    });
+  }
+  return jsonResult(401, {
+    error: 'authentication_required',
+    auth_type: 'api_key',
+    server: serverName,
+    suggested_name: `${base}_API_KEY`,
+    setup_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${base}_API_KEY`,
+  });
+}
+
+async function callUpstreamMcpTool(
+  endpoint: string,
+  headers: Record<string, string>,
+  mcpBody: string
+): Promise<{
+  responseBody: string;
+  upstreamStatus: number;
+  upstreamContentType: string;
+  responseTruncated: boolean;
+  upstreamError: string | null;
+}> {
+  let responseBody = '';
+  let upstreamStatus = 502;
+  let upstreamContentType = 'application/json';
+  let responseTruncated = false;
+  let upstreamError: string | null = null;
+  try {
+    const upstream = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: mcpBody,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (upstream.status >= 300 && upstream.status < 400) {
+      const location = upstream.headers.get('location') ?? '';
+      const redirectUrl = await resolveSafeRedirectUrl(location, endpoint);
+      if (!redirectUrl) {
+        return {
+          responseBody: JSON.stringify({ error: 'Upstream redirected to blocked URL (SSRF guard)' }),
+          upstreamStatus: 502,
+          upstreamContentType: 'application/json',
+          responseTruncated: false,
+          upstreamError: null,
+        };
+      }
+      const redirected = await fetch(redirectUrl, {
+        method: 'POST',
+        headers,
+        body: mcpBody,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20_000),
+      });
+      upstreamStatus = redirected.status;
+      upstreamContentType = redirected.headers.get('content-type') ?? 'application/json';
+      const bounded = await readBoundedResponse(redirected);
+      responseBody = bounded.body;
+      responseTruncated = bounded.truncated;
+    } else {
+      upstreamStatus = upstream.status;
+      upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
+      const bounded = await readBoundedResponse(upstream);
+      responseBody = bounded.body;
+      responseTruncated = bounded.truncated;
+    }
+  } catch (err: any) {
+    upstreamStatus = 502;
+    upstreamError = err.message;
+    responseBody = JSON.stringify({ error: 'Upstream unreachable', message: err.message });
+  }
+
+  return {
+    responseBody,
+    upstreamStatus,
+    upstreamContentType,
+    responseTruncated,
+    upstreamError,
+  };
+}
+
 function audit(svc: ReturnType<typeof createServiceClient>, data: {
   server_id: string; action: string; tool_name: string;
   request_size: number; response_size: number; latency_ms: number;
@@ -153,11 +294,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
 
   // ── 1. Auth required ─────────────────────────────────────────────────────────
   if (!callerUserId) {
-    return { status: 401, body: JSON.stringify({
-      error: 'Authentication required for invoke_tool',
-      hint: `Add header: ${API_KEY_HEADER}`,
-      get_key: `${SITE_URL}/dashboard`,
-    }), contentType: 'application/json', headers: {} };
+    return buildAuthRequiredResult();
   }
 
   // ── 2. Body size ──────────────────────────────────────────────────────────────
@@ -177,17 +314,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   if (!server) return { status: 404, body: JSON.stringify({ error: `Server '${serverName}' not found` }), contentType: 'application/json', headers: {} };
 
   if (server.proxy_available === false) {
-    const isStdio = server.transport === 'stdio';
-    return { status: 400, body: JSON.stringify({
-      error: isStdio
-        ? `'${serverName}' is a stdio server — not invocable via Cloud Proxy.`
-        : `'${serverName}' is not invocable via Cloud Proxy.`,
-      resolution: isStdio
-        ? `Use ${BRAND.cli}: npx -y @${BRAND.slug}/cli invoke ${serverName} ${toolName}`
-        : `Open the server detail page and verify its transport and proxy metadata before invoking.`,
-      is_stdio: isStdio,
-      transport: server.transport ?? 'unknown',
-    }), contentType: 'application/json', headers: {} };
+    return buildNonProxyableResult(serverName, toolName, server.transport ?? null);
   }
 
   if (!Array.isArray(server.tools) || !server.tools.includes(toolName)) {
@@ -261,11 +388,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   }
 
   // ── 10. Vault credential injection (single lookup) ────────────────────────────
-  const upstreamHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Forwarded-By': BRAND.slug,
-    'X-Request-Id': crypto.randomUUID(),
-  };
+  const upstreamHeaders = buildUpstreamHeaders();
   await injectCredential(svc, callerUserId, serverName, server.auth_type ?? 'managed', upstreamHeaders);
 
   // ── 11. MCP initialize handshake (SSE / unknown transport only) ───────────────
@@ -275,40 +398,13 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   }
 
   // ── 12. Build tools/call body ─────────────────────────────────────────────────
-  let toolArguments: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(rawBody);
-    toolArguments = parsed?.arguments ?? parsed?.params ?? parsed ?? {};
-    delete toolArguments.jsonrpc; delete toolArguments.method; delete toolArguments.id;
-  } catch { toolArguments = rawBody ? { input: rawBody } : {}; }
+  const toolArguments = parseToolArguments(rawBody);
 
   const mcpBody = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: toolName, arguments: toolArguments } });
 
   // ── 13. Upstream call ─────────────────────────────────────────────────────────
-  let responseBody = '';
-  let upstreamStatus = 502;
-  let upstreamContentType = 'application/json';
-  let responseTruncated = false;
-  let upstreamError: string | null = null;
-
-  try {
-    const upstream = await fetch(server.endpoint, { method: 'POST', headers: upstreamHeaders, body: mcpBody, redirect: 'manual', signal: AbortSignal.timeout(30_000) });
-
-    if (upstream.status >= 300 && upstream.status < 400) {
-      const location = upstream.headers.get('location') ?? '';
-      const redirectUrl = await resolveSafeRedirectUrl(location, server.endpoint);
-      if (!redirectUrl) return { status: 502, body: JSON.stringify({ error: 'Upstream redirected to blocked URL (SSRF guard)' }), contentType: 'application/json', headers: {} };
-      const rr = await fetch(redirectUrl, { method: 'POST', headers: upstreamHeaders, body: mcpBody, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
-      upstreamStatus = rr.status; upstreamContentType = rr.headers.get('content-type') ?? 'application/json';
-      const b = await readBoundedResponse(rr); responseBody = b.body; responseTruncated = b.truncated;
-    } else {
-      upstreamStatus = upstream.status; upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
-      const b = await readBoundedResponse(upstream); responseBody = b.body; responseTruncated = b.truncated;
-    }
-  } catch (err: any) {
-    upstreamStatus = 502; upstreamError = err.message;
-    responseBody = JSON.stringify({ error: 'Upstream unreachable', message: err.message });
-  }
+  const upstreamResult = await callUpstreamMcpTool(server.endpoint, upstreamHeaders, mcpBody);
+  const { responseBody, upstreamStatus, upstreamContentType, responseTruncated, upstreamError } = upstreamResult;
 
   const latency = Date.now() - start;
   const success = upstreamStatus >= 200 && upstreamStatus < 300;
@@ -333,12 +429,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
 
   // ── 16. Structured 401 response (after metering is scheduled) ────────────────
   if (upstreamStatus === 401) {
-    const base = serverName.toUpperCase().replace(/-/g, '_').replace(/[^A-Z0-9_]/g, '');
-    return { status: 401, body: JSON.stringify(
-      server.auth_type === 'oauth'
-        ? { error: 'authentication_required', auth_type: 'oauth', server: serverName, connect_url: `${SITE_URL}/registry/${serverName}?connect=1` }
-        : { error: 'authentication_required', auth_type: 'api_key', server: serverName, suggested_name: `${base}_API_KEY`, setup_url: `${SITE_URL}/dashboard/secrets?server=${serverName}&name=${base}_API_KEY` }
-    ), contentType: 'application/json', headers: {} };
+    return buildAuthSetupResponse(serverName, server.auth_type ?? null);
   }
 
   if (upstreamError) {

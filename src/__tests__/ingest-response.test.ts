@@ -50,4 +50,30 @@ describe('ingest response formatting', () => {
       'Ingest completed for all configured sources. 17 fetched 8 added 3 updated 4 skipped 2 rejected 2 errors'
     );
   });
+
+  test('preserves extraction metrics when provided', () => {
+    const compact = compactIngestResults({
+      smithery: {
+        fetched: 4,
+        added: 1,
+        updated: 1,
+        skipped: 2,
+        rejected: 0,
+        errors: [],
+        extraction_metrics: {
+          sandbox_attempts: 3,
+          sandbox_success: 2,
+          readme_fallback_attempts: 1,
+          unresolved_stdio_rows: 1,
+        },
+      },
+    });
+
+    expect(compact.smithery.extraction_metrics).toEqual({
+      sandbox_attempts: 3,
+      sandbox_success: 2,
+      readme_fallback_attempts: 1,
+      unresolved_stdio_rows: 1,
+    });
+  });
 });

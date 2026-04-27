@@ -13,6 +13,43 @@ Other docs may summarize direction or mention sprint numbers when explaining tra
 - The current build already has the core search -> invoke -> learn loop in place.
 - The active delivery path now centers on ingest hardening, runtime safety, stdio reachability, and the later learned-routing fast path.
 
+## MVP Gate (Go / No-Go)
+
+The MVP is launchable only when all P0 gates are green for two consecutive weekly reviews.
+
+### P0 Gates
+
+- Discovery trust
+  - endpoint/repo dedup collision rate under 2%
+  - bad-row rate under 1% per ingest source
+  - transport classification coverage above 95% on active rows
+  - weak stdio rows (no extracted tools and no launch manifest) below 10% of stdio inventory
+- Search contract stability
+  - one canonical `search_servers(query_text, result_limit, include_stdio)` runtime contract across all environments
+  - `search_tools` response shape parity between cache-hit and cold-path responses
+  - top-3 relevance above 85% on the fixed intent benchmark set
+- Invocation reliability and safety
+  - invoke success rate above 97% for proxy-eligible tools
+  - p95 invoke latency under 2500 ms for non-streaming calls
+  - 100% of blocked decisions include auditable reason and correlation context
+  - auth-remediation responses are correct in at least 95% of sampled failures
+- Learning loop integrity
+  - `search_events` to `invoke_outcomes` linkage above 95%
+  - 100% typed outcome taxonomy coverage in invoke recording
+  - weekly benchmark evaluation report is generated and reviewed
+
+### Weekly Review Inputs
+
+- ingest quality dashboard (coverage, collisions, bad rows, stdio provenance)
+- search quality benchmark report and schema contract checks
+- invocation SLO report (success, latency, error taxonomy)
+- security/audit completeness report
+
+### Release Rule
+
+- Green across all P0 gates for two consecutive runs: Go
+- Any red P0 gate: No-Go until corrected and re-validated
+
 ## Completed Foundation
 
 ### Sprint 1 — Core Protocol Correctness

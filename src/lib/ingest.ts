@@ -125,6 +125,12 @@ export interface IngestResult {
   rejected: number;
   skipped:  number;
   errors:   string[];
+  extraction_metrics?: {
+    sandbox_attempts: number;
+    sandbox_success: number;
+    readme_fallback_attempts: number;
+    unresolved_stdio_rows: number;
+  };
 }
 
 /**
@@ -948,7 +954,19 @@ export async function upsertServers(
   servers: IngestServer[],
   svc: any
 ): Promise<IngestResult> {
-  const result: IngestResult = { added: 0, updated: 0, rejected: 0, skipped: 0, errors: [] };
+  const result: IngestResult = {
+    added: 0,
+    updated: 0,
+    rejected: 0,
+    skipped: 0,
+    errors: [],
+    extraction_metrics: {
+      sandbox_attempts: 0,
+      sandbox_success: 0,
+      readme_fallback_attempts: 0,
+      unresolved_stdio_rows: 0,
+    },
+  };
   const tag = '[ingest:upsert]';
   const skipReasons: Record<string, number> = {};
   const sourceStart = Date.now();
@@ -1149,6 +1167,7 @@ export async function upsertServers(
             if (!sandboxCommand) {
               if (idx < 25) console.warn(`[DEBUG-TRACE] ${s.name} -> [SKIP:no-sandbox-command] no safe executable strategy for source`);
             } else {
+              result.extraction_metrics!.sandbox_attempts++;
               const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
                 method: 'POST',
                 headers: { 
@@ -1164,6 +1183,7 @@ export async function upsertServers(
                 const sandboxResult = await req.json();
                 if (sandboxResult.success && sandboxResult.data) {
                   if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Sandbox extracted ${sandboxResult.data.tools?.length || 0} tools!`);
+                  result.extraction_metrics!.sandbox_success++;
                   toolSchemas = sandboxResult.data.tools || [];
                   mcpResources = sandboxResult.data.resources || [];
                   mcpPrompts = sandboxResult.data.prompts || [];
@@ -1184,7 +1204,11 @@ export async function upsertServers(
         // README Fallback for any stdio server that sandbox couldn't parse
         if (toolSchemas.length === 0 && s.github_url) {
           if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> Entered: BUCKET C (README FALLBACK)`);
+          result.extraction_metrics!.readme_fallback_attempts++;
           toolSchemas = await parseReadmeSchemas(s.github_url);
+        }
+        if (toolSchemas.length === 0) {
+          result.extraction_metrics!.unresolved_stdio_rows++;
         }
       } else {
         if (idx < 25) console.log(`[DEBUG-TRACE] ${s.name} -> SKIPPING EXTRACTION COMPLETELY`);

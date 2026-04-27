@@ -5,6 +5,12 @@ type RawIngestResult = {
   skipped?: number;
   rejected?: number;
   errors?: string[];
+  extraction_metrics?: {
+    sandbox_attempts?: number;
+    sandbox_success?: number;
+    readme_fallback_attempts?: number;
+    unresolved_stdio_rows?: number;
+  };
 };
 
 type RawIngestResults = Record<string, RawIngestResult>;
@@ -16,6 +22,12 @@ export interface CompactIngestResult {
   skipped: number;
   rejected: number;
   error_count: number;
+  extraction_metrics?: {
+    sandbox_attempts: number;
+    sandbox_success: number;
+    readme_fallback_attempts: number;
+    unresolved_stdio_rows: number;
+  };
 }
 
 export interface IngestRunSummary {
@@ -39,6 +51,16 @@ export function compactIngestResults(results: RawIngestResults): Record<string, 
         skipped: result.skipped ?? 0,
         rejected: result.rejected ?? 0,
         error_count: Array.isArray(result.errors) ? result.errors.length : 0,
+        ...(result.extraction_metrics
+          ? {
+              extraction_metrics: {
+                sandbox_attempts: result.extraction_metrics.sandbox_attempts ?? 0,
+                sandbox_success: result.extraction_metrics.sandbox_success ?? 0,
+                readme_fallback_attempts: result.extraction_metrics.readme_fallback_attempts ?? 0,
+                unresolved_stdio_rows: result.extraction_metrics.unresolved_stdio_rows ?? 0,
+              },
+            }
+          : {}),
       },
     ])
   );

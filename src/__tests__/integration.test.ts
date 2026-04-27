@@ -263,6 +263,97 @@ describe('Auth guards', () => {
   });
 });
 
+// ── Search contract hardening ────────────────────────────────────────────────
+describe('Search RPC contract', () => {
+  test('servers/search returns explicit contract error when search_servers RPC mismatches', async () => {
+    mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function public.search_servers(text,integer,boolean) does not exist' },
+    });
+
+    const { GET } = await import('../app/api/servers/search/route');
+    const req = makeRequest('GET', 'http://localhost/api/servers/search?q=email&limit=5');
+    const res = await GET(req);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(500);
+    expect(body.code).toBe('SEARCH_RPC_CONTRACT_ERROR');
+  });
+});
+
+describe('Server analytics summary consistency', () => {
+  test('error_rate uses proxy-call denominator', async () => {
+    const serversSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: 'srv-analytics-1',
+        author_id: 'u1',
+        status: 'active',
+        trust_score: 90,
+        total_calls: 50,
+        calls_today: 5,
+        latency_ms: 200,
+        uptime_pct: 99.9,
+      },
+      error: null,
+    });
+    const auditOrder = jest.fn().mockResolvedValue({
+      data: [
+        { action: 'proxy_call', tool_name: 'send', latency_ms: 100, status_code: 200, dlp_triggered: false, created_at: new Date().toISOString() },
+        { action: 'proxy_error', tool_name: 'send', latency_ms: 120, status_code: 500, dlp_triggered: false, created_at: new Date().toISOString() },
+        { action: 'profile_view', tool_name: null, latency_ms: null, status_code: null, dlp_triggered: false, created_at: new Date().toISOString() },
+      ],
+      error: null,
+    });
+    const scansLimit = jest.fn().mockResolvedValue({ data: [], error: null });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'servers') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              single: serversSingle,
+            }),
+          }),
+        };
+      }
+      if (table === 'audit_log') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              gte: jest.fn().mockReturnValue({
+                order: auditOrder,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'scan_results') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              order: jest.fn().mockReturnValue({
+                limit: scansLimit,
+              }),
+            }),
+          }),
+        };
+      }
+      return queryChain();
+    });
+
+    const { GET } = await import('../app/api/servers/[name]/analytics/route');
+    const req = makeRequest('GET', 'http://localhost/api/servers/demo/analytics');
+    const res = await GET(req, { params: Promise.resolve({ name: 'demo' }) });
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body.summary.total_calls).toBe(2);
+    expect(body.summary.total_errors).toBe(1);
+    expect(body.summary.error_rate).toBe('50.0');
+  });
+});
+
 // ── DLP proxy layer ───────────────────────────────────────────────────────────
 describe('Proxy DLP blocking', () => {
   test('proxy blocks Stripe key in request arguments', async () => {

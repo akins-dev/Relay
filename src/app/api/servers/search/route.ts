@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
-import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import { resolveApiKey } from '@/lib/auth-server';
 
 // ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
@@ -100,30 +100,6 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
   };
 }
 
-async function resolveApiKeyUser(req: NextRequest): Promise<string | null> {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
-
-  const token = authHeader.slice(7);
-  if (!token.startsWith('sk_mcp_')) return null;
-
-  const keyHash = createHash('sha256').update(token).digest('hex');
-  const svc = createServiceClient();
-  const { data } = await svc
-    .from('api_keys')
-    .select('id, user_id')
-    .eq('key_hash', keyHash)
-    .single();
-
-  if (!data) return null;
-
-  void svc.from('api_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id);
-
-  return data.user_id;
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q     = (searchParams.get('q') ?? '').trim();
@@ -134,7 +110,8 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = extractIp(req);
-  const apiKeyUserId = await resolveApiKeyUser(req);
+  const auth = await resolveApiKey(req);
+  const apiKeyUserId = auth.userId;
   const rlKey = apiKeyUserId ? `search:user:${apiKeyUserId}` : `search:ip:${ip}`;
   const rlConfig = apiKeyUserId ? await getLimitConfig('proxyAuth') : await getLimitConfig('search');
   const rl  = await rateLimit(rlKey, rlConfig);
@@ -154,21 +131,14 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = createClient();
 
-    let rpcResult = await (supabase as any)
+    const { data: results, error } = await (supabase as any)
       .rpc('search_servers', { query_text: q, result_limit: limit, include_stdio: true });
-
-    // Backwards/forwards compatibility with environments where search_servers()
-    // was migrated back to the 2-arg signature.
-    if (rpcResult?.error) {
-      rpcResult = await (supabase as any)
-        .rpc('search_servers', { query_text: q, result_limit: limit });
-    }
-
-    const { data: results, error } = rpcResult;
 
     if (error) {
       console.error('[search] RPC error:', error.message);
-      return apiError('Search failed', 500, { code: 'SEARCH_ERROR' });
+      return apiError('Search failed: search_servers contract mismatch or RPC error', 500, {
+        code: 'SEARCH_RPC_CONTRACT_ERROR',
+      });
     }
 
     if (!results?.length) {

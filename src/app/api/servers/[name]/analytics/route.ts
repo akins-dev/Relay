@@ -30,6 +30,9 @@ export async function GET(
     .order('created_at', { ascending: true });
 
   const rows = auditRows ?? [];
+  const proxyRows = rows.filter(
+    r => r.action.includes('proxy_call') || r.action.includes('proxy_error') || r.action.includes('blocked')
+  );
 
   // Aggregate by day
   const byDay: Record<string, { calls: number; errors: number; dlp: number; totalLatency: number; count: number }> = {};
@@ -37,7 +40,7 @@ export async function GET(
   let totalErrors = 0;
   let totalDlp    = 0;
 
-  for (const row of rows) {
+  for (const row of proxyRows) {
     const day = row.created_at.slice(0, 10); // YYYY-MM-DD
     if (!byDay[day]) byDay[day] = { calls: 0, errors: 0, dlp: 0, totalLatency: 0, count: 0 };
 
@@ -83,6 +86,7 @@ export async function GET(
     .order('created_at', { ascending: false })
     .limit(5);
 
+  const totalCalls = proxyRows.length;
   return NextResponse.json({
     server: {
       trust_score:  server.trust_score,
@@ -93,10 +97,10 @@ export async function GET(
     },
     period: '30d',
     summary: {
-      total_calls:    rows.filter(r => r.action.includes('proxy')).length,
+      total_calls:    totalCalls,
       total_errors:   totalErrors,
       total_dlp:      totalDlp,
-      error_rate:     rows.length > 0 ? ((totalErrors / rows.length) * 100).toFixed(1) : '0',
+      error_rate:     totalCalls > 0 ? ((totalErrors / totalCalls) * 100).toFixed(1) : '0',
     },
     calls_time_series: callsTimeSeries,
     top_tools: topTools,
