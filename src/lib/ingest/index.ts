@@ -43,7 +43,10 @@ export { fetchVendorServers }    from './vendor';
 export { upsertServers }         from './pipeline';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-export { slugify, detectTransport, parseReadmeSchemas } from './helpers';
+export { slugify, detectTransport, parseReadmeSchemas, parseReadmeDescription } from './helpers';
+
+// ── Smithery helpers (exported for tests) ────────────────────────────────────
+export { resolveSmitheryConnection } from './smithery';
 
 // ── Legacy bridge (temporary — will be removed as migration completes) ──────
 export { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';

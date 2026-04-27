@@ -34,7 +34,7 @@ const TAG = 'ingest:smithery';
  * Resolve transport and endpoint from Smithery's connections[] array.
  * Smithery connection types: 'stdio', 'sse', 'streamable-http'
  */
-function resolveSmitheryConnection(
+export function resolveSmitheryConnection(
   connections: any[] | undefined,
   deploymentUrl?: string | null
 ): { endpoint: string; transport: Transport } {

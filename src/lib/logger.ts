@@ -81,7 +81,7 @@ function write(level: LogLevel, tag: string, message: string, extra?: Record<str
 export const log = {
   debug: (tag: string, message: string, ctx?: Record<string, unknown>) => write('debug', tag, message, ctx),
   info:  (tag: string, message: string, ctx?: Record<string, unknown>) => write('info',  tag, message, ctx),
-  warn:  (tag: string, message: string, ctx?: Record<string, unknown> | Error) => write('warn',  tag, message, ctx),
+  warn:  (tag: string, message: string, ctx?: Record<string, unknown> | Error | unknown) => write('warn',  tag, message, ctx),
   error: (tag: string, message: string, err?: Error | unknown) => write('error', tag, message, err),
 
   /** Log a section separator for ingest source boundaries */

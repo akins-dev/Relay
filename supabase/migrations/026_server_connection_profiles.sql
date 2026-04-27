@@ -1,4 +1,4 @@
--- Migration 027: Server Connection Profiles (Option B Side Table)
+-- Migration 026: Server Connection Profiles (Option B Side Table)
 --
 -- Design rationale:
 -- The servers table stays lean for FTS + listing queries.
