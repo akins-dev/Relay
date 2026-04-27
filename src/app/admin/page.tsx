@@ -288,11 +288,84 @@ export default function AdminPage() {
     const d = Math.floor((Date.now() - new Date(s).getTime()) / 60000);
     return d < 60 ? `${d}m ago` : d < 1440 ? `${Math.floor(d/60)}h ago` : `${Math.floor(d/1440)}d ago`;
   };
+  const formatIsoDate = (s?: string | null) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return d.toLocaleString();
+  };
 
   const C = {
     red: '#dc2626', orange: '#d97706', green: '#16a34a',
     blue: '#2563eb', purple: '#7c3aed', grey: '#6b7280',
   };
+
+  function downloadTextFile(filename: string, text: string, mime = 'text/plain;charset=utf-8') {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const releaseMarkdown = useMemo(() => {
+    if (!releaseReport) return '';
+    const title = `Release Report — ${releaseReport.release.toUpperCase()}`;
+    const generated = formatIsoDate(releaseReport.generated_at);
+
+    const rows = (releaseReport.gates ?? []).map((g) => {
+      const icon = g.state === 'pass' ? '✅' : g.state === 'warn' ? '⚠️' : '❌';
+      const notes = (g.notes ?? '—').replace(/\n/g, ' ');
+      const rule = (g.rule ?? '—').replace(/\n/g, ' ');
+      const value = (g.value ?? '—').replace(/\n/g, ' ');
+      return `| ${icon} ${g.name} | ${g.state} | ${value} | ${rule} | ${notes} |`;
+    });
+
+    const blocking = (releaseReport.blocking_failures ?? []).map((g) => `- **${g.name}**: ${g.value} (${g.rule})${g.notes ? ` — ${g.notes}` : ''}`);
+
+    return [
+      `# ${title}`,
+      ``,
+      `- **Decision**: ${releaseReport.release.toUpperCase()}`,
+      `- **Generated**: ${generated}`,
+      ``,
+      `## Blocking failures`,
+      blocking.length ? blocking.join('\n') : `- None`,
+      ``,
+      `## Gates`,
+      `| Gate | Status | Value | Rule | Notes |`,
+      `|---|---|---|---|---|`,
+      ...rows,
+      ``,
+      `## Sprint review notes (template)`,
+      ``,
+      `### Highlights`,
+      `- `,
+      ``,
+      `### Risks / follow-ups`,
+      `- `,
+      ``,
+      `### Decisions`,
+      `- `,
+      ``,
+      `### Next week focus`,
+      `- `,
+      ``,
+    ].join('\n');
+  }, [releaseReport]);
 
   function Stat({ label, value, color = 'var(--text)', sub }: any) {
     return (
@@ -309,6 +382,22 @@ export default function AdminPage() {
   }
   function TD({ children, mono, color }: any) {
     return <td style={{ padding: '9px 12px', fontSize: '13px', fontFamily: mono ? 'var(--mono)' : 'var(--font)', color: color ?? 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children ?? '—'}</td>;
+  }
+
+  function Callout({ tone = 'info', title, children }: { tone?: 'info' | 'warn' | 'danger' | 'success'; title: string; children: any }) {
+    const t = tone === 'success'
+      ? { bg: '#f0fdf4', border: '#86efac', text: C.green }
+      : tone === 'warn'
+        ? { bg: '#fffbeb', border: '#fde68a', text: '#92400e' }
+        : tone === 'danger'
+          ? { bg: '#fef2f2', border: '#fecaca', text: C.red }
+          : { bg: 'var(--bg-1)', border: 'var(--border)', text: 'var(--text-2)' };
+    return (
+      <div style={{ padding: '14px 16px', borderRadius: '12px', background: t.bg, border: `1px solid ${t.border}` }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: t.text }}>{title}</div>
+        <div style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.55 }}>{children}</div>
+      </div>
+    );
   }
 
   const pagedIngestRuns = useMemo(
@@ -430,6 +519,19 @@ export default function AdminPage() {
             whiteSpace: 'nowrap',
           }}>{t}</button>
         ))}
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <Callout title="Admin directions">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div>
+              Use <b>Ingest</b> to refresh sources, <b>Operations</b> to spot uptime/schema drift, and <b>Release</b> to export a release decision packet for sprint review.
+            </div>
+            <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>
+              Tip: this page auto-refreshes every 60 seconds; use “↺ Refresh” after triggering ingest.
+            </div>
+          </div>
+        </Callout>
       </div>
 
       {loading && !kpis && (
@@ -959,6 +1061,46 @@ export default function AdminPage() {
             </div>
           ) : (
             <>
+              <Callout title="How to use this tab">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    Export the release packet for sprint review, then paste the Markdown into your notes doc (or download it as a file).
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        const json = JSON.stringify(releaseReport, null, 2);
+                        downloadTextFile(`release-report-${releaseReport.generated_at.slice(0, 10)}.json`, json, 'application/json;charset=utf-8');
+                      }}
+                      style={{ fontFamily: 'var(--mono)' }}
+                    >
+                      Download JSON
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={async () => {
+                        const ok = await copyToClipboard(releaseMarkdown);
+                        if (!ok) setAdminError('Copy failed (clipboard not available). Use Download Markdown instead.');
+                      }}
+                      disabled={!releaseMarkdown}
+                    >
+                      Copy Markdown
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => downloadTextFile(`release-notes-${releaseReport.generated_at.slice(0, 10)}.md`, releaseMarkdown, 'text/markdown;charset=utf-8')}
+                      disabled={!releaseMarkdown}
+                    >
+                      Download Markdown
+                    </button>
+                    <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
+                      Generated: {formatIsoDate(releaseReport.generated_at)}
+                    </span>
+                  </div>
+                </div>
+              </Callout>
+
               <div style={{ padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>
                   Release Decision
@@ -987,6 +1129,22 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
+
+              {releaseMarkdown && (
+                <div style={{ border: '1px solid var(--border)', background: 'var(--surface)', borderRadius: '12px', overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Markdown preview
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-3)' }}>
+                      Copy or download above (preview is read-only)
+                    </div>
+                  </div>
+                  <pre style={{ margin: 0, padding: '12px 14px', maxHeight: '340px', overflow: 'auto', fontSize: '12px', lineHeight: 1.55, fontFamily: 'var(--mono)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+                    {releaseMarkdown}
+                  </pre>
+                </div>
+              )}
             </>
           )}
         </div>
