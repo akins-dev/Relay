@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { createHash }          from 'crypto';
 import { probeMCPServer }      from '@/lib/mcp-probe';
 import { indirectInjectionScan, shellInjectionScan } from '@/lib/security';
+import { log } from '@/lib/logger';
 
 export async function runSchemaDrift() {
   const svc = createServiceClient();
@@ -15,7 +16,9 @@ export async function runSchemaDrift() {
       job_name: 'schema_drift', status: 'running',
     }).select('id').single();
     cronRun = (data as any) ?? null;
-  } catch {}
+  } catch (err) {
+    log.warn('cron:schema-drift', 'Could not create cron_job_runs entry', err);
+  }
 
   const { data: servers } = await svc
     .from('servers')
@@ -97,7 +100,10 @@ export async function runSchemaDrift() {
           .update({ last_scanned_at: new Date().toISOString() })
           .eq('id', server.id);
       }
-    } catch { results.errors++; }
+    } catch (err) {
+      log.error('cron:schema-drift', `Error checking ${server.name ?? server.id}`, err);
+      results.errors++;
+    }
   }
 
   // Record completion in cron_job_runs

@@ -2,6 +2,7 @@ import { createServiceClient }        from '@/lib/supabase/server';
 import { isSafeUrl }                  from '@/lib/utils';
 import { computeTrustScore }          from '@/lib/security';
 import { probeUptime }                from '@/lib/mcp-probe';
+import { log }                        from '@/lib/logger';
 
 export async function runUptimeCheck() {
   const svc = createServiceClient();
@@ -14,7 +15,9 @@ export async function runUptimeCheck() {
       job_name: 'uptime_check', status: 'running',
     }).select('id').single();
     cronRun = (data as any) ?? null;
-  } catch {}
+  } catch (err) {
+    log.warn('cron:uptime', 'Could not create cron_job_runs entry', err);
+  }
 
   const { data: servers, error } = await svc
     .from('servers')
@@ -96,7 +99,9 @@ export async function runUptimeCheck() {
             ? `Up — ${latencyMs}ms${mcpCompliant ? ' (MCP compliant)' : ' (HTTP only — not MCP compliant)'}`
             : 'Down — all probe tiers failed',
         });
-      } catch { /* non-fatal */ }
+      } catch (err) {
+        log.error('cron:uptime', `DB write failed for server ${server.id}`, err);
+      }
 
       if (up) results.up++; else results.down++;
     }));

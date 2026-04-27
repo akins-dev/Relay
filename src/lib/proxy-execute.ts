@@ -448,7 +448,11 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
         if (danger) return { status: 400, body: JSON.stringify({ error: `URL elicitation blocked: ${danger}`, field }), contentType: 'application/json', headers: {} };
       }
     }
-  } catch {}
+  } catch {
+    // rawBody may not be valid JSON — expected for non-JSON content types.
+    // Intentionally no log: this is a best-effort parse, not an error condition.
+    // The security check simply doesn't apply to non-JSON payloads.
+  }
 
   if (!server.endpoint || !(await isSafeUrlForServerFetch(server.endpoint))) {
     return { status: 400, body: JSON.stringify({ error: 'Server endpoint failed SSRF validation' }), contentType: 'application/json', headers: {} };

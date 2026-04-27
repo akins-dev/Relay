@@ -14,7 +14,7 @@ export async function GET() {
     version:     '0.1.0',
     description: [
       `Open-source discovery, trust, and invocation layer for the MCP ecosystem.`,
-      'Ingests from five sources: official MCP registry, Smithery, Glama, PulseMCP, GitHub. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
+      'Ingests from five sources: official MCP registry, Smithery, Glama, GitHub, and verified vendor organizations. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
       'Every server is scanned through 14 security layers before listing. Runtime proxy adds 5 additional layers on every call.',
       'Agents invoke remote MCP tools through the proxy — request blocking, response scanning, and audit trails on every call.',
     ].join(' '),

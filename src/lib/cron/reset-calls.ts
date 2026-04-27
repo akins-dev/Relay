@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/server';
+import { log } from '@/lib/logger';
 
 export async function runResetDailyCalls() {
   const svc = createServiceClient();
@@ -8,7 +9,9 @@ export async function runResetDailyCalls() {
       job_name: 'reset_daily_calls', status: 'running',
     }).select('id').single();
     cronRun = (data as any) ?? null;
-  } catch {}
+  } catch (err) {
+    log.warn('cron:reset-calls', 'Could not create cron_job_runs entry', err);
+  }
 
   const { error } = await svc.from('servers').update({ calls_today: 0 }).not('id', 'is', null);
   if (error) {

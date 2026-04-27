@@ -67,7 +67,7 @@ ${avoidSearchList}
 - Active servers: ${activeServers} (all transports — stdio, SSE, HTTP)
 - Verified servers: ${verifiedServers}
 - Calls today: ${callsToday}
-- Sources: Official MCP Registry + Smithery + Glama + GitHub + ClaudeMCP + MCP.so
+- Sources: Official MCP Registry + Smithery + Glama + GitHub + Verified Vendors
 - MCP spec version: 2025-03-26 (also supports 2024-11-05)
 
 ---

@@ -323,7 +323,9 @@ function inferTransportFromEndpoint(endpoint: string): MCPTransport {
   try {
     const pathname = new URL(endpoint).pathname.toLowerCase();
     if (pathname.endsWith('/sse') || pathname.includes('/events')) return 'sse';
-  } catch {}
+  } catch {
+    // Invalid URL — fall through to default streamable_http
+  }
   return 'streamable_http';
 }
 

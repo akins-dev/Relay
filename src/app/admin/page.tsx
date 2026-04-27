@@ -594,7 +594,7 @@ export default function AdminPage() {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
-            {['all','official','smithery','glama','github','claudemcp','mcpso','mcp_run','composio','partner'].map(src => (
+            {['all','official','smithery','glama','github','partner'].map(src => (
               <button key={src} onClick={() => triggerIngest(src)}
                 disabled={ingesting} className="btn btn-ghost btn-sm"
                 style={{ fontFamily: 'var(--mono)' }}>
