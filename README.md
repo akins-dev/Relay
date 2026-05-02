@@ -15,9 +15,13 @@ Architecture flows: [`docs/ARCHITECTURE_FLOWS.md`](docs/ARCHITECTURE_FLOWS.md)
 
 ## The Problem: The Practical MCP Cap
 
-MCP standardized the client-server connection layer beautifully. It did not solve the practical ceiling teams hit when they try to use a large and growing number of MCP servers in real agent systems.
+Every AI agent framework today requires **explicit pre-configuration** of MCP servers.
+Before an agent can use a tool, a developer has to find it, evaluate it, integrate it, 
+and wire it into the agent's configuration. This 1:1 integration model doesn't scale. 
+As the MCP ecosystem grows to thousands of servers, the configuration problem 
+becomes the bottleneck — not the capabilities themselves.
 
-The real bottleneck is **explicit pre-configuration**:
+The core scaling problem in MCP is not raw server count. It is the amount of capability a team can use sanely under **explicit configuration**:
 
 - developers still have to discover, evaluate, configure, and maintain each MCP server
 - agents still inherit bloated tool surfaces and context windows full of schemas
