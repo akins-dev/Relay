@@ -155,6 +155,7 @@ export async function GET(req: NextRequest) {
         id, name, display_name, description, version, tags, tools, tool_schemas,
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
+        tool_extraction_source,
         auth_type, auth_setup_url, oauth_authorization_url,
         transport, endpoint, proxy_available,
         profiles!author_id ( username )
@@ -202,6 +203,7 @@ export async function GET(req: NextRequest) {
         tool_schemas: (s.tool_schemas?.length ?? 0) > 0
           ? s.tool_schemas
           : (s.tools ?? []).map((name: string) => ({ name })),
+        tool_extraction_source: s.tool_extraction_source ?? 'none',
 
         // Credential transparency
         auth_type: authType,

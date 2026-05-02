@@ -259,6 +259,7 @@ async function handleSearchTools(
       .select(`
         id, name, display_name, description, tools, tool_schemas,
         trust_score, latency_ms, uptime_pct, source, verified, scan_status,
+        tool_extraction_source,
         proxy_available, transport, endpoint
       `)
       .in('name', serverNames)
@@ -287,6 +288,7 @@ async function handleSearchTools(
         source: s.source ?? 'direct',
         verified: s.verified,
         scan_status: s.scan_status,
+        tool_extraction_source: s.tool_extraction_source ?? 'none',
         invoke_history: boost ? {
           success_rate: Math.round((boost.success_rate ?? 0) * 100),
           invoke_count: boost.invoke_count ?? 0,
@@ -377,6 +379,7 @@ async function handleSearchTools(
         .select(`
           id, name, display_name, description, tools, tool_schemas,
           trust_score, latency_ms, uptime_pct, source, verified, scan_status,
+          tool_extraction_source,
           proxy_available, transport, endpoint
         `)
         .in('id', ids)
@@ -421,6 +424,7 @@ async function handleSearchTools(
       source:         s.source ?? 'direct',
       verified:       s.verified,
       scan_status:    s.scan_status,
+      tool_extraction_source: s.tool_extraction_source ?? 'none',
       invoke_history: boost ? {
         success_rate: Math.round((boost.successRate ?? 0) * 100),
         invoke_count: boost.invokeCount,

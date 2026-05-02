@@ -154,11 +154,20 @@ export async function upsertServers(
       let mcpPrompts: any[] = [];
       let protocolVersion: string | null = null;
       let mcpCompliant = false;
+      let toolExtractionSource = s.tool_extraction_source
+        ?? (toolSchemas.length > 0
+          ? 'upstream_schemas'
+          : s.tools.length > 0
+            ? 'upstream_names'
+            : 'none');
 
       if (proxyAvailable && s.endpoint) {
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url ?? undefined);
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
           toolSchemas = primitives.toolSchemas;
+        }
+        if (primitives.toolSchemas.length > 0) {
+          toolExtractionSource = 'mcp_probe';
         }
         mcpResources    = primitives.resources;
         mcpPrompts      = primitives.prompts;
@@ -192,6 +201,7 @@ export async function upsertServers(
                   mcpPrompts = sandboxResult.data.prompts || [];
                   mcpCompliant = true;
                   protocolVersion = '2024-11-05';
+                  toolExtractionSource = toolSchemas.length > 0 ? 'sandbox' : toolExtractionSource;
                 }
               }
             } catch (err) {
@@ -204,6 +214,9 @@ export async function upsertServers(
         if (toolSchemas.length === 0 && s.github_url) {
           result.extraction_metrics!.readme_fallback_attempts++;
           toolSchemas = await parseReadmeSchemas(s.github_url);
+          if (toolSchemas.length > 0) {
+            toolExtractionSource = 'readme';
+          }
         }
         if (toolSchemas.length === 0) {
           result.extraction_metrics!.unresolved_stdio_rows++;
@@ -294,6 +307,7 @@ export async function upsertServers(
         tags:              s.tags.length > 0 ? s.tags : ['general'],
         tools:             s.tools,
         tool_schemas:      toolSchemas as any,
+        tool_extraction_source: toolExtractionSource,
         resources:         mcpResources as any,
         prompts:           mcpPrompts as any,
         protocol_version:  protocolVersion,

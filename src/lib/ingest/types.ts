@@ -23,6 +23,13 @@ export type IngestSource =
 // ── Transport enum ───────────────────────────────────────────────────────────
 
 export type Transport = 'stdio' | 'sse' | 'streamable_http' | 'unknown';
+export type ToolExtractionSource =
+  | 'upstream_schemas'
+  | 'upstream_names'
+  | 'mcp_probe'
+  | 'sandbox'
+  | 'readme'
+  | 'none';
 
 // ── Normalized server record ─────────────────────────────────────────────────
 
@@ -61,6 +68,8 @@ export interface IngestServer {
   tools:             string[];
   /** Full tool schemas (name + description + inputSchema) */
   tool_schemas:      ToolSchema[];
+  /** Provenance for the current tools/tool_schemas payload */
+  tool_extraction_source?: ToolExtractionSource;
   /** Which upstream registry this came from */
   source:            IngestSource;
   /** Canonical ID from the upstream source */

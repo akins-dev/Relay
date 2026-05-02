@@ -44,3 +44,11 @@ This file is append-only.
 
 - Replaced hard-coded numbered security-layer phrasing in key narrative docs with count-neutral `security stack` wording where the repo had drift.
 - Aligned roadmap ownership and footer metadata in narrative docs with the current Relay project identity.
+
+## 2026-05-02
+
+### Hardened
+
+- Fixed partner/vendor ingest pagination so the GitHub org source no longer truncates at the first 100 repositories.
+- Added `tool_extraction_source` to persist whether tool metadata came from upstream schemas, upstream names, live MCP probe, sandbox extraction, README fallback, or nowhere.
+- Moved the public server analytics route toward aggregate views by adding `server_tool_usage_30d` and consuming aggregate audit views instead of reconstructing everything from raw audit rows in application code.

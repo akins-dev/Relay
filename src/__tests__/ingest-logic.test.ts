@@ -3,7 +3,7 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { buildSandboxCommand, detectTransport, parseReadmeDescription, resolveSmitheryConnection } from '../lib/ingest';
+import { buildSandboxCommand, detectTransport, fetchVendorServers, parseReadmeDescription, resolveSmitheryConnection } from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -73,5 +73,46 @@ describe('ingest hardening logic', () => {
     await expect(
       resolveSafeRedirectUrl('/messages?session=abc', 'https://example.com/sse')
     ).resolves.toBe('https://example.com/messages?session=abc');
+  });
+
+  test('fetchVendorServers paginates through multiple GitHub org repo pages', async () => {
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('page=1')) {
+        return {
+          ok: true,
+          json: async () => Array.from({ length: 100 }, (_, i) => ({
+            name: `repo-${i + 1}`,
+            description: `Repo ${i + 1}`,
+            html_url: `https://github.com/mcp/repo-${i + 1}`,
+            homepage: null,
+            license: { spdx_id: 'MIT' },
+            updated_at: '2026-05-01T00:00:00Z',
+          })),
+        } as any;
+      }
+      if (url.includes('page=2')) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              name: 'repo-101',
+              description: 'Repo 101',
+              html_url: 'https://github.com/mcp/repo-101',
+              homepage: null,
+              license: { spdx_id: 'Apache-2.0' },
+              updated_at: '2026-05-01T00:00:00Z',
+            },
+          ]),
+        } as any;
+      }
+      return { ok: true, json: async () => [] } as any;
+    }) as any;
+
+    const result = await fetchVendorServers();
+
+    expect(result).toHaveLength(101);
+    expect(result[0]?.source).toBe('partner');
+    expect(result[100]?.name).toBe('repo-101');
   });
 });
