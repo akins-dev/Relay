@@ -60,6 +60,7 @@ interface PlatformKPIs {
   official_servers: number; smithery_servers: number; glama_servers: number;
   github_servers: number; direct_servers: number;
   scan_failures: number; servers_with_cves: number; avg_trust_score: number;
+  no_tool_metadata_servers: number; weak_stdio_rows: number;
   calls_24h: number; calls_7d: number; calls_30d: number; dlp_triggers_7d: number;
   total_users: number; active_api_keys: number;
   total_ingest_runs: number; last_ingest_at: string;
@@ -67,7 +68,13 @@ interface PlatformKPIs {
 interface IngestQuality {
   source: string; total_servers: number; active_servers: number;
   rejected_servers: number; scan_passed: number; has_cve_issues: number;
+  probe_backed: number; sandbox_backed: number; readme_backed: number;
+  no_tool_metadata: number; weak_stdio_rows: number;
   avg_trust_score: number; rejection_rate_pct: number;
+}
+interface IngestProvenanceQuality {
+  source: string; tool_extraction_source: string; server_count: number;
+  stdio_count: number; active_count: number; avg_trust_score: number;
 }
 interface SecurityThreat {
   day: string; total_calls: number; unique_ips: number;
@@ -126,6 +133,7 @@ export default function AdminPage() {
   const [tab,        setTab]        = useState<Tab>('overview');
   const [kpis,       setKpis]       = useState<PlatformKPIs | null>(null);
   const [ingest,     setIngest]     = useState<IngestQuality[]>([]);
+  const [ingestProvenance, setIngestProvenance] = useState<IngestProvenanceQuality[]>([]);
   const [threats,    setThreats]    = useState<SecurityThreat[]>([]);
   const [suspIPs,    setSuspIPs]    = useState<SuspiciousIP[]>([]);
   const [topServers, setTopServers] = useState<TopServer[]>([]);
@@ -173,9 +181,10 @@ export default function AdminPage() {
     const svc = supabase;
 
     try {
-      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes, intentRes, gapsRes, sqRes, srRes, rlRes] = await Promise.all([
+      const [kpisRes, ingestRes, ingestProvRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes, intentRes, gapsRes, sqRes, srRes, rlRes] = await Promise.all([
         svc.from('platform_kpis').select('*').single(),
         svc.from('ingest_quality').select('*'),
+        svc.from('ingest_provenance_quality').select('*'),
         svc.from('security_threats').select('*').limit(30),
         svc.from('suspicious_ips').select('*').limit(100),
         svc.from('top_servers_by_usage').select('*').limit(100),
@@ -196,6 +205,7 @@ export default function AdminPage() {
 
       if (kpisRes.data)    setKpis(kpisRes.data as any);
       if (ingestRes.data)  setIngest(ingestRes.data as any);
+      if (ingestProvRes.data) setIngestProvenance(ingestProvRes.data as any);
       if (threatsRes.data) setThreats(threatsRes.data as any);
       if (suspRes.data)    setSuspIPs(suspRes.data as any);
       if (topRes.data)     setTopServers(topRes.data as any);
@@ -556,6 +566,10 @@ export default function AdminPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
             <Stat label="Scan Failures" value={fmt(kpis.scan_failures)}      color={kpis.scan_failures > 50 ? C.red : C.grey} />
             <Stat label="CVE Servers"   value={fmt(kpis.servers_with_cves)}  color={kpis.servers_with_cves > 10 ? C.orange : C.grey} />
+            <Stat label="Weak Stdio"    value={fmt(kpis.weak_stdio_rows)} color={kpis.weak_stdio_rows > 0 ? C.orange : C.green} sub="readme/none-backed stdio rows" />
+            <Stat label="No Tool Data"  value={fmt(kpis.no_tool_metadata_servers)} color={kpis.no_tool_metadata_servers > 0 ? C.orange : C.green} sub="servers with zero persisted tool metadata" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
             <Stat label="Total Users"   value={fmt(kpis.total_users)}        />
             <Stat label="Last Ingest"   value={ago(kpis.last_ingest_at)}     color={C.green} />
           </div>
@@ -608,7 +622,7 @@ export default function AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
               <thead><tr>
                 <TH>Source</TH><TH>Total</TH><TH>Active</TH><TH>Rejected</TH>
-                <TH>Scan Pass</TH><TH>CVE Issues</TH><TH>Avg Trust</TH><TH>Rejection %</TH>
+                <TH>Scan Pass</TH><TH>CVE Issues</TH><TH>Probe</TH><TH>Sandbox</TH><TH>README</TH><TH>No Tools</TH><TH>Weak stdio</TH><TH>Avg Trust</TH><TH>Rejection %</TH>
               </tr></thead>
               <tbody>
                 {ingest.map(row => (
@@ -619,8 +633,34 @@ export default function AdminPage() {
                     <TD color={row.rejected_servers > 0 ? C.red : undefined}>{fmt(row.rejected_servers)}</TD>
                     <TD color={C.green}>{fmt(row.scan_passed)}</TD>
                     <TD color={row.has_cve_issues > 0 ? C.orange : undefined}>{fmt(row.has_cve_issues)}</TD>
+                    <TD color={row.probe_backed > 0 ? C.green : undefined}>{fmt(row.probe_backed)}</TD>
+                    <TD color={row.sandbox_backed > 0 ? C.blue : undefined}>{fmt(row.sandbox_backed)}</TD>
+                    <TD color={row.readme_backed > 0 ? C.orange : undefined}>{fmt(row.readme_backed)}</TD>
+                    <TD color={row.no_tool_metadata > 0 ? C.red : undefined}>{fmt(row.no_tool_metadata)}</TD>
+                    <TD color={row.weak_stdio_rows > 0 ? C.orange : C.green}>{fmt(row.weak_stdio_rows)}</TD>
                     <TD color={C.purple}>{row.avg_trust_score}</TD>
                     <TD color={row.rejection_rate_pct > 10 ? C.red : undefined}>{pct(row.rejection_rate_pct)}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Extraction provenance</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Source</TH><TH>Provenance</TH><TH>Servers</TH><TH>Stdio</TH><TH>Active</TH><TH>Avg Trust</TH>
+              </tr></thead>
+              <tbody>
+                {ingestProvenance.map(row => (
+                  <tr key={`${row.source}:${row.tool_extraction_source}`}>
+                    <TD mono color={C.blue}>{row.source}</TD>
+                    <TD mono color={row.tool_extraction_source === 'none' ? C.red : row.tool_extraction_source === 'readme' ? C.orange : C.green}>{row.tool_extraction_source}</TD>
+                    <TD>{fmt(row.server_count)}</TD>
+                    <TD color={row.stdio_count > 0 ? C.orange : undefined}>{fmt(row.stdio_count)}</TD>
+                    <TD color={C.green}>{fmt(row.active_count)}</TD>
+                    <TD color={C.purple}>{row.avg_trust_score}</TD>
                   </tr>
                 ))}
               </tbody>

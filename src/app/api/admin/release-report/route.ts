@@ -93,6 +93,20 @@ export async function GET(req: NextRequest) {
       notes: 'Counts active servers with known CVEs',
     }),
     gate({
+      name: 'weak_stdio_rows',
+      state: (kpis.weak_stdio_rows ?? 0) <= 100 ? 'pass' : (kpis.weak_stdio_rows ?? 0) <= 300 ? 'warn' : 'fail',
+      value: String(kpis.weak_stdio_rows ?? 0),
+      rule: 'weak_stdio_rows <= 300 (warn if >100)',
+      notes: 'Stdio rows backed only by README parsing or with no tool metadata',
+    }),
+    gate({
+      name: 'no_tool_metadata_servers',
+      state: (kpis.no_tool_metadata_servers ?? 0) <= 25 ? 'pass' : (kpis.no_tool_metadata_servers ?? 0) <= 100 ? 'warn' : 'fail',
+      value: String(kpis.no_tool_metadata_servers ?? 0),
+      rule: 'no_tool_metadata_servers <= 100 (warn if >25)',
+      notes: 'Any growth here means ingest completeness is regressing',
+    }),
+    gate({
       name: 'uptime_issues',
       state: (uptimeCount ?? 0) === 0 ? 'pass' : (uptimeCount ?? 0) <= 10 ? 'warn' : 'fail',
       value: String(uptimeCount ?? 0),
