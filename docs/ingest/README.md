@@ -79,11 +79,18 @@ For servers ONLY in Glama/mcp.directory (no Official/Smithery match):
 3. `github_url` (`repository.url`) — reliable for open-source servers
 4. Normalized `display_name` — fuzzy fallback only
 
-### Why Ingest ALL Smithery Servers?
+### Smithery Ingest Strategy
 
-Every Smithery detail call returns real capability data (tool schemas, endpoint, transport). There is no valid reason to gate on `isDeployed`. Servers without tools today may have tools tomorrow. The ingest pipeline stores what is available and marks completeness with field grades — it does not decide upfront what is worth fetching.
+**`isDeployed: true` filter is applied.** Only servers that Smithery has successfully connected to and indexed are ingested. `isDeployed: false` means:
+- Smithery couldn't reach the endpoint when it last crawled (server was down)
+- The server requires auth Smithery didn't have
+- The server is stdio-only with no cloud endpoint
 
-At 200ms per call with 10 concurrent fetches, 5,111 servers ≈ 102 seconds total. Acceptable for a scheduled ingest job.
+Servers that are `isDeployed: false` have no stored tool schemas and no reachable endpoint — they provide no value for either `search_tools` or `invoke_tool`. Skipping them is correct.
+
+**Effective pool:** ~2,800–3,500 deployed servers (out of ~5,111 total listed). Exact count is logged per run.
+
+At 200ms per call with concurrency 5, ~3,000 servers ≈ 120 seconds total. Acceptable for a scheduled ingest job.
 
 ---
 
@@ -147,7 +154,11 @@ No tools, no connections, no transport in listing.
 }
 ```
 
-**Strategy: Ingest ALL 5,111 servers.** Listing sweep first, then detail calls for all.
+**Strategy: Ingest `isDeployed: true` servers only.**
+
+Two-phase execution:
+1. **Listing sweep** — paginate all pages, collect `qualifiedName` for every server where `isDeployed: true`. Log `skippedNotDeployed` count.
+2. **Detail fetch** — call `GET /v2/servers/{qualifiedName}` for each collected name. Concurrency: 5. 429 responses trigger exponential backoff and a warning log.
 
 ---
 
