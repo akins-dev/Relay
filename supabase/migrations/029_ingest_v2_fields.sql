@@ -64,9 +64,7 @@ ALTER TABLE server_connection_profiles
   ADD COLUMN IF NOT EXISTS tool_count_upstream INTEGER;
 
 -- ── Analytics signals (Grade F fields — never on IngestServer) ───────────────
--- These are stored for internal ranking/analytics but never exposed to agents.
 
--- Check if server_analytics table exists before adding columns
 DO $$
 BEGIN
   IF EXISTS (

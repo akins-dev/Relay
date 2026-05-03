@@ -103,7 +103,7 @@ export async function upsertServers(
       }
 
       // Transport classification
-      const detected = detectTransport(s.endpoint, s.github_url);
+      const detected = detectTransport(s.endpoint ?? '', s.github_url ?? undefined);
       let transport = (s.transport === 'stdio' || detected === 'stdio')
         ? 'stdio'
         : (s.transport && s.transport !== 'unknown' ? s.transport : detected);
