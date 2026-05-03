@@ -18,7 +18,7 @@
 
 import { createServiceClient } from '@/lib/supabase/server';
 import {
-  fetchVendorServers,
+  fetchPartnerServers,
   fetchOfficialServers,
   fetchSmitheryServers,
   fetchGlamaServers,
@@ -34,8 +34,9 @@ import { log } from '@/lib/logger';
 
 // ── Source configuration ────────────────────────────────────────────────────
 
+// SourceKey = DB source values. 'vendor' is an API input alias for 'partner'.
 type SourceKey = 'partner' | 'official' | 'smithery' | 'glama' | 'mcp_directory';
-type SourceInput = 'all' | SourceKey | 'vendor';
+type SourceInput = 'all' | SourceKey | 'vendor'; // 'vendor' normalised → 'partner'
 
 interface SourceConfig {
   key:     SourceKey;
@@ -45,11 +46,11 @@ interface SourceConfig {
 }
 
 const SOURCES: SourceConfig[] = [
-  { key: 'partner',       label: 'Verified Organization Registry', tier: 'partner',    fetcher: fetchVendorServers },
-  { key: 'official',      label: 'Official MCP Registry',          tier: 'primary',    fetcher: fetchOfficialServers },
-  { key: 'smithery',      label: 'Smithery',                       tier: 'primary',    fetcher: fetchSmitheryServers },
-  { key: 'glama',         label: 'Glama',                          tier: 'enrichment', fetcher: fetchGlamaServers },
-  { key: 'mcp_directory', label: 'mcp.directory',                  tier: 'enrichment', fetcher: fetchMcpDirectoryServers },
+  { key: 'partner',       label: 'Verified Organization Registry (github.com/mcp)', tier: 'partner',    fetcher: fetchPartnerServers },
+  { key: 'official',      label: 'Official MCP Registry',                           tier: 'primary',    fetcher: fetchOfficialServers },
+  { key: 'smithery',      label: 'Smithery',                                        tier: 'primary',    fetcher: fetchSmitheryServers },
+  { key: 'glama',         label: 'Glama',                                           tier: 'enrichment', fetcher: fetchGlamaServers },
+  { key: 'mcp_directory', label: 'mcp.directory',                                   tier: 'enrichment', fetcher: fetchMcpDirectoryServers },
 ];
 
 // ── Main ────────────────────────────────────────────────────────────────────

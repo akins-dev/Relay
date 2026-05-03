@@ -6,7 +6,8 @@ import { createServiceClient }     from '@/lib/supabase/server';
 import { runIngest }               from '@/lib/cron/ingest';
 
 const IngestSchema = z.object({
-  source: z.enum(['all', 'official', 'smithery', 'glama', 'mcp_directory', 'partner', 'vendor']).default('all'),
+  // 'vendor' was the old alias for 'partner' — removed. Use 'partner' directly.
+  source: z.enum(['all', 'official', 'smithery', 'glama', 'mcp_directory', 'partner']).default('all'),
 });
 
 function jsonResponse(payload: unknown, status = 200) {

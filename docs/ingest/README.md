@@ -31,15 +31,23 @@ Sources are split into two tiers based on whether they can provide endpoints (re
 
 | Registry | Actual Size | Has JSON API | What it provides for invoke |
 |---|---|---|---|
-| **Official Registry** | Unknown (thousands of records, hundreds–low thousands unique servers¹) | ✅ documented | `remotes[].url` (endpoint) + auth header specs + `packages[]` (stdio run command) |
+| **Official Registry** | Unknown (thousands of records) | ✅ documented | `remotes[].url` (endpoint) + auth header specs + `packages[]` (stdio run command) |
 | **Smithery** | ~5,111 | ✅ documented | `deploymentUrl` (endpoint) + full tool schemas + transport |
+
+**Partner Source — verified org repos:**
+
+| Registry | Source | Has JSON API | What it provides |
+|---|---|---|---|
+| **github.com/mcp org** | `partner` (API: `partner`) | ✅ GitHub API | github_url + license + stars; transport probed at runtime |
+
+> **Naming:** DB `source` column = `'partner'`. Old API alias `'vendor'` removed in May 2026 — use `'partner'` in POST body.
 
 **Enrichment Sources — no endpoints, enrich via `github_url` cross-reference:**
 
 | Registry | Actual Size | Has JSON API | What it provides for enrichment |
 |---|---|---|---|
-| **Glama** | Unknown (thousands²) | ✅ documented | SPDX license, `environmentVariablesJsonSchema`, `attributes[]` tags, `repository.url` |
-| **mcp.directory** | 2,002 (confirmed) | ✅ verified | `toolCount`, `githubStars`, `npmWeeklyDownloads`, `publisher.verified`, `transportType[]` |
+| **Glama** | Unknown (thousands) | ✅ documented | SPDX license, `environmentVariablesJsonSchema`, `attributes[]` tags, `repository.url` |
+| **mcp.directory** | 2,002 (confirmed) | ✅ verified | `toolCount`, `githubStars`, `npmWeeklyDownloads`, `publisher.verified`, `transportType[]`, heuristic `github_url` |
 
 **Excluded — no programmatic API:**
 
@@ -59,12 +67,14 @@ Glama and mcp.directory don't have endpoint URLs. Their value is in enriching re
 
 ```
 Primary ingest pass:
+  Partner  → github_url + license + stars (transport probed at runtime)
   Official → endpoint (remotes[]) + package_info + env_var_schema
   Smithery → endpoint (deploymentUrl) + tool_schemas + transport
 
 Enrichment pass (match by github_url, then display_name):
   Glama      → license + env_var_schema (if richer) + tags from attributes[]
   mcp.directory → toolCount signal + githubStars + npmWeeklyDownloads + publisher.verified
+                  + heuristic github_url (publisher.name/slug) for dedup
 
 For servers ONLY in Glama/mcp.directory (no Official/Smithery match):
   → endpoint = null
