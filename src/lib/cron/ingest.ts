@@ -2,16 +2,18 @@
  * Cron Ingest Orchestrator
  *
  * Runs the ingest pipeline on a schedule or on-demand.
- * Sources: official, smithery, glama, github, partner (vendor).
  *
- * Dead sources removed (see docs/DECISION_LOG.md):
- *   - PulseMCP (API returns 403)
- *   - ClaudeMCP (relied on fragile __NEXT_DATA__ scraping)
- *   - MCP.so (speculative guessed API, no official docs)
- *   - MCP.run (speculative guessed API, no official docs)
- *   - Composio (not an MCP registry — returns generic app metadata)
+ * Source tiers:
+ *   PRIMARY (endpoints + tools): official, smithery
+ *   ENRICHMENT (via github_url): glama, mcp_directory
+ *   PARTNER:                     partner/vendor
  *
- * Introspection hooks removed — replaced by docs-first field mapping.
+ * Dead sources removed:
+ *   - github.ts      — GitHub has no standard MCP server listing API
+ *   - PulseMCP       — API returns 403
+ *   - ClaudeMCP      — Relied on fragile __NEXT_DATA__ scraping
+ *   - mcp.so         — No JSON API
+ *   - mcpservers.org — No API (static list)
  */
 
 import { createServiceClient } from '@/lib/supabase/server';
@@ -19,8 +21,8 @@ import {
   fetchVendorServers,
   fetchOfficialServers,
   fetchSmitheryServers,
-  fetchGitHubServers,
   fetchGlamaServers,
+  fetchMcpDirectoryServers,
   upsertServers,
 } from '@/lib/ingest';
 import {
@@ -32,21 +34,22 @@ import { log } from '@/lib/logger';
 
 // ── Source configuration ────────────────────────────────────────────────────
 
-type SourceKey = 'partner' | 'official' | 'smithery' | 'glama' | 'github';
+type SourceKey = 'partner' | 'official' | 'smithery' | 'glama' | 'mcp_directory';
 type SourceInput = 'all' | SourceKey | 'vendor';
 
 interface SourceConfig {
   key:     SourceKey;
   label:   string;
+  tier:    'primary' | 'enrichment' | 'partner';
   fetcher: () => Promise<any[]>;
 }
 
 const SOURCES: SourceConfig[] = [
-  { key: 'partner',  label: 'Verified Organization Registry', fetcher: fetchVendorServers },
-  { key: 'official', label: 'Official MCP Registry',          fetcher: fetchOfficialServers },
-  { key: 'smithery', label: 'Smithery',                       fetcher: fetchSmitheryServers },
-  { key: 'glama',    label: 'Glama',                          fetcher: fetchGlamaServers },
-  { key: 'github',   label: 'GitHub MCP Servers',             fetcher: fetchGitHubServers },
+  { key: 'partner',       label: 'Verified Organization Registry', tier: 'partner',    fetcher: fetchVendorServers },
+  { key: 'official',      label: 'Official MCP Registry',          tier: 'primary',    fetcher: fetchOfficialServers },
+  { key: 'smithery',      label: 'Smithery',                       tier: 'primary',    fetcher: fetchSmitheryServers },
+  { key: 'glama',         label: 'Glama',                          tier: 'enrichment', fetcher: fetchGlamaServers },
+  { key: 'mcp_directory', label: 'mcp.directory',                  tier: 'enrichment', fetcher: fetchMcpDirectoryServers },
 ];
 
 // ── Main ────────────────────────────────────────────────────────────────────

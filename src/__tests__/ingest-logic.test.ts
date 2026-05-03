@@ -3,7 +3,7 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { buildSandboxCommand, detectTransport, fetchVendorServers, parseReadmeDescription, resolveSmitheryConnection } from '../lib/ingest';
+import { buildSandboxCommand, detectTransport, fetchVendorServers, parseReadmeDescription, resolveSmitheryTransport } from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -59,8 +59,8 @@ describe('ingest hardening logic', () => {
     })).toBeNull();
   });
 
-  test('resolveSmitheryConnection prefers a remote HTTP connection over a leading stdio connection', () => {
-    expect(resolveSmitheryConnection([
+  test('resolveSmitheryTransport prefers a remote HTTP connection over a leading stdio connection', () => {
+    expect(resolveSmitheryTransport([
       { type: 'stdio' },
       { type: 'streamable-http', url: 'https://contextstudios.example.com/mcp' },
     ])).toEqual({

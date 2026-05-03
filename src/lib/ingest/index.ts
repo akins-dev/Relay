@@ -3,50 +3,64 @@
  *
  * Barrel export for the modularised ingestion pipeline.
  *
- * Architecture (post-refactor):
- *   types.ts         — shared IngestServer, IngestResult, Transport types
- *   helpers.ts       — slugify, detectTransport, README parsing, GitHub helpers
- *   official.ts      — Official MCP Registry fetcher (OpenAPI-first)
- *   smithery.ts      — Smithery fetcher (API-first)
- *   glama.ts         — Glama fetcher (API-first)
- *   github.ts        — GitHub reference servers fetcher
- *   vendor.ts        — Vendor/partner org fetcher
- *   pipeline.ts      — upsert pipeline (dedup, probe, scan, trust score, DB write)
- *   legacy-bridge.ts — bridges to old ingest.ts functions during migration
+ * Architecture:
+ *   types.ts          — IngestServer v2, EnvVarSpec, PackageInfo, McpResource, McpPrompt
+ *   helpers.ts        — slugify, detectTransport, README parsing
+ *   official.ts       — PRIMARY: Official MCP Registry (endpoints + package_info + env_vars)
+ *   smithery.ts       — PRIMARY: Smithery (endpoints + full tool schemas via detail API)
+ *   glama.ts          — ENRICHMENT: Glama (license, env_var_schema, tags, github_url)
+ *   mcp_directory.ts  — ENRICHMENT: mcp.directory (verified, icon_url, transport hint)
+ *   vendor.ts         — Partner/vendor org fetcher
+ *   pipeline.ts       — Upsert pipeline (dedup, enrichment pass, probe, DB write)
+ *   legacy-bridge.ts  — Bridges to old ingest.ts functions during migration
  *
- * Dead sources removed:
- *   - PulseMCP (returns 403)
- *   - ClaudeMCP (fragile __NEXT_DATA__ scraping)
- *   - MCP.so (speculative guessed API)
- *   - MCP.run (speculative guessed API)
- *   - Composio (not an MCP registry — returns generic app metadata)
+ * Removed sources:
+ *   - github.ts       — GitHub has no standard MCP server listing API
+ *   - PulseMCP        — Returns 403
+ *   - ClaudeMCP       — Fragile __NEXT_DATA__ scraping
+ *   - mcp.so          — No JSON API (web-only)
+ *   - mcpservers.org  — No API (static curated list)
  */
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 export type {
   IngestServer,
   IngestResult,
   IngestSource,
   Transport,
   ToolSchema,
+  McpResource,
+  McpPrompt,
+  EnvVarSpec,
+  PackageInfo,
+  ToolExtractionSource,
   IngestFetcher,
 } from './types';
 
-// ── Fetchers ─────────────────────────────────────────────────────────────────
-export { fetchOfficialServers }  from './official';
-export { fetchSmitheryServers }  from './smithery';
-export { fetchGlamaServers }     from './glama';
-export { fetchGitHubServers }    from './github';
-export { fetchVendorServers }    from './vendor';
+// ── Fetchers — Primary (provide endpoints + tool schemas) ─────────────────────
+export { fetchOfficialServers }       from './official';
+export { fetchSmitheryServers }       from './smithery';
 
-// ── Pipeline ─────────────────────────────────────────────────────────────────
-export { upsertServers }         from './pipeline';
+// ── Fetchers — Enrichment (enrich via github_url cross-reference) ─────────────
+export { fetchGlamaServers }          from './glama';
+export { fetchMcpDirectoryServers }   from './mcp_directory';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-export { slugify, detectTransport, parseReadmeSchemas, parseReadmeDescription } from './helpers';
+// ── Other fetchers ────────────────────────────────────────────────────────────
+export { fetchVendorServers }         from './vendor';
 
-// ── Smithery helpers (exported for tests) ────────────────────────────────────
-export { resolveSmitheryConnection } from './smithery';
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+export { upsertServers }              from './pipeline';
 
-// ── Legacy bridge (temporary — will be removed as migration completes) ──────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+export {
+  slugify,
+  detectTransport,
+  parseReadmeSchemas,
+  parseReadmeDescription,
+} from './helpers';
+
+// ── Smithery helpers (exported for tests) ─────────────────────────────────────
+export { resolveSmitheryTransport }   from './smithery';
+
+// ── Legacy bridge (temporary — will be removed as migration completes) ────────
 export { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';

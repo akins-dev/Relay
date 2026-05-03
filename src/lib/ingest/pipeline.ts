@@ -31,8 +31,15 @@ export async function upsertServers(
   const result: IngestResult = {
     added: 0, updated: 0, rejected: 0, skipped: 0, errors: [],
     extraction_metrics: {
-      sandbox_attempts: 0, sandbox_success: 0,
-      readme_fallback_attempts: 0, unresolved_stdio_rows: 0,
+      smithery_detail_fetched:  0,
+      smithery_detail_success:  0,
+      smithery_rate_limited:    0,
+      probe_attempts:           0,
+      probe_success:            0,
+      sandbox_attempts:         0,
+      sandbox_success:          0,
+      grade_a_complete:         0,
+      grade_b_complete:         0,
     },
   };
 
@@ -102,8 +109,12 @@ export async function upsertServers(
         : (s.transport && s.transport !== 'unknown' ? s.transport : detected);
       let proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
 
+      // Skip enrichment-only sources with no endpoint and no github_url
+      // (glama, mcp_directory) — they are indexed for search but not probed
+      const isEnrichmentOnly = s.source === 'glama' || s.source === 'mcp_directory';
+
       // Skip if genuinely nothing to store
-      if (!s.endpoint && !s.github_url && transport === 'stdio') {
+      if (!isEnrichmentOnly && !s.endpoint && !s.github_url && transport === 'stdio') {
         result.skipped++;
         skipReasons['stdio_no_source'] = (skipReasons['stdio_no_source'] ?? 0) + 1;
         continue;
@@ -161,8 +172,13 @@ export async function upsertServers(
             ? 'upstream_names'
             : 'none');
 
-      if (proxyAvailable && s.endpoint) {
+      // Only probe HTTP servers that are not from enrichment-only sources
+      if (!isEnrichmentOnly && proxyAvailable && s.endpoint) {
+        result.extraction_metrics!.probe_attempts++;
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url ?? undefined);
+        if (primitives.toolSchemas.length > 0) {
+          result.extraction_metrics!.probe_success++;
+        }
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
           toolSchemas = primitives.toolSchemas;
         }
@@ -177,7 +193,7 @@ export async function upsertServers(
           transport = primitives.transport;
           proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
         }
-      } else if (transport === 'stdio') {
+      } else if (!isEnrichmentOnly && transport === 'stdio') {
         // Sandbox extraction attempt
         if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id)) {
           const sandboxCommand = buildSandboxCommand(s);
@@ -212,14 +228,10 @@ export async function upsertServers(
 
         // README fallback
         if (toolSchemas.length === 0 && s.github_url) {
-          result.extraction_metrics!.readme_fallback_attempts++;
           toolSchemas = await parseReadmeSchemas(s.github_url);
           if (toolSchemas.length > 0) {
             toolExtractionSource = 'readme';
           }
-        }
-        if (toolSchemas.length === 0) {
-          result.extraction_metrics!.unresolved_stdio_rows++;
         }
       }
 
@@ -299,17 +311,20 @@ export async function upsertServers(
         long_description:  finalLongDesc,
         description_quality: descriptionQuality,
         readme_url:        readmeUrl,
-        version:           s.version || '0.0.0',
-        endpoint:          s.endpoint || null,
+        version:           s.version ?? null,
+        endpoint:          s.endpoint ?? null,
         github_url:        s.github_url ?? null,
         homepage_url:      s.homepage_url ?? null,
-        license:           s.license || null,
+        icon_url:          s.icon_url ?? null,
+        license:           s.license ?? null,
         tags:              s.tags.length > 0 ? s.tags : ['general'],
         tools:             s.tools,
         tool_schemas:      toolSchemas as any,
         tool_extraction_source: toolExtractionSource,
-        resources:         mcpResources as any,
-        prompts:           mcpPrompts as any,
+        resources:         (s.resources && s.resources.length > 0 ? s.resources : mcpResources) as any,
+        prompts:           (s.prompts && s.prompts.length > 0 ? s.prompts : mcpPrompts) as any,
+        env_var_schema:    s.env_var_schema ?? null,
+        package_info:      s.package_info ?? null,
         protocol_version:  protocolVersion,
         mcp_compliant:     mcpCompliant,
         proxy_available:   proxyAvailable,
@@ -318,6 +333,7 @@ export async function upsertServers(
         smithery_id:       s.smithery_id ?? null,
         official_id:       s.official_id ?? null,
         glama_id:          s.glama_id ?? null,
+        mcp_directory_id:  s.mcp_directory_id ?? null,
         verified:          s.verified ?? false,
         status,
         schema_hash:       upstreamHash,
@@ -334,7 +350,63 @@ export async function upsertServers(
       let serverId: string | null = existing?.id ?? null;
 
       if (existing) {
-        // Protect official/partner from generic overwrites
+        if (isEnrichmentOnly) {
+          // ── Enrichment pass: Glama / mcp.directory ────────────────────────
+          // These sources never have endpoints or tool_schemas.
+          // We ONLY update fields they uniquely provide, and only when the
+          // existing record has them null. Never overwrite primary source data.
+          const enrichmentPatch: Record<string, any> = {};
+
+          // Glama: license (SPDX), env_var_schema (JSON Schema), tags, glama_id
+          if (s.source === 'glama') {
+            if (s.license && !existing.license)
+              enrichmentPatch.license = s.license;
+            if (s.env_var_schema && !existing.env_var_schema)
+              enrichmentPatch.env_var_schema = s.env_var_schema;
+            // Merge tags (union, deduplicated)
+            if (s.tags.length > 0) {
+              const merged = Array.from(new Set([...(existing.tags ?? []), ...s.tags]));
+              if (merged.length > (existing.tags?.length ?? 0))
+                enrichmentPatch.tags = merged;
+            }
+            if (s.glama_id && !existing.glama_id)
+              enrichmentPatch.glama_id = s.glama_id;
+          }
+
+          // mcp.directory: verified (upgrade only), icon_url (fallback), mcp_directory_id
+          if (s.source === 'mcp_directory') {
+            if (s.verified && !existing.verified)
+              enrichmentPatch.verified = true;
+            if (s.icon_url && !existing.icon_url)
+              enrichmentPatch.icon_url = s.icon_url;
+            if (s.mcp_directory_id && !existing.mcp_directory_id)
+              enrichmentPatch.mcp_directory_id = s.mcp_directory_id;
+            // Merge tags from classification
+            if (s.tags.length > 0) {
+              const merged = Array.from(new Set([...(existing.tags ?? []), ...s.tags]));
+              if (merged.length > (existing.tags?.length ?? 0))
+                enrichmentPatch.tags = merged;
+            }
+          }
+
+          if (Object.keys(enrichmentPatch).length > 0) {
+            const { error: enrichErr } = await svc
+              .from('servers').update(enrichmentPatch).eq('id', existing.id);
+            if (enrichErr) {
+              log.warn(TAG, `Enrichment update failed for ${s.name}`, { error: enrichErr.message });
+            } else {
+              result.updated++;
+              serverId = existing.id;
+            }
+          } else {
+            result.skipped++;
+            skipReasons['enrichment_no_new_data'] = (skipReasons['enrichment_no_new_data'] ?? 0) + 1;
+          }
+          continue;
+        }
+
+        // ── Full update for primary sources ───────────────────────────────
+        // Protect official/partner records from lower-priority source overwrites
         if ((existing.source === 'partner' || existing.source === 'official')
             && s.source !== 'partner' && s.source !== 'official') {
           result.skipped++;
@@ -386,7 +458,7 @@ export async function upsertServers(
         svc.from('server_connection_profiles').upsert({
           server_id:         serverId,
           source:            s.source,
-          source_id:         s.source_id ?? s.official_id ?? s.smithery_id ?? s.glama_id ?? null,
+          source_id:         s.source_id ?? s.official_id ?? s.smithery_id ?? s.glama_id ?? s.mcp_directory_id ?? null,
           raw_upstream_json: s.raw_upstream_json,
           remotes:           s.remotes ?? null,
           packages:          s.packages ?? null,
