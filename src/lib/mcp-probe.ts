@@ -246,45 +246,81 @@ async function listTools(endpoint: string, timeoutMs = 8_000): Promise<MCPToolSc
 
 
 async function listResources(endpoint: string, timeoutMs = 8_000): Promise<MCPResource[]> {
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'resources/list', params: {} }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const resources: any[] = data?.result?.resources ?? [];
-    return resources.map(r => ({
-      uri:         r.uri ?? '',
-      name:        r.name ?? r.uri ?? '',
-      description: r.description ?? '',
-      mimeType:    r.mimeType ?? undefined,
-    })).filter(r => r.uri);
-  } catch {
-    return [];
-  }
+  const allResources: MCPResource[] = [];
+  let cursor: string | undefined;
+  let iterations = 0;
+
+  // Paginate with same pattern as listTools — resources/list supports nextCursor too.
+  // Cap: 200 resources max, 10 HTTP requests max (O(1) upper bound).
+  do {
+    iterations++;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 3, method: 'resources/list',
+          params: cursor ? { cursor } : {},
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      const resources: any[] = data?.result?.resources ?? [];
+      const page = resources
+        .map(r => ({
+          uri:         r.uri ?? '',
+          name:        r.name ?? r.uri ?? '',
+          description: r.description ?? '',
+          mimeType:    r.mimeType ?? undefined,
+        }))
+        .filter(r => r.uri);
+      allResources.push(...page);
+      cursor = data?.result?.nextCursor ?? undefined;
+    } catch {
+      break;
+    }
+  } while (cursor && allResources.length < 200 && iterations < 10);
+
+  return allResources;
 }
 
 async function listPrompts(endpoint: string, timeoutMs = 8_000): Promise<MCPPrompt[]> {
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'prompts/list', params: {} }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const prompts: any[] = data?.result?.prompts ?? [];
-    return prompts.map(p => ({
-      name:        p.name ?? '',
-      description: p.description ?? '',
-    })).filter(p => p.name);
-  } catch {
-    return [];
-  }
+  const allPrompts: MCPPrompt[] = [];
+  let cursor: string | undefined;
+  let iterations = 0;
+
+  // Paginate — prompts/list also supports nextCursor per spec.
+  // Cap: 200 prompts max, 10 HTTP requests max.
+  do {
+    iterations++;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'relay-registry/1.0' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 4, method: 'prompts/list',
+          params: cursor ? { cursor } : {},
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      const prompts: any[] = data?.result?.prompts ?? [];
+      const page = prompts
+        .map(p => ({
+          name:        p.name ?? '',
+          description: p.description ?? '',
+        }))
+        .filter(p => p.name);
+      allPrompts.push(...page);
+      cursor = data?.result?.nextCursor ?? undefined;
+    } catch {
+      break;
+    }
+  } while (cursor && allPrompts.length < 200 && iterations < 10);
+
+  return allPrompts;
 }
 
 // ── Transport detection (MCP-aware) ───────────────────────────────────────────

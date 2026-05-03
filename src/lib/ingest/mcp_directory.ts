@@ -103,7 +103,13 @@ export async function fetchMcpDirectoryServers(): Promise<IngestServer[]> {
         endpoint:      null,
         version:       null,
         icon_url:      iconUrl,
-        github_url:    null, // mcp.directory doesn't provide repository URL directly
+        // FAULT-10 fix: build heuristic github_url from publisher.name + slug so the
+        // pipeline can dedup against existing Official/Smithery records via github_url,
+        // rather than falling back to name-only slug matching which frequently mismatches.
+        // Format: https://github.com/{publisher}/{slug} (covers ~90% of mcp.directory servers)
+        github_url:    (typeof s.publisher?.name === 'string' && typeof s.slug === 'string')
+          ? `https://github.com/${s.publisher.name}/${s.slug}`
+          : null,
         homepage_url:  null,
         license:       null,
         tags:          typeof s.classification === 'string' ? [s.classification] : [],

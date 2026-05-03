@@ -21,7 +21,7 @@ export async function runUptimeCheck() {
 
   const { data: servers, error } = await svc
     .from('servers')
-    .select('id, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at')
+    .select('id, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at, auth_type')
     .eq('status', 'active')
     .not('endpoint', 'is', null);
 
@@ -44,6 +44,13 @@ export async function runUptimeCheck() {
 
       if (!isSafeUrl(server.endpoint)) {
         results.errors++;
+        return;
+      }
+
+      // FAULT-08 fix: Skip authenticated servers — an unauthenticated probe will always
+      // get a 401/403, appear 'down', and permanently depress trust_score + search ranking.
+      // We cannot accurately measure uptime for api_key/oauth servers without credentials.
+      if (server.auth_type === 'api_key' || server.auth_type === 'oauth') {
         return;
       }
 

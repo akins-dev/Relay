@@ -6,10 +6,13 @@ type RawIngestResult = {
   rejected?: number;
   errors?: string[];
   extraction_metrics?: {
+    smithery_detail_fetched?: number;
+    probe_attempts?: number;
+    probe_success?: number;
     sandbox_attempts?: number;
     sandbox_success?: number;
-    readme_fallback_attempts?: number;
-    unresolved_stdio_rows?: number;
+    grade_a_complete?: number;
+    grade_b_complete?: number;
   };
 };
 
@@ -23,10 +26,13 @@ export interface CompactIngestResult {
   rejected: number;
   error_count: number;
   extraction_metrics?: {
+    smithery_detail_fetched: number;
+    probe_attempts: number;
+    probe_success: number;
     sandbox_attempts: number;
     sandbox_success: number;
-    readme_fallback_attempts: number;
-    unresolved_stdio_rows: number;
+    grade_a_complete: number;
+    grade_b_complete: number;
   };
 }
 
@@ -54,10 +60,13 @@ export function compactIngestResults(results: RawIngestResults): Record<string, 
         ...(result.extraction_metrics
           ? {
               extraction_metrics: {
-                sandbox_attempts: result.extraction_metrics.sandbox_attempts ?? 0,
-                sandbox_success: result.extraction_metrics.sandbox_success ?? 0,
-                readme_fallback_attempts: result.extraction_metrics.readme_fallback_attempts ?? 0,
-                unresolved_stdio_rows: result.extraction_metrics.unresolved_stdio_rows ?? 0,
+                smithery_detail_fetched: result.extraction_metrics.smithery_detail_fetched ?? 0,
+                probe_attempts:          result.extraction_metrics.probe_attempts ?? 0,
+                probe_success:           result.extraction_metrics.probe_success ?? 0,
+                sandbox_attempts:        result.extraction_metrics.sandbox_attempts ?? 0,
+                sandbox_success:         result.extraction_metrics.sandbox_success ?? 0,
+                grade_a_complete:        result.extraction_metrics.grade_a_complete ?? 0,
+                grade_b_complete:        result.extraction_metrics.grade_b_complete ?? 0,
               },
             }
           : {}),
@@ -65,6 +74,7 @@ export function compactIngestResults(results: RawIngestResults): Record<string, 
     ])
   );
 }
+
 
 export function summarizeIngestResults(results: Record<string, CompactIngestResult>): IngestRunSummary {
   return Object.values(results).reduce<IngestRunSummary>((acc, result) => ({

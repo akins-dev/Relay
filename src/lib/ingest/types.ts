@@ -44,8 +44,9 @@ export type ToolExtractionSource =
   | 'sandbox'           // Sandboxed local execution of a stdio package
   | 'upstream_schemas'  // Schemas provided directly by the upstream API
   | 'upstream_names'    // Only tool names available (no inputSchema)
-  | 'readme'            // Parsed from README (low confidence)
+  | 'readme_parsed'     // Parsed from README markdown (low confidence, stdio fallback)
   | 'none';             // No tool data from any source
+
 
 // ── Capability sub-types ─────────────────────────────────────────────────────
 

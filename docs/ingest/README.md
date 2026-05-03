@@ -545,24 +545,45 @@ export type IngestFetcher = () => Promise<IngestServer[]>;
 
 ## 9. Known Bugs — Resolution Status
 
-All bugs from the original audit have been resolved in the v2 implementation.
+All bugs from the original v2 audit and the May 2026 deep integration audit are resolved.
+
+### Original v2 bugs (all fixed)
 
 | # | File | Bug | Status |
 |---|---|---|---|
-| 1 | `glama.ts` | `s.url` mapped to `homepage_url` (was Glama's own page) | ✅ Fixed — `endpoint: null`, `homepage_url: null` |
-| 2 | `smithery.ts` | Listing only — no tools, no transport, no endpoint | ✅ Fixed — two-phase: listing sweep + detail fetch for all servers |
+| 1 | `glama.ts` | `s.url` mapped to `homepage_url` (was Glama's own page) | ✅ Fixed |
+| 2 | `smithery.ts` | Listing only — no tools, no transport, no endpoint | ✅ Fixed — two-phase detail fetch |
 | 3 | `smithery.ts` | `version: '1.0.0'` hardcoded | ✅ Fixed — `version: null` |
 | 4 | `glama.ts` | `version: '1.0.0'` hardcoded | ✅ Fixed — `version: null` |
-| 5 | `smithery.ts` | `iconUrl` not mapped | ✅ Fixed — mapped to `icon_url` |
-| 6 | `official.ts` | `icons[0].src` not mapped | ✅ Fixed — mapped to `icon_url` |
-| 7 | All | `env_var_schema` never populated | ✅ Fixed — normalized from Official pkgs + remotes, Smithery configSchema, Glama envVarsJsonSchema |
-| 8 | `github.ts` | Entire file | ✅ Deleted — GitHub has no standard MCP server listing API |
+| 5 | `smithery.ts` | `iconUrl` not mapped | ✅ Fixed |
+| 6 | `official.ts` | `icons[0].src` not mapped | ✅ Fixed |
+| 7 | All | `env_var_schema` never populated | ✅ Fixed |
+| 8 | `github.ts` | Entire file | ✅ Deleted |
 
-**Additional issues fixed (not in original audit):**
-- `pipeline.ts`: Enrichment sources (glama, mcp.directory) previously got SKIPPED when an existing Official/Smithery record was found, silently discarding license, env_var_schema, tags. Fixed with selective enrichment patch path.
-- `official.ts`: `version: '0.0.0'` default in pipeline overwritten — now `null` for non-Official sources.
-- `glama.ts`: `transport` was inferred from the bogus `s.url` field. Now correctly derived from `attributes[]` only.
-- `pipeline.ts`: `resources` and `prompts` from Smithery detail were being ignored (probe was re-running and overwriting). Now prefers Smithery-provided data.
+### Deep integration audit bugs (all fixed, May 2026)
+
+| # | File(s) | Bug | Status |
+|---|---|---|---|
+| FAULT-01 | `pipeline.ts` | Glama enrichment patches `env_var_schema` but doesn't update `auth_type` → invoke skips credential injection | ✅ Fixed — enrichment patch now adds `auth_type: 'api_key'` |
+| FAULT-02 | `pipeline.ts` | `tools[]` only synced from `toolSchemas` when initially empty — probe-replaced names lost | ✅ Fixed — always sync |
+| FAULT-03 | `types.ts`, `pipeline.ts` | `'readme'` used in pipeline but not in `ToolExtractionSource` type | ✅ Fixed — canonical `'readme_parsed'` |
+| FAULT-04 | `ingest/route.ts` | `'github'` accepted as source (dead), `'mcp_directory'` absent | ✅ Fixed — enum corrected |
+| FAULT-05 | `pipeline.ts`, `cron/schema-drift.ts` | `schema_hash` computed before probe updates tools → false drift alarms suspend servers | ✅ Fixed — hash recomputed after probe/sandbox sync |
+| FAULT-06 | `ingest-response.ts`, `types.ts` | `extraction_metrics` fields misaligned between pipeline and response builder | ✅ Fixed — both now use same field set |
+| FAULT-07 | `vendor.ts` | All partner repos hardcoded as `transport: 'stdio'` → HTTP partner servers never proxy-available | ✅ Fixed — `transport: 'unknown'` lets probe classify correctly |
+| FAULT-08 | `cron/uptime.ts` | `api_key`/`oauth` servers probed without credentials → always appear down → trust_score penalized | ✅ Fixed — skip probe for authenticated servers |
+| FAULT-09 | `search/route.ts` | `env_var_schema` and `package_info` dropped in secondary enrich select → not in search response | ✅ Fixed — added to select |
+| FAULT-10 | `mcp_directory.ts` | Dedup by name only → mcp.directory enrichment creates duplicates instead of patching | ✅ Fixed — heuristic `github_url` from publisher.name + slug |
+
+### Hardening fixes (this session)
+
+| # | File(s) | Fix |
+|---|---|---|
+| H-01 | `pipeline.ts` | `AbortSignal.timeout(60_000)` on sandbox fetch — prevents indefinite ingest hang |
+| H-02 | `pipeline.ts` | `auth_type` derived from `env_var_schema` via `deriveAuthType()` — no longer defaults to `'managed'` |
+| H-03 | `legacy-bridge.ts` | `buildSandboxCommand` extended to use `package_info` (npm) — Official stdio servers now get sandbox extraction |
+| H-04 | `mcp-probe.ts` | `listResources` and `listPrompts` now paginate (cursor loop, 200 items / 10 requests cap) |
+| H-05 | `sandbox/index.js` | `transport.close()` + `SIGKILL` fallback in error path — no zombie subprocesses |
 
 ---
 
@@ -578,13 +599,13 @@ All bugs from the original audit have been resolved in the v2 implementation.
 - Tools: `web_search_exa`, `web_fetch_exa` (via Smithery detail)
 - Env vars: just `EXA_API_KEY` (from Glama + Official)
 
-**Why perfect for MVP:** Appears across all 4 active sources. Tests dedup logic, transport detection, tool schema ingestion, env var normalization, and icon mapping in one shot.
+**Why perfect for MVP:** Appears across all 4 active sources. Tests dedup logic, transport detection, tool schema ingestion, env var normalization, auth_type derivation, and icon mapping in one shot.
 
 **Secondary test servers:**
 
 | Server | Purpose |
 |---|---|
-| `io.modelcontextprotocol/filesystem` | stdio, Official only, package_info test |
+| `io.modelcontextprotocol/filesystem` | stdio, Official only, package_info test, sandbox extraction |
 | `brave/brave-search-mcp-server` | 8 tools, multi-source, remote |
 | `microsoft/playwright-mcp` | mcp.directory `githubStars` signal test |
 | `atlassian/jira-confluence` | mcp.directory `toolCount: 16`, `npmWeeklyDownloads` |

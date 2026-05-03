@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'crypto';
-import type { IngestServer, IngestResult } from './types';
+import type { IngestServer, IngestResult, EnvVarSpec } from './types';
 import {
   isSafeUrl, detectTransport, parseReadmeSchemas,
   parseReadmeDescription, agoStr,
@@ -23,6 +23,37 @@ import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
 import { log } from '@/lib/logger';
 
 const TAG = 'ingest:pipeline';
+
+// ── Auth type derivation ──────────────────────────────────────────────────────
+/**
+ * Derive the auth_type for a server from structured upstream data.
+ *
+ * Priority:
+ *   1. env_var_schema present → 'api_key'  (credentials required, injected by vault)
+ *   2. official + HTTP + no creds → 'none'  (public API, no auth needed)
+ *   3. official + stdio + no creds → 'none'  (public CLI tool)
+ *   4. smithery + no creds → 'managed'  (Smithery auth layer handles it internally)
+ *   5. default → 'managed'
+ *
+ * NOTE: This must NOT be derived from transport alone — a server can be HTTP and
+ * still require no credentials (e.g. public weather APIs on the Official registry).
+ */
+function deriveAuthType(
+  source: IngestServer['source'],
+  _transport: string,
+  envVarSchema: EnvVarSpec[] | null | undefined,
+): 'none' | 'managed' | 'api_key' {
+  // Any credential requirements → api_key
+  if (envVarSchema && envVarSchema.length > 0) return 'api_key';
+
+  // Official registry: no credentials = intentionally public
+  if (source === 'official') return 'none';
+
+  // Smithery-hosted servers: no configSchema = Smithery handles auth
+  if (source === 'smithery') return 'managed';
+
+  return 'managed';
+}
 
 export async function upsertServers(
   servers: IngestServer[],
@@ -140,8 +171,10 @@ export async function upsertServers(
         }
       }
 
-      // ── TIER 2: Hash skip ─────────────────────────────────────────────────
-      const upstreamHash = createHash('sha256')
+      // ── TIER 2: Hash skip ──────────────────────────────────────────────────────
+      // NOTE: 'let' not 'const' — this is recomputed after probe/sandbox updates tools
+      // so the stored schema_hash always matches what schema-drift cron will compute.
+      let upstreamHash = createHash('sha256')
         .update([
           JSON.stringify(s.tools.slice().sort()),
           s.version ?? '', s.endpoint ?? '', s.github_url ?? '',
@@ -195,7 +228,7 @@ export async function upsertServers(
         }
       } else if (!isEnrichmentOnly && transport === 'stdio') {
         // Sandbox extraction attempt
-        if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id)) {
+        if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id || s.package_info)) {
           const sandboxCommand = buildSandboxCommand(s);
           if (sandboxCommand) {
             result.extraction_metrics!.sandbox_attempts++;
@@ -207,6 +240,9 @@ export async function upsertServers(
                   'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}`,
                 },
                 body: JSON.stringify(sandboxCommand),
+                // Hard cap: sandbox may cold-start on Render (up to ~30s) + process spawn time.
+                // Without this, a hung sandbox blocks the entire ingest run indefinitely.
+                signal: AbortSignal.timeout(60_000),
               });
               if (req.ok) {
                 const sandboxResult = await req.json();
@@ -230,14 +266,29 @@ export async function upsertServers(
         if (toolSchemas.length === 0 && s.github_url) {
           toolSchemas = await parseReadmeSchemas(s.github_url);
           if (toolSchemas.length > 0) {
-            toolExtractionSource = 'readme';
+            // 'readme_parsed' is a valid ToolExtractionSource (FAULT-03 fix)
+            toolExtractionSource = 'readme_parsed';
           }
         }
       }
 
-      if (s.tools.length === 0 && toolSchemas.length > 0) {
+      // FAULT-02 fix: always sync tools from toolSchemas — not just when s.tools was empty.
+      // If probe/sandbox returns different/richer tool names than what upstream declared,
+      // the DB must store the live-probed names so invoke_tool's tools.includes() check works.
+      if (toolSchemas.length > 0) {
         s.tools = toolSchemas.map(t => t.name);
       }
+
+      // FAULT-05 fix: recompute hash AFTER tools are synced from probe/sandbox.
+      // The schema-drift cron also hashes live-probed tool names — they must match.
+      // If we stored the pre-probe hash, any probe-reordered tool list would trigger
+      // a false drift alarm and suspend the server.
+      upstreamHash = createHash('sha256')
+        .update([
+          JSON.stringify(s.tools.slice().sort()),
+          s.version ?? '', s.endpoint ?? '', s.github_url ?? '',
+        ].join('|'))
+        .digest('hex');
 
       // CVE scan (deduplicated by repo)
       const repoKey = s.github_url?.replace(/\.git$/, '').toLowerCase();
@@ -304,6 +355,9 @@ export async function upsertServers(
       }));
 
       // ── DB write ──────────────────────────────────────────────────────────
+      // Compute final env_var_schema (may have been enriched by sandbox/probe)
+      const finalEnvVarSchema = s.env_var_schema ?? null;
+
       const serverData: Record<string, any> = {
         name:              s.name,
         display_name:      s.display_name || s.name,
@@ -323,12 +377,15 @@ export async function upsertServers(
         tool_extraction_source: toolExtractionSource,
         resources:         (s.resources && s.resources.length > 0 ? s.resources : mcpResources) as any,
         prompts:           (s.prompts && s.prompts.length > 0 ? s.prompts : mcpPrompts) as any,
-        env_var_schema:    s.env_var_schema ?? null,
+        env_var_schema:    finalEnvVarSchema,
         package_info:      s.package_info ?? null,
         protocol_version:  protocolVersion,
         mcp_compliant:     mcpCompliant,
         proxy_available:   proxyAvailable,
         transport,
+        // Derive auth_type from structured upstream data — never rely on the DB default.
+        // env_var_schema is already populated by all three primary sources (official/smithery/glama).
+        auth_type:         deriveAuthType(s.source, transport, finalEnvVarSchema),
         source:            s.source,
         smithery_id:       s.smithery_id ?? null,
         official_id:       s.official_id ?? null,
@@ -361,8 +418,13 @@ export async function upsertServers(
           if (s.source === 'glama') {
             if (s.license && !existing.license)
               enrichmentPatch.license = s.license;
-            if (s.env_var_schema && !existing.env_var_schema)
+            if (s.env_var_schema && !existing.env_var_schema) {
               enrichmentPatch.env_var_schema = s.env_var_schema;
+              // FAULT-01 fix: When Glama adds env_var_schema to a record that previously
+              // had none (e.g. an Official 'none' server that actually requires credentials),
+              // we must also update auth_type. Otherwise invoke_tool skips credential injection.
+              enrichmentPatch.auth_type = 'api_key';
+            }
             // Merge tags (union, deduplicated)
             if (s.tags.length > 0) {
               const merged = Array.from(new Set([...(existing.tags ?? []), ...s.tags]));

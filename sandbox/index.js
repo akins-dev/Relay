@@ -112,10 +112,24 @@ app.post('/extract', async (req, res) => {
 
   } catch (error) {
     console.error(`[extract] Error:`, error);
-    // Ensure we attempt to cleanly close the transport if connect failed partway
+
+    // Cleanup order:
+    //   1. transport.close() — sends SIGTERM to the spawned child process.
+    //      This must be called BEFORE client.close() because if the MCP session
+    //      never fully connected, client.close() may not reach the subprocess.
+    //   2. SIGKILL fallback — if the process ignored SIGTERM (some Python/Node
+    //      servers do), forcibly kill via the internal process handle.
+    //   3. client.close() — tears down any remaining SDK state.
+    try { await transport.close(); } catch (_) {}
     try {
-      await client.close();
-    } catch (e) {}
+      // @modelcontextprotocol/sdk StdioClientTransport exposes the child
+      // process as a non-public field. Access it defensively.
+      const proc = transport._process ?? transport.process;
+      if (proc && typeof proc.kill === 'function') {
+        proc.kill('SIGKILL');
+      }
+    } catch (_) {}
+    try { await client.close(); } catch (_) {}
 
     return res.status(500).json({
       success: false,

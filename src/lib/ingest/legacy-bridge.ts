@@ -70,15 +70,44 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
 
 // ── buildSandboxCommand ─────────────────────────────────────────────────────
 
-export function buildSandboxCommand(s: Pick<IngestServer, 'smithery_id' | 'github_url'>): {
-  command: string;
-  args: string[];
-} | null {
+/**
+ * Build a sandboxable CLI command to spawn an MCP stdio server for schema extraction.
+ *
+ * Strategy (in priority order):
+ *   1. smithery_id present → use @smithery/cli (handles auth + npx internally)
+ *   2. package_info npm entry → use npx -y <identifier>[@version]
+ *      Only the Official registry provides package_info with npm identifiers.
+ *   3. No executable path available → return null (fall back to README parsing)
+ *
+ * Only 'npx' commands are permitted by the sandbox ALLOWED_COMMANDS whitelist.
+ * pypi/uvx packages are not yet supported (uvx not in whitelist).
+ */
+export function buildSandboxCommand(
+  s: Pick<IngestServer, 'smithery_id' | 'github_url' | 'package_info'>
+): { command: string; args: string[] } | null {
+  // Priority 1: Smithery CLI (covers all smithery-sourced stdio servers)
   if (s.smithery_id) {
     return {
       command: 'npx',
       args: ['-y', '@smithery/cli@latest', 'run', s.smithery_id],
     };
   }
+
+  // Priority 2: Official registry npm package_info
+  // Only npm packages can be run via npx — pypi/uvx not yet in sandbox whitelist.
+  const npmPkg = s.package_info?.find(
+    p => p.registryType === 'npm' && typeof p.identifier === 'string' && p.identifier.length > 0
+  );
+  if (npmPkg) {
+    const pkg = npmPkg.version
+      ? `${npmPkg.identifier}@${npmPkg.version}`
+      : npmPkg.identifier;
+    return {
+      command: 'npx',
+      args: ['-y', pkg],
+    };
+  }
+
+  // No executable strategy available
   return null;
 }

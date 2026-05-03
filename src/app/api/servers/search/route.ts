@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
         id, name, display_name, description, version, tags, tools, tool_schemas,
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
-        tool_extraction_source,
+        tool_extraction_source, env_var_schema, package_info,
         auth_type, auth_setup_url, oauth_authorization_url,
         transport, endpoint, proxy_available,
         profiles!author_id ( username )

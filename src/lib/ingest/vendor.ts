@@ -63,7 +63,10 @@ export async function fetchVendorServers(): Promise<IngestServer[]> {
         source:        'partner',
         source_id:     `mcp/${repo.name}`,
         verified:      true,
-        transport:     'stdio',
+        // Default 'unknown' — not 'stdio'. Partner orgs include remote-capable servers
+        // (Stripe, GitHub, etc). Let detectTransport() + homepage probe determine the real
+        // transport rather than assuming all org repos are CLI-only stdio tools.
+        transport:     'unknown',
         upstream_updated_at: repo.updated_at ?? null,
         raw_upstream_json:   repo,
       });
