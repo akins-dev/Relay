@@ -147,13 +147,13 @@ Set only when `bySmithery === true` from the Smithery listing API. These are ser
 
 ```
 deriveAuthType(source, transport, env_var_schema):
-  env_var_schema present and non-empty  → 'api_key'
-  source='official' and transport=HTTP  → 'none'   (open MCP registry, public endpoints)
-  source='smithery'                     → 'managed' (Smithery-managed auth)
+  any(isSecret) or any(isRequired)      → 'api_key'
+  source='official'                     → 'none'
+  source='smithery'                     → 'managed'
   default                               → 'managed'
 
-Enrichment patch (Glama adds env_var_schema to existing record):
-  → also writes auth_type = 'api_key'   ← FAULT-01 fix
+Enrichment patch (Glama adds env_var_schema):
+  → Re-runs deriveAuthType for requirement-aware classification.
 ```
 
 ---

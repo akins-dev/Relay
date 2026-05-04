@@ -43,10 +43,17 @@ function deriveAuthType(
   _transport: string,
   envVarSchema: EnvVarSpec[] | null | undefined,
 ): 'none' | 'managed' | 'api_key' {
-  // Any credential requirements → api_key
-  if (envVarSchema && envVarSchema.length > 0) return 'api_key';
+  const schema = envVarSchema || [];
 
-  // Official registry: no credentials = intentionally public
+  // OPTIMAL TRIGGER: Only require 'api_key' (setup flow) if:
+  // 1. A variable is marked as secret (must be vaulted)
+  // 2. A variable is marked as required (must be provided)
+  // Otherwise, it's just optional config — don't block the user.
+  const requiresSetup = schema.some(v => v.isSecret || v.isRequired);
+
+  if (requiresSetup) return 'api_key';
+
+  // Official registry: no credentials/required config = intentionally public
   if (source === 'official') return 'none';
 
   // Smithery-hosted servers: no configSchema = Smithery handles auth
@@ -447,9 +454,8 @@ export async function upsertServers(
             if (s.env_var_schema && !existing.env_var_schema) {
               enrichmentPatch.env_var_schema = s.env_var_schema;
               // FAULT-01 fix: When Glama adds env_var_schema to a record that previously
-              // had none (e.g. an Official 'none' server that actually requires credentials),
-              // we must also update auth_type. Otherwise invoke_tool skips credential injection.
-              enrichmentPatch.auth_type = 'api_key';
+              // had none, we must re-derive auth_type. Use our requirement-aware logic.
+              enrichmentPatch.auth_type = deriveAuthType('glama', existing.transport, s.env_var_schema);
             }
             // Merge tags (union, deduplicated)
             if (s.tags.length > 0) {
