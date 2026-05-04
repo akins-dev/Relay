@@ -113,7 +113,7 @@ const SEARCH_INDEX = [
   {
     section: `what-is-${BRAND.name}`,
     label: `What is ${BRAND.name}?`,
-    text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source Apache 2.0 license`,
+    text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source MIT license`,
   },
   {
     section: "how-it-works",
@@ -426,7 +426,7 @@ export default function DocsPage() {
               without a paid plan. No credit card. Transparent limits. No lock-in.
             </P>
             <P>
-              <strong className="text-white">Open source.</strong> Apache 2.0 licensed. Full source at{' '}
+              <strong className="text-white">Open source.</strong> MIT licensed. Full source at{' '}
               <a href={BRAND.githubUrl} className="text-brand-signal underline underline-offset-2 hover:text-white transition-colors">
                 {BRAND.githubUrl.replace('https://', '')}
               </a>.

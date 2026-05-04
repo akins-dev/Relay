@@ -75,6 +75,6 @@ export async function GET() {
       system_prompt: getAgentBootstrapPrompt(),
       trust_score_guide: 'Score 90-100: verified, stable, high uptime. 70-89: good signal. Below 70: use with caution.',
     },
-    open_source: `${BRAND.githubUrl} — Apache 2.0 license`,
+    open_source: `${BRAND.githubUrl} — MIT license`,
   });
 }
