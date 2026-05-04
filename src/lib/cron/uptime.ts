@@ -81,11 +81,17 @@ export async function runUptimeCheck() {
         : 0;
 
       const newTrust = computeTrustScore({
-        verified:        server.verified ? 1 : 0,
+        verified:         server.verified ? 1 : 0,
         scanScore,
-        uptimePct:       newUptime,
-        stars:           server.stars ?? 0,
-        daysSinceChange: Math.min(daysSince, 90),
+        uptimePct:        newUptime,
+        // use_count is the primary usage signal; fall back to stars if available.
+        usageCount:       server.use_count ?? server.stars ?? 0,
+        // daysSince is elapsed time since last scan — proxy for schema stability
+        // at cron time. The pipeline computes this from schema_changed_at.
+        daysSinceChange:  Math.min(daysSince, 90),
+        // deploymentQuality: server passed uptime probe, so it has a working endpoint.
+        // We don't re-check tool schemas here (that's the drift cron's job).
+        deploymentQuality: up ? 1 : 0,
       });
 
       // ── Write updates ─────────────────────────────────────────────────────────

@@ -166,7 +166,7 @@ SET schema_hash = NULL,
     last_scanned_at = NULL;
 ```
 
-Clean rebuild from scratch:
+Clean rebuild from scratch (registry + ingest only):
 
 ```sql
 DELETE FROM public.scan_results;
@@ -175,6 +175,44 @@ DELETE FROM public.cron_job_runs;
 DELETE FROM public.ingest_runs;
 DELETE FROM public.servers;
 ```
+
+Full wipe (including analytics, audit, and metering):
+
+> **⚠️ Destructive:** run in Supabase SQL Editor. Consider taking a backup/snapshot first.
+> Order matters (avoid FK issues).
+
+```sql
+-- Intelligence / search analytics (022)
+DELETE FROM public.invoke_outcomes;
+DELETE FROM public.search_events;
+DELETE FROM public.intent_server_mappings;
+
+-- Audit + metering + connection logs
+DELETE FROM public.audit_log;
+DELETE FROM public.metering_events;
+DELETE FROM public.mcp_connections;
+
+-- Ops history
+DELETE FROM public.cron_job_runs;
+DELETE FROM public.ingest_runs;
+
+-- Registry
+DELETE FROM public.scan_results;
+DELETE FROM public.schema_snapshots;
+DELETE FROM public.server_connection_profiles;
+DELETE FROM public.server_stars;
+DELETE FROM public.tool_policies;
+DELETE FROM public.api_keys;
+DELETE FROM public.servers;
+```
+
+Notes:
+
+- **Views** like `audit_summary` and `server_tool_usage_30d` are derived; they clear when underlying tables are empty.
+- **Users (Auth)**: if you want to remove *all* user accounts (and log everyone out), delete users in **Supabase Dashboard → Authentication → Users** (or `DELETE FROM auth.users;` if your SQL role allows it).
+- **Vault-backed secrets (011)**: secrets live in `vault.secrets` (encrypted). Clearing `public.user_secrets` / deleting users may still leave vault rows depending on your setup. If you need a true vault wipe, follow Supabase Vault docs and remove the relevant `vault.secrets` rows carefully.
+- **Redis (Upstash)**: analytics are not stored in Redis, but rate-limit/cache state is. Flush the Upstash DB if you want *zero* residual limiter/cached state.
+- **Sentry** (or other telemetry): stored outside Postgres; purge there separately if needed.
 
 ### Manual cron routes
 
@@ -252,12 +290,23 @@ To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effort
 ### 1. Delete all development/test servers
 
 ```sql
--- Run in Supabase SQL Editor:
+-- Run in Supabase SQL Editor (registry + ingest only):
 DELETE FROM public.scan_results;
 DELETE FROM public.schema_snapshots;
 DELETE FROM public.cron_job_runs;
 DELETE FROM public.ingest_runs;
 DELETE FROM public.servers;
+```
+
+If you also want to wipe **analytics + audit + metering**, run this first:
+
+```sql
+DELETE FROM public.invoke_outcomes;
+DELETE FROM public.search_events;
+DELETE FROM public.intent_server_mappings;
+DELETE FROM public.audit_log;
+DELETE FROM public.metering_events;
+DELETE FROM public.mcp_connections;
 ```
 
 ### 2. Re-ingest from all sources (fresh)

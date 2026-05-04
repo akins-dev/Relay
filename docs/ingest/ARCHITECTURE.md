@@ -1,6 +1,6 @@
 # Ingest Pipeline — Architecture Diagram
 
-> Last updated: May 2026 — reflects all v2 hardening + deep integration audit fixes.
+> Last updated: May 2026 — partner/vendor removed; is_canonical + use_count added; trust score redesigned.
 
 ## Full Flow (Mermaid)
 
@@ -8,7 +8,7 @@
 flowchart TD
     subgraph TRIGGER["Trigger Layer"]
         CRON["Vercel Cron\n(scheduled)"]
-        API["POST /api/ingest\n?source=all|official|smithery|\nglama|mcp_directory|partner"]
+        API["POST /api/ingest\n?source=all|official|smithery|\nglama|mcp_directory"]
         CRON --> ORCH
         API --> ORCH
     end
@@ -19,14 +19,13 @@ flowchart TD
 
     subgraph SOURCES["Source Fetchers"]
         direction TB
-        P["partner.ts  [PARTNER]\ngithub.com/mcp org\nGitHub API paginated\n→ github_url, license, stars\n→ transport: unknown (probed later)"]
         O["official.ts  [PRIMARY]\nregistry.modelcontextprotocol.io\n→ endpoint, env_var_schema\n→ package_info, icon_url, title\nFilter isLatest: true client-side"]
-        S["smithery.ts  [PRIMARY]\napi.smithery.ai\nPhase 1: listing sweep isDeployed:true\nPhase 2: detail fetch concurrency=5\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema"]
+        S["smithery.ts  [PRIMARY]\napi.smithery.ai\nPhase 1: listing sweep isDeployed:true\n  → verified (top-level boolean)\n  → bySmithery → is_canonical\n  → useCount → use_count\nPhase 2: detail fetch concurrency=5\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema"]
         G["glama.ts  [ENRICHMENT]\nglama.ai/api/mcp/v1\n→ env_var_schema (JSON Schema)\n→ SPDX license, attributes[] tags\n→ repository.url (dedup key)\n⚠ Never provides endpoint or tools"]
         D["mcp_directory.ts  [ENRICHMENT]\nmcp.directory/api/v1\n→ verified, icon_url\n→ heuristic github_url\n  (publisher.name/slug)\n→ classification tags\n⚠ Never provides endpoint or tools"]
     end
 
-    ORCH --> P & O & S & G & D
+    ORCH --> O & S & G & D
 
     subgraph PIPELINE["upsertServers() — pipeline.ts"]
         direction TB
@@ -48,16 +47,16 @@ flowchart TD
 
         AUTH["10. deriveAuthType()\n    env_var_schema present → api_key\n    official + public → none\n    smithery default → managed"]
 
-        TRUST["11. Trust score\n    computeTrustScore(\n      verified, scanScore,\n      uptimePct, stars,\n      daysSinceChange)"]
+        TRUST["11. Trust score (redesigned)\n    computeTrustScore(\n      verified, uptimePct,\n      usageCount, daysSinceChange,\n      scanScore, deploymentQuality)\n    — No source-type bias\n    — daysSinceChange from schema_changed_at\n    — usageCount from Smithery useCount\n    — deploymentQuality: endpoint+inputSchema"]
 
-        DB["12. DB write\n    INSERT or UPDATE servers\n    • new: author_id = system profile\n    • existing primary: full update\n    • existing enrichment-only: selective patch\n    • partner/official protected from\n      lower-tier source overwrites"]
+        DB["12. DB write\n    INSERT or UPDATE servers\n    • is_canonical = by_smithery (Smithery only)\n    • use_count from Smithery listing\n    • verified from upstream, not overridden"]
 
         SIDE["13. Side-table writes\n    server_connection_profiles\n      (raw_upstream_json, remotes,\n       packages, icons, official_meta)\n    scan_results (CVE audit trail)"]
 
         HASHFINAL["14. Final schema_hash stored\n    Used by schema-drift cron\n    as rug-pull detection baseline"]
     end
 
-    P & O & S & G & D --> PRE
+    O & S & G & D --> PRE
     PRE --> LOOP --> GUARD --> LOOKUP
     LOOKUP --> SKIP1 & SKIP2 & ENRICH
     LOOKUP --> PROBE & SANDBOX & README
@@ -72,7 +71,7 @@ flowchart TD
     DB --> UPTIME & DRIFT
 
     subgraph CONSUMERS["Downstream Consumers"]
-        SEARCH["GET /api/servers/search\nsearch_servers() RPC\n+ secondary select:\n  tool_schemas, env_var_schema,\n  package_info, auth_type,\n  transport, proxy_available\n→ search_tools for agents"]
+        SEARCH["GET /api/servers/search\nsearch_servers() RPC\nORDER BY: is_canonical DESC,\n  text_rank DESC, trust_score DESC,\n  use_count DESC\n→ canonical servers always rank first"]
         INVOKE["executeProxyCall()\nReads: endpoint, tools,\n  auth_type, proxy_available,\n  transport, trust_score\n→ credential injection\n→ MCP handshake (SSE)\n→ upstream call + security scans"]
     end
 
@@ -83,21 +82,64 @@ flowchart TD
 
 ## Source → DB Field Coverage
 
-| Field | partner | official | smithery | glama | mcp_directory | probe | sandbox |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `endpoint` | ❌ | ✅ remotes[] | ✅ deploymentUrl | ❌ | ❌ | — | — |
-| `transport` | probed | ✅ | ✅ connections[] | inferred | ✅ transportType | ✅ | ✅ |
-| `tool_schemas` | ❌ | ❌ | ✅ **only** | ❌ | ❌ | ✅ | ✅ |
-| `env_var_schema` | ❌ | ✅ envVars[] | ✅ configSchema | ✅ **richest** | ❌ | ❌ | ❌ |
-| `package_info` | ❌ | ✅ **only** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `icon_url` | ❌ | ✅ icons[] | ✅ iconUrl | ❌ | ✅ avatarUrl | ❌ | ❌ |
-| `github_url` | ✅ html_url | ✅ | ❌ | ✅ repo.url | heuristic | ❌ | ❌ |
-| `license` | ✅ | ❌ | ❌ | ✅ SPDX | ❌ | ❌ | ❌ |
-| `tags` | ❌ | ❌ | ❌ | ✅ attributes[] | ✅ classification | ❌ | ❌ |
-| `verified` | ✅ always | ✅ | ✅ | ❌ | ✅ publisher | ❌ | ❌ |
-| `auth_type` | derived | derived | derived | patch | ❌ | ❌ | ❌ |
-| `resources[]` | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ paginated | ✅ |
-| `prompts[]` | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ paginated | ✅ |
+| Field | official | smithery | glama | mcp_directory | probe | sandbox |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `endpoint` | ✅ remotes[] | ✅ deploymentUrl | ❌ | ❌ | — | — |
+| `transport` | ✅ | ✅ connections[] | inferred | ✅ transportType | ✅ | ✅ |
+| `tool_schemas` | ❌ | ✅ **only** | ❌ | ❌ | ✅ | ✅ |
+| `env_var_schema` | ✅ envVars[] | ✅ configSchema | ✅ **richest** | ❌ | ❌ | ❌ |
+| `package_info` | ✅ **only** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `icon_url` | ✅ icons[] | ✅ iconUrl | ❌ | ✅ avatarUrl | ❌ | ❌ |
+| `github_url` | ✅ | ❌ | ✅ repo.url | heuristic | ❌ | ❌ |
+| `license` | ❌ | ❌ | ✅ SPDX | ❌ | ❌ | ❌ |
+| `tags` | ❌ | ❌ | ✅ attributes[] | ✅ classification | ❌ | ❌ |
+| `verified` | ❌ (open registry) | ✅ top-level bool | ❌ | ✅ publisher | ❌ | ❌ |
+| `is_canonical` | ❌ | ✅ bySmithery | ❌ | ❌ | ❌ | ❌ |
+| `use_count` | ❌ | ✅ useCount | ❌ | ❌ | ❌ | ❌ |
+| `auth_type` | derived | derived | patch | ❌ | ❌ | ❌ |
+| `resources[]` | ❌ | ✅ | ❌ | ❌ | ✅ paginated | ✅ |
+| `prompts[]` | ❌ | ✅ | ❌ | ❌ | ✅ paginated | ✅ |
+
+---
+
+## `verified` Field Definition
+
+`verified = true` means: **a trusted external party has explicitly vouched for this server**.
+
+| Source | How set | Meaning |
+|---|---|---|
+| **Smithery** | `s.verified === true` (top-level API field) | Smithery's own review process passed |
+| **Smithery (bySmithery)** | Always `true` when `bySmithery === true` | Smithery itself built it |
+| **official** | Always `false` at ingest | Open registry, namespace auth ≠ quality review |
+| **mcp.directory** | Enrichment only: `publisher.verified` | mcp.directory curator trust signal |
+
+> `verified` is NOT "this server exists in the official registry." The official MCP registry is open-submission — any developer can publish. `status: 'active'` only means the entry hasn't been moderated out.
+
+---
+
+## `is_canonical` Field Definition
+
+`is_canonical = true` means: **this is the authoritative, Smithery-managed integration for this domain**.
+
+Set only when `bySmithery === true` from the Smithery listing API. These are servers like Gmail, GitHub, Google Sheets, Exa — built and maintained by Smithery as first-class integrations.
+
+**Effect on search ranking:** `ORDER BY is_canonical DESC` is the first sort key in `search_servers()`. When a user's intent matches "use GitHub to do X", the Smithery-managed GitHub integration always appears before community GitHub scrapers.
+
+---
+
+## Trust Score — Redesigned (migration 031)
+
+| Signal | Points | Source of data |
+|---|---|---|
+| Security scan | 25 | CVE + static scan (`scanScore`) |
+| Uptime | 20 | 15-min cron (`uptime_pct`) |
+| Publisher credibility | 15 | `verified` field |
+| Real-world usage | 15 | `use_count` (Smithery) — log scale |
+| Deployment quality | 15 | Has `endpoint` + `tool_schemas` with `inputSchema` |
+| Schema stability | 10 | Days since `schema_changed_at` (not hardcoded) |
+| **Runtime penalties** | -15/-10 | failureRate / DLP |
+
+> **Key change from previous design:** No source-type bias. `stars` and `daysSinceChange` are no longer hardcoded by source. All inputs are real measured data. `verified` weight reduced from 40 → 15 pts so unverified high-quality servers can still score well.
 
 ---
 
@@ -106,7 +148,7 @@ flowchart TD
 ```
 deriveAuthType(source, transport, env_var_schema):
   env_var_schema present and non-empty  → 'api_key'
-  source='official' and transport=HTTP  → 'none'   (public MCP registry)
+  source='official' and transport=HTTP  → 'none'   (open MCP registry, public endpoints)
   source='smithery'                     → 'managed' (Smithery-managed auth)
   default                               → 'managed'
 
@@ -120,27 +162,36 @@ Enrichment patch (Glama adds env_var_schema to existing record):
 
 | Concept | DB `source` | File | Fetcher | API param |
 |---|---|---|---|---|
-| github.com/mcp org | `partner` | `partner.ts` | `fetchPartnerServers` | `partner` |
-| Official MCP registry | `official` | `official.ts` | `fetchOfficialServers` | `official` |
+| Open MCP Registry | `official` | `official.ts` | `fetchOfficialServers` | `official` |
 | Smithery | `smithery` | `smithery.ts` | `fetchSmitheryServers` | `smithery` |
 | Glama | `glama` | `glama.ts` | `fetchGlamaServers` | `glama` |
 | mcp.directory | `mcp_directory` | `mcp_directory.ts` | `fetchMcpDirectoryServers` | `mcp_directory` |
+| Self-submitted | `direct` | (API only) | — | — |
 
-> `vendor.ts` is a deprecated re-export shim → `partner.ts`. Will be removed in a future cleanup.
+> `partner.ts` and `vendor.ts` have been decommissioned. The `github.com/mcp` org does not exist. The concept of canonical/authoritative servers is now encoded as `is_canonical` in the DB, derived from Smithery's `bySmithery` field.
 
 ---
 
 ## "Safe to go" Checklist
 
 - [x] All 10 integration faults fixed
-- [x] vendor→partner rename complete, shim in place
-- [x] API enum clean (`'github'` removed, `'vendor'` removed, `'mcp_directory'` added)
+- [x] partner/vendor fully decommissioned (tombstoned, pending delete)
+- [x] is_canonical column added (migration 031)
+- [x] use_count column added (migration 031)
+- [x] verified correctly read from Smithery top-level field (not security.scanPassed)
+- [x] bySmithery captured and used to set is_canonical
+- [x] Trust score redesigned — no source-type bias, real signals only
+- [x] search_servers() ORDER BY is_canonical DESC
+- [x] partner rows migrated to direct in DB (migration 031)
+- [x] source_check constraint updated (partner in legacy block only)
+- [x] global_stats() updated (partner removed, canonical_servers added)
+- [x] API enum clean (partner removed)
+- [x] mcp/route.ts corrected (no Anthropic attribution, no hallucinated sources)
 - [x] schema_hash computed post-probe (matches drift cron)
 - [x] tools[] always synced from probe/sandbox result
 - [x] auth_type updated in enrichment patch path
 - [x] env_var_schema + package_info in search response
 - [x] api_key servers exempt from uptime probe
-- [x] partner.ts transport defaults to 'unknown'
 - [x] mcp_directory heuristic github_url for dedup
 - [x] extraction_metrics aligned pipeline ↔ response builder
 - [x] ToolExtractionSource type has 'readme_parsed'

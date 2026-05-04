@@ -18,7 +18,6 @@
 
 import { createServiceClient } from '@/lib/supabase/server';
 import {
-  fetchPartnerServers,
   fetchOfficialServers,
   fetchSmitheryServers,
   fetchGlamaServers,
@@ -34,23 +33,21 @@ import { log } from '@/lib/logger';
 
 // ── Source configuration ────────────────────────────────────────────────────
 
-// SourceKey = DB source values. 'vendor' is an API input alias for 'partner'.
-type SourceKey = 'partner' | 'official' | 'smithery' | 'glama' | 'mcp_directory';
-type SourceInput = 'all' | SourceKey | 'vendor'; // 'vendor' normalised → 'partner'
+type SourceKey   = 'official' | 'smithery' | 'glama' | 'mcp_directory';
+type SourceInput = 'all' | SourceKey;
 
 interface SourceConfig {
   key:     SourceKey;
   label:   string;
-  tier:    'primary' | 'enrichment' | 'partner';
+  tier:    'primary' | 'enrichment';
   fetcher: () => Promise<any[]>;
 }
 
 const SOURCES: SourceConfig[] = [
-  { key: 'partner',       label: 'Verified Organization Registry (github.com/mcp)', tier: 'partner',    fetcher: fetchPartnerServers },
-  { key: 'official',      label: 'Official MCP Registry',                           tier: 'primary',    fetcher: fetchOfficialServers },
-  { key: 'smithery',      label: 'Smithery',                                        tier: 'primary',    fetcher: fetchSmitheryServers },
-  { key: 'glama',         label: 'Glama',                                           tier: 'enrichment', fetcher: fetchGlamaServers },
-  { key: 'mcp_directory', label: 'mcp.directory',                                   tier: 'enrichment', fetcher: fetchMcpDirectoryServers },
+  { key: 'official',      label: 'Official MCP Registry',  tier: 'primary',    fetcher: fetchOfficialServers },
+  { key: 'smithery',      label: 'Smithery',               tier: 'primary',    fetcher: fetchSmitheryServers },
+  { key: 'glama',         label: 'Glama',                  tier: 'enrichment', fetcher: fetchGlamaServers },
+  { key: 'mcp_directory', label: 'mcp.directory',          tier: 'enrichment', fetcher: fetchMcpDirectoryServers },
 ];
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -61,13 +58,10 @@ export async function runIngest(source: SourceInput = 'all') {
   const startedAt = new Date().toISOString();
   const results: Record<string, any> = {};
 
-  // Normalize 'vendor' → 'partner'
-  const normalizedSource: SourceInput = source === 'vendor' ? 'partner' : source;
-
   // Determine which sources to run
-  const toRun = normalizedSource === 'all'
+  const toRun = source === 'all'
     ? SOURCES
-    : SOURCES.filter(s => s.key === normalizedSource);
+    : SOURCES.filter(s => s.key === source);
 
   if (toRun.length === 0) {
     log.warn('ingest:cron', `Unknown source: ${source}`);
@@ -76,7 +70,7 @@ export async function runIngest(source: SourceInput = 'all') {
 
   // Track run
   const { data: run } = await ingestRuns.insert({
-    source: normalizedSource, started_at: startedAt,
+    source, started_at: startedAt,
   }).select('id').single();
 
   try {
@@ -127,10 +121,10 @@ export async function runIngest(source: SourceInput = 'all') {
 
     return {
       success: true,
-      message: buildIngestMessage(normalizedSource, total),
+      message: buildIngestMessage(source, total),
       run: {
         id:          run?.id ?? null,
-        source:      normalizedSource,
+        source,
         started_at:  startedAt,
         finished_at: finishedAt,
         duration_ms: new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
@@ -155,7 +149,7 @@ export async function runIngest(source: SourceInput = 'all') {
       error: err.message,
       run: {
         id:          run?.id ?? null,
-        source:      normalizedSource,
+        source,
         started_at:  startedAt,
         finished_at: finishedAt,
       },

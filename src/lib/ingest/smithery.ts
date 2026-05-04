@@ -8,7 +8,8 @@
  *   Phase 1 — Listing sweep:
  *     GET https://registry.smithery.ai/servers?q=&page=N&pageSize=100
  *     Collects qualifiedName, displayName, description, iconUrl, homepage,
- *     verified (security.scanPassed), createdAt — NO tools, NO endpoint.
+ *     verified (top-level boolean), bySmithery, useCount, createdAt
+ *     — NO tools, NO endpoint.
  *
  *   Phase 2 — Detail fetch for ALL servers (concurrency 5):
  *     GET https://api.smithery.ai/v2/servers/{qualifiedName}
@@ -236,8 +237,23 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
     description:    string;
     iconUrl?:       string;
     homepage?:      string;
+    /**
+     * Top-level `verified` boolean from the Smithery listing API.
+     * True = Smithery's review process passed for this server.
+     * NOTE: This is NOT nested under `security.scanPassed` — that path does not exist.
+     */
     verified:       boolean;
-    useCount?:      number;
+    /**
+     * True = Smithery itself built and maintains this server (Gmail, GitHub, Google Sheets, etc.).
+     * These are Smithery's own curated integrations — the canonical choice for their domain.
+     * Used to set is_canonical = true in the DB.
+     */
+    bySmithery:     boolean;
+    /**
+     * Real-world usage count (agent invocations). Grade B trust signal.
+     * Log scale: 55,000 uses = ~14.7 trust pts. Zero uses = 0 pts.
+     */
+    useCount:       number;
     createdAt?:     string;
     updatedAt?:     string;
     repository?:    string;
@@ -303,8 +319,12 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
         description:   typeof s.description === 'string' ? s.description : '',
         iconUrl:       typeof s.iconUrl === 'string' ? s.iconUrl : undefined,
         homepage:      typeof s.homepage === 'string' ? s.homepage : undefined,
-        verified:      s.security?.scanPassed === true,
-        useCount:      typeof s.useCount === 'number' ? s.useCount : undefined,
+        // `verified` is a top-level boolean in the Smithery listing API response.
+        // `bySmithery: true` means Smithery itself built and hosts this server.
+        // When bySmithery is true, the server is definitionally verified.
+        verified:      s.verified === true || s.bySmithery === true,
+        bySmithery:    s.bySmithery === true,
+        useCount:      typeof s.useCount === 'number' ? s.useCount : 0,
         createdAt:     s.createdAt ?? undefined,
         updatedAt:     s.updatedAt ?? undefined,
         repository:    typeof s.repository === 'string' ? s.repository : undefined,
@@ -382,6 +402,8 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
       source_id:     listing.qualifiedName,
       smithery_id:   listing.qualifiedName,
       verified:      listing.verified,
+      by_smithery:   listing.bySmithery,
+      use_count:     listing.useCount,
       upstream_updated_at: listing.updatedAt ?? listing.createdAt ?? null,
       raw_upstream_json: listing as unknown as Record<string, unknown>,
     });

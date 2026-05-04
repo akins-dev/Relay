@@ -99,51 +99,100 @@ export function scanServer(params: {
 
 
 
+/**
+ * Trust Score — L5 Security Layer
+ *
+ * Composite 0–100 score answering: "How safe and reliable is this server for
+ * an agent to invoke?" Designed for a security-first MCP proxy registry.
+ *
+ * Weights (total = 100 base pts):
+ *   Security quality    25 pts  CVE + static scan — the core value prop
+ *   Uptime              20 pts  Runtime cron (every 15 min)
+ *   Publisher credibility 15 pts  verified = trusted external party vouched for it
+ *   Real-world usage    15 pts  useCount (Smithery) or stars (GitHub) — log scale
+ *   Deployment quality  15 pts  Has working endpoint + tool schemas with inputSchema
+ *   Schema stability    10 pts  Days since schema hash last changed (max 90d)
+ *
+ * Runtime penalties (applied post-ingest from metering):
+ *   High failure rate   up to -15 pts
+ *   DLP trigger rate    up to -10 pts
+ *
+ * Design principles:
+ *   - No source-type bias. All inputs must come from real measured data.
+ *   - verified is meaningful but not dominant (15 pts, not 40).
+ *     Unverified servers can still reach 85 if everything else is excellent.
+ *   - useCount replaces the fake stars hardcoding from the old pipeline.
+ *   - deploymentQuality rewards servers that actually work end-to-end.
+ */
 export function computeTrustScore(params: {
-  verified:          number;
-  uptimePct:         number;
-  stars:             number;
-  daysSinceChange:   number;
-  // Optional: scan quality score (0-100, from L1/CVE scan results).
-  // If not provided, assumed clean (100). Used by uptime cron which reads scan_issues.
-  scanScore?:        number;
-  // Optional: request failure rate from metering (0-100, 0=perfect)
-  failureRatePct?:   number;
-  // Optional: DLP trigger rate from proxy calls (0-100, 0=clean)
-  dlpRatePct?:       number;
-  // Optional: days since first listing (for new server boost in ranking, not score)
-  daysSinceListing?: number;
+  /** 1 if publisher verified by trusted source (Smithery review, mcp.directory), 0 otherwise */
+  verified:           number;
+  /** 0–100 uptime percentage from the 15-min uptime cron. Default 100 at ingest. */
+  uptimePct:          number;
+  /**
+   * Real-world usage count — useCount from Smithery, or GitHub stars.
+   * Use 0 if unknown. Log scale applied internally.
+   */
+  usageCount:         number;
+  /**
+   * Days since the schema_hash last changed.
+   * Compute from schema_changed_at or first_seen_at. Use 0 for new servers.
+   */
+  daysSinceChange:    number;
+  /**
+   * 0–100 scan quality score from the CVE + static scan pipeline.
+   * 100 = fully clean. Defaults to 100 if not provided (optimistic for new servers).
+   */
+  scanScore?:         number;
+  /**
+   * 1 if server has a working HTTP endpoint AND at least one tool_schema with
+   * an inputSchema. Indicates the server is actually invokable end-to-end.
+   */
+  deploymentQuality?: number;
+  /** Request failure rate from proxy metering (0–100, 0 = perfect). */
+  failureRatePct?:    number;
+  /** DLP trigger rate from proxy calls (0–100, 0 = clean). */
+  dlpRatePct?:        number;
 }): number {
-  let s = 0;
-
-  // Verified publisher — 40 pts
-  s += params.verified ? 40 : 0;
-
-  // Uptime — 25 pts (measured every 15 min by cron)
-  s += (params.uptimePct / 100) * 25;
-
-  // Schema stability — 15 pts (servers that mutate schemas are less trustworthy)
-  s += (Math.min(params.daysSinceChange, 90) / 90) * 15;
-
-  // Community signals — 10 pts (log scale prevents large servers dominating)
-  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 10;
-
-  // Scan quality — 10 pts (CVE and static scan results)
-  // scanScore is 0-100 from the scan pipeline; 100 = fully clean
+  // ── Security quality — 25 pts ──────────────────────────────────────────────
+  // CVE scan + static scan. The project's primary value prop.
   const scanScore = params.scanScore ?? 100;
-  s += (Math.min(100, Math.max(0, scanScore)) / 100) * 10;
+  const securityPts = (Math.min(100, Math.max(0, scanScore)) / 100) * 25;
 
-  // Runtime penalties (from metering — applied after ingest scores stabilise)
+  // ── Uptime — 20 pts ────────────────────────────────────────────────────────
+  // Measured every 15 min by the uptime cron. Defaults to 100 at ingest time.
+  const uptimePts = (Math.min(100, Math.max(0, params.uptimePct)) / 100) * 20;
+
+  // ── Publisher credibility — 15 pts ─────────────────────────────────────────
+  // verified = a trusted external party (Smithery review, mcp.directory curator)
+  // has explicitly vouched for this server. Not just "it exists in a registry."
+  const credibilityPts = params.verified ? 15 : 0;
+
+  // ── Real-world usage — 15 pts ──────────────────────────────────────────────
+  // useCount from Smithery (real agent invocations) or GitHub stars.
+  // Log scale: 10 uses = 1 pt, 100 = 2 pts, 1000 = 3 pts, 10k = 4 pts, 100k = 5 pts (×3)
+  const usagePts = Math.min(Math.log10(Math.max(params.usageCount, 1)) / 5, 1) * 15;
+
+  // ── Deployment quality — 15 pts ────────────────────────────────────────────
+  // 1 if server has a live HTTP endpoint AND at least one tool schema with
+  // inputSchema. This means an agent can actually call it end-to-end.
+  const deploymentPts = (params.deploymentQuality ?? 0) * 15;
+
+  // ── Schema stability — 10 pts ──────────────────────────────────────────────
+  // Servers that frequently mutate their schema are less predictable.
+  // Computed from actual schema_hash change history (not hardcoded).
+  const stabilityPts = (Math.min(params.daysSinceChange, 90) / 90) * 10;
+
+  let s = securityPts + uptimePts + credibilityPts + usagePts + deploymentPts + stabilityPts;
+
+  // ── Runtime penalties (from metering — applied after ingest) ───────────────
   // High request failure rate: up to -15 pts
   if (params.failureRatePct !== undefined) {
-    const failurePenalty = (params.failureRatePct / 100) * 15;
-    s = Math.max(0, s - failurePenalty);
+    s = Math.max(0, s - (params.failureRatePct / 100) * 15);
   }
-
-  // DLP trigger rate: up to -10 pts (server returning credentials in responses)
+  // DLP trigger rate: up to -10 pts (server leaking credentials in responses)
   if (params.dlpRatePct !== undefined && params.dlpRatePct > 5) {
-    const dlpPenalty = ((params.dlpRatePct - 5) / 100) * 10;
-    s = Math.max(0, s - dlpPenalty);
+    s = Math.max(0, s - ((params.dlpRatePct - 5) / 100) * 10);
   }
 
   return Math.round(Math.min(100, Math.max(0, s)));

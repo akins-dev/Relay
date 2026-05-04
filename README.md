@@ -7,7 +7,7 @@ Architecture flows: [`docs/ARCHITECTURE_FLOWS.md`](docs/ARCHITECTURE_FLOWS.md)
 
 > "Agent development will never scale if we treat every new tool as a hard-coded 1:1 integration."
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-e8673a.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.25-black)](https://nextjs.org)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E)](https://supabase.com)
 
@@ -157,4 +157,4 @@ POST /api/admin/ingest                        Trigger ingest from the signed-in 
 
 ## License
 
-Apache 2.0 License — Built by [Akinbobola Emmanuel](https://github.com/akins-dev)
+MIT License — Built by [Akinbobola Emmanuel](https://github.com/akins-dev)

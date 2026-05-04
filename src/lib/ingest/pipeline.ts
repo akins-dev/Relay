@@ -334,16 +334,36 @@ export async function upsertServers(
       }
 
       // Trust scoring
-      if (s.source === 'partner' || s.source === 'official') s.verified = true;
+      // verified is set upstream by the fetcher from real source data.
+      // Official registry: verified = false (open-submission, status=active is not a quality gate).
+      // Smithery: verified = s.verified (top-level boolean from listing API — now correctly read).
+      // mcp.directory: can upgrade via enrichment pass only.
       const hasHighSeverity = cveIssues.some(i => i.severity === 'high');
       const ingestScanScore = hasHighSeverity ? 50 : 100;
 
+      // Deployment quality: 1 if server has a live HTTP endpoint AND at least one
+      // tool schema with a real inputSchema (i.e., an agent can actually call it).
+      const hasEndpoint    = !!(s.endpoint);
+      const hasRichSchemas = toolSchemas.some((t: any) => t.inputSchema && Object.keys(t.inputSchema).length > 0);
+      const deploymentQuality = (hasEndpoint && hasRichSchemas) ? 1 : 0;
+
+      // Schema stability: compute from schema_changed_at if the row already exists,
+      // or 0 for new servers (honest default — they haven't proven stability yet).
+      const schemaChangedAt = existing?.schema_changed_at ?? null;
+      const daysSinceChange = schemaChangedAt
+        ? Math.floor((Date.now() - new Date(schemaChangedAt).getTime()) / 86_400_000)
+        : 0;
+
+      // Usage count: real signal from Smithery (useCount), or 0 for other sources.
+      const usageCount = s.use_count ?? 0;
+
       const trustScore = computeTrustScore({
-        verified:        s.verified ? 1 : 0,
-        uptimePct:       100,
-        stars:           (s.source === 'official' || s.source === 'partner') ? 50 : 0,
-        daysSinceChange: (s.source === 'official' || s.source === 'partner') ? 90 : 0,
-        scanScore:       ingestScanScore,
+        verified:         s.verified ? 1 : 0,
+        uptimePct:        100,
+        usageCount,
+        daysSinceChange,
+        scanScore:        ingestScanScore,
+        deploymentQuality,
       });
 
       const status = hasHighSeverity ? 'pending_review' : 'active';
@@ -402,6 +422,12 @@ export async function upsertServers(
         trust_score:       trustScore,
         last_scanned_at:   new Date().toISOString(),
         upstream_updated_at: s.upstream_updated_at ?? null,
+        // is_canonical: true when Smithery itself built and hosts this server.
+        // These are Smithery's own curated integrations — the definitive canonical
+        // choice for their domain. Drives is_canonical DESC in search ranking.
+        is_canonical:      s.by_smithery === true,
+        // use_count stored for analytics and future trust score recalculations.
+        use_count:         s.use_count ?? null,
       };
 
       let serverId: string | null = existing?.id ?? null;

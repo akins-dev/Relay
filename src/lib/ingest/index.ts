@@ -10,12 +10,12 @@
  *   smithery.ts       — PRIMARY: Smithery (endpoints + full tool schemas via detail API)
  *   glama.ts          — ENRICHMENT: Glama (license, env_var_schema, tags, github_url)
  *   mcp_directory.ts  — ENRICHMENT: mcp.directory (verified, icon_url, transport hint, github_url heuristic)
- *   partner.ts        — PARTNER: github.com/mcp org (verified org repos — canonical name)
- *   vendor.ts         — @deprecated re-export shim — use partner.ts
  *   pipeline.ts       — Upsert pipeline (dedup, enrichment pass, probe, DB write)
  *   legacy-bridge.ts  — Bridges to old ingest.ts functions during migration
  *
- * Removed sources:
+ * Removed sources (dead / hallucinated):
+ *   - partner.ts      — github.com/mcp org does not exist; concept replaced by is_canonical DB field
+ *   - vendor.ts       — deprecated re-export shim for partner.ts; both removed
  *   - github.ts       — GitHub has no standard MCP server listing API
  *   - PulseMCP        — Returns 403
  *   - ClaudeMCP       — Fragile __NEXT_DATA__ scraping
@@ -45,13 +45,6 @@ export { fetchSmitheryServers }       from './smithery';
 // ── Fetchers — Enrichment (enrich via github_url cross-reference) ─────────────
 export { fetchGlamaServers }          from './glama';
 export { fetchMcpDirectoryServers }   from './mcp_directory';
-
-// ── Fetchers — Partner (verified org repos, github.com/mcp) ──────────────────
-// DB source value: 'partner'  |  API input: 'partner' (old alias 'vendor' removed)
-export { fetchPartnerServers }        from './partner';
-// @deprecated — use fetchPartnerServers. Kept as compat shim for existing call sites.
-export { fetchVendorServers }         from './vendor';
-
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
 export { upsertServers }              from './pipeline';

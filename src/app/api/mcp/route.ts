@@ -14,8 +14,11 @@ export async function GET() {
     version:     '0.1.0',
     description: [
       `Open-source discovery, trust, and invocation layer for the MCP ecosystem.`,
-      'Ingests from five sources: official MCP registry, Smithery, Glama, GitHub, and verified vendor organizations. Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search. stdio-only servers are excluded from proxy invocation.',
-      'Every server is scanned through 14 security layers before listing. Runtime proxy adds 5 additional layers on every call.',
+      'Ingests from four sources: the open MCP registry, Smithery, Glama, and mcp.directory.',
+      'Only servers with HTTP endpoints (SSE or StreamableHTTP) are returned in agent search.',
+      'stdio-only servers are excluded from proxy invocation.',
+      'Every server is scanned through 14 security layers before listing.',
+      'Runtime proxy adds 5 additional layers on every call.',
       'Agents invoke remote MCP tools through the proxy — request blocking, response scanning, and audit trails on every call.',
     ].join(' '),
     why: {
@@ -29,11 +32,11 @@ export async function GET() {
       calls_today:      s.calls_today      ?? 0,
     },
     sources: [
-      'github.com/mcp — verified organization repositories (Google, Stripe, etc.)',
-      'registry.modelcontextprotocol.io — official Anthropic registry',
-      'registry.smithery.ai — 7,300+ community servers (HTTP endpoint servers only returned in agent search)',
-      'github.com/modelcontextprotocol/servers — GitHub-verified servers',
-      'direct — servers published directly to this registry',
+      'registry.modelcontextprotocol.io — open MCP registry (self-published servers, namespace-authenticated)',
+      'registry.smithery.ai — 5,000+ servers with live endpoints and pre-stored tool schemas',
+      'glama.ai — enrichment metadata (license, env vars, tags)',
+      'mcp.directory — enrichment metadata (publisher verification, transport hints)',
+      'direct — servers submitted directly to this registry',
     ],
     endpoints: {
       search:      `GET  ${getSearchUrlExample()}&limit={n}`,

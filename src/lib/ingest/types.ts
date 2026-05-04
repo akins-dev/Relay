@@ -28,7 +28,7 @@ export type IngestSource =
   | 'smithery'       // Primary: registry.smithery.ai
   | 'glama'          // Enrichment only: glama.ai
   | 'mcp_directory'  // Enrichment only: mcp.directory
-  | 'partner';
+  | 'direct';        // Servers submitted directly to this registry
 
 // ── Transport enum ───────────────────────────────────────────────────────────
 
@@ -205,6 +205,20 @@ export interface IngestServer {
   glama_id?:          string | null;
   mcp_directory_id?:  string | null;
   upstream_updated_at?: string | null;
+
+  /**
+   * True when Smithery itself built and hosts this server (bySmithery: true in listing API).
+   * These are Smithery's own curated integrations (Gmail, GitHub, Google Sheets, etc.).
+   * Used to set is_canonical = true in the DB for superior search ranking.
+   */
+  by_smithery?:       boolean;
+
+  /**
+   * Real-world usage count from Smithery listing API (useCount field).
+   * Grade B signal for trust scoring — proxy for "this actually works and is used."
+   * Only populated for source = 'smithery'.
+   */
+  use_count?:         number | null;
 
   // ── Raw upstream (→ server_connection_profiles side table) ────────────────
 

@@ -360,78 +360,80 @@ describe('L1 — scanServer dangerous tool names', () => {
   });
 });
 
-// ── L5: Trust score (lines 117-149) ───────────────────────────────────────────
+// ── L5: Trust score ────────────────────────────────────────────────────────────
 describe('L5 — computeTrustScore', () => {
-  test('unverified server with dirty scan scores 0', () => {
+  test('unverified server with dirty scan and no usage scores 0', () => {
     const score = computeTrustScore({
       verified: 0,
       uptimePct: 0,
-      stars: 0,
+      usageCount: 0,
       daysSinceChange: 0,
       scanScore: 0,
     });
     expect(score).toBe(0);
   });
 
-  test('fully verified, perfect uptime, mature server scores high', () => {
+  test('fully verified, perfect uptime, high usage, mature server scores very high', () => {
     const score = computeTrustScore({
       verified: 1,
       uptimePct: 100,
-      stars: 5000,
+      usageCount: 50_000,
       daysSinceChange: 90,
+      deploymentQuality: 1,
     });
     expect(score).toBeGreaterThanOrEqual(90);
   });
 
-  test('omitted scanScore defaults to 100 (adds 10 pts)', () => {
+  test('omitted scanScore defaults to 100 (clean)', () => {
     const withDefault = computeTrustScore({
-      verified: 0, uptimePct: 0, stars: 0, daysSinceChange: 0,
+      verified: 0, uptimePct: 0, usageCount: 0, daysSinceChange: 0,
     });
     const withExplicit = computeTrustScore({
-      verified: 0, uptimePct: 0, stars: 0, daysSinceChange: 0, scanScore: 100,
+      verified: 0, uptimePct: 0, usageCount: 0, daysSinceChange: 0, scanScore: 100,
     });
     expect(withDefault).toBe(withExplicit);
-    expect(withDefault).toBe(10);
+    // 25 pts security (scanScore=100) + 0 everything else = 25
+    expect(withDefault).toBe(25);
   });
 
-  test('scanScore 0 vs 100 differs by 10 pts', () => {
+  test('scanScore 0 vs 100 differs by 25 pts (security weight)', () => {
     const clean = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 100,
+      verified: 0, uptimePct: 0, usageCount: 0, daysSinceChange: 0, scanScore: 100,
     });
     const dirty = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 0,
+      verified: 0, uptimePct: 0, usageCount: 0, daysSinceChange: 0, scanScore: 0,
     });
-    expect(clean - dirty).toBe(10);
+    expect(clean - dirty).toBe(25);
   });
 
   test('scanScore clamped — values above 100 do not overflow', () => {
     const score = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 200,
+      verified: 0, uptimePct: 100, usageCount: 0, daysSinceChange: 90, scanScore: 200,
     });
     expect(score).toBeLessThanOrEqual(100);
   });
 
   test('high failureRatePct reduces score', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, failureRatePct: 100 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90 });
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90, failureRatePct: 100 });
     expect(penalised).toBeLessThan(base);
   });
 
   test('failureRatePct 0 applies no penalty', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, failureRatePct: 0 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90 });
+    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90, failureRatePct: 0 });
     expect(noPenalty).toBe(base);
   });
 
   test('dlpRatePct above 5 reduces score', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, dlpRatePct: 50 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90 });
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90, dlpRatePct: 50 });
     expect(penalised).toBeLessThan(base);
   });
 
   test('dlpRatePct at or below 5 applies no penalty', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, dlpRatePct: 5 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90 });
+    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90, dlpRatePct: 5 });
     expect(noPenalty).toBe(base);
   });
 

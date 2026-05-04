@@ -162,7 +162,8 @@ export async function POST(req: NextRequest) {
     const status     = scanResult.passed ? 'active' : 'rejected';
     const trustScore = computeTrustScore({
       verified: 0, scanScore: scanResult.score,
-      uptimePct: 100, stars: 0, daysSinceChange: 0,
+      uptimePct: 100, usageCount: 0, daysSinceChange: 0,
+      deploymentQuality: scanResult.passed ? 1 : 0,
     });
 
     const { data: server, error: insertErr } = await serversTable.insert({
