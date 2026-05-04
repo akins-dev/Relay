@@ -114,7 +114,7 @@ GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 - \`tools[].inputSchema\` — exact arguments required (use this, do not guess)
 - \`resources\` — list of data contexts the server exposes (uri, name, mimeType)
 - \`prompts\` — list of prompt templates (name, description, arguments)
-- \`trust_score\` — 0–100. Prefer > 80 for production. > 90 = verified + stable.
+- \`trust_score\` — 0–100. Earned behavioral reliability score. Prefer > 70 for production. > 85 = verified + proven runtime reliability.
 - \`latency_ms\` — average upstream latency
 - \`source\` — \`official\` | \`smithery\` | \`github\` | \`direct\`
 
@@ -237,10 +237,10 @@ Then call:
 
 | Score | Meaning | Recommendation |
 |-------|---------|----------------|
-| 90–100 | Verified publisher, stable schema, high uptime | Safe for production |
-| 80–89 | Good signal, passed all scans | Suitable for most use cases |
-| 70–79 | Passed scans, limited history | Use with awareness |
-| < 70 | Limited data or minor issues | Test before production use |
+| 85–100 | Verified publisher + proven runtime reliability (many successful invocations) | Safe for production |
+| 70–84 | Good signal — passed all scans, some invoke history | Suitable for most use cases |
+| 55–69 | New or unproven — scans passed, limited runtime data | Test before production use |
+| < 55 | Active issues — scan failures, high error rate, or poor uptime | Use with caution |
 
 ---
 

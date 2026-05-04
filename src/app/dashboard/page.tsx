@@ -322,12 +322,12 @@ function DashboardContent() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground/60">
-                          TRUST <span className={s.trust_score >= 85 ? 'text-green-400' : s.trust_score >= 70 ? 'text-amber-400' : 'text-red-400'}>{s.trust_score}</span>
+                          TRUST <span className={s.trust_score >= 85 ? 'text-green-400' : s.trust_score >= 65 ? 'text-amber-400' : 'text-red-400'}>{s.trust_score}</span>
                         </div>
                         <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10">
                           <div className={cn(
                             'h-full rounded-full transition-all duration-1000',
-                            s.trust_score >= 85 ? 'bg-green-500' : s.trust_score >= 70 ? 'bg-amber-400' : 'bg-red-400'
+                            s.trust_score >= 85 ? 'bg-green-500' : s.trust_score >= 65 ? 'bg-amber-400' : 'bg-red-400'
                           )} style={{ width: `${s.trust_score}%` }} />
                         </div>
                       </div>

@@ -340,36 +340,29 @@ export async function upsertServers(
         }
       }
 
-      // Trust scoring
-      // verified is set upstream by the fetcher from real source data.
-      // Official registry: verified = false (open-submission, status=active is not a quality gate).
-      // Smithery: verified = s.verified (top-level boolean from listing API — now correctly read).
-      // mcp.directory: can upgrade via enrichment pass only.
-      const hasHighSeverity = cveIssues.some(i => i.severity === 'high');
-      const ingestScanScore = hasHighSeverity ? 50 : 100;
-
-      // Deployment quality: 1 if server has a live HTTP endpoint AND at least one
-      // tool schema with a real inputSchema (i.e., an agent can actually call it).
-      const hasEndpoint    = !!(s.endpoint);
-      const hasRichSchemas = toolSchemas.some((t: any) => t.inputSchema && Object.keys(t.inputSchema).length > 0);
+      // Trust scoring.
+      // At ingest time there is no invoke history yet — invokeCount and successCount
+      // are 0. The Bayesian prior in computeTrustScore gives a weak-positive floor
+      // (~7.9 pts) rather than 0, which correctly signals "unproven, not bad."
+      // The score grows as agents invoke this server via the proxy and
+      // intent_server_mappings accumulates real success/failure data.
+      const hasHighSeverity   = cveIssues.some(i => i.severity === 'high');
+      const ingestScanScore   = hasHighSeverity ? 50 : 100;
+      const hasEndpoint       = !!(s.endpoint);
+      const hasRichSchemas    = toolSchemas.some((t: any) => t.inputSchema && Object.keys(t.inputSchema).length > 0);
       const deploymentQuality = (hasEndpoint && hasRichSchemas) ? 1 : 0;
-
-      // Schema stability: compute from schema_changed_at if the row already exists,
-      // or 0 for new servers (honest default — they haven't proven stability yet).
-      const schemaChangedAt = existing?.schema_changed_at ?? null;
-      const daysSinceChange = schemaChangedAt
+      const schemaChangedAt   = existing?.schema_changed_at ?? null;
+      const daysSinceChange   = schemaChangedAt
         ? Math.floor((Date.now() - new Date(schemaChangedAt).getTime()) / 86_400_000)
         : 0;
 
-      // Usage count: real signal from Smithery (useCount), or 0 for other sources.
-      const usageCount = s.use_count ?? 0;
-
       const trustScore = computeTrustScore({
-        verified:         s.verified ? 1 : 0,
-        uptimePct:        100,
-        usageCount,
+        verified:          s.verified ? 1 : 0,
+        uptimePct:         100,
+        invokeCount:       0,   // No invoke history at ingest; grows from intent_server_mappings
+        successCount:      0,
         daysSinceChange,
-        scanScore:        ingestScanScore,
+        scanScore:         ingestScanScore,
         deploymentQuality,
       });
 

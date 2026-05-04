@@ -761,7 +761,7 @@ export default function AdminPage() {
                 <tr key={row.name}>
                   <TD mono color={C.blue}>{row.name}</TD>
                   <TD>{row.source}</TD>
-                  <TD color={row.trust_score >= 85 ? C.green : row.trust_score >= 70 ? C.orange : C.red}>
+                  <TD color={row.trust_score >= 85 ? C.green : row.trust_score >= 65 ? C.orange : C.red}>
                     {row.trust_score}
                   </TD>
                   <TD>{fmt(row.calls_30d)}</TD>

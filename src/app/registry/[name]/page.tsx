@@ -108,7 +108,7 @@ export default function ServerDetailPage() {
     </div>
   );
 
-  const trustColor = server.trust_score >= 90 ? 'var(--green)' : server.trust_score >= 70 ? 'var(--yellow)' : 'var(--red)';
+  const trustColor = server.trust_score >= 90 ? 'var(--green)' : server.trust_score >= 65 ? 'var(--yellow)' : 'var(--red)';
   const authorName = (server as any).profiles?.username ?? (server as any).author_name ?? 'unknown';
 
   const rawTransport   = (server as any).transport ?? 'unknown';

@@ -201,10 +201,10 @@ export function SearchSpotlight({ onSearch, defaultValue = '' }: SearchSpotlight
                   <div className={cn(
                     'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold',
                     hit.trust_score >= 85
-                      ? 'bg-green-500/10 text-green-400'
-                      : hit.trust_score >= 70
-                        ? 'bg-amber-400/10 text-amber-400'
-                        : 'bg-white/5 text-[#94a3b8]'
+                      ? 'bg-green-500/10 text-green-400'   // verified + proven reliability
+                      : hit.trust_score >= 65
+                        ? 'bg-amber-400/10 text-amber-400' // new/clean — Bayesian prior range
+                        : 'bg-white/5 text-[#94a3b8]'      // active issues or very low signal
                   )}>
                     {hit.trust_score}
                   </div>
