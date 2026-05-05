@@ -1,6 +1,6 @@
 # Relay Technical Backbone
 
-Last updated: 2026-04-25
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Status: Canonical living technical reference
 
 ## 1. Purpose
@@ -186,9 +186,10 @@ These are useful but imperfect and should be treated as approximation layers:
 
 These depend on accumulated usage data:
 
-- `intent_server_mappings`
-- `get_intent_boosts(...)`
+- `intent_server_mappings` (invoke_count, success_count per server)
+- `get_intent_boosts(...)` for search reranking
 - search reranking from historical success/failure
+- **trust score behavioral reliability slot** — the Bayesian-smoothed invoke success rate from ISM is now a first-class trust signal, not a vanity metric. This closes the feedback loop between runtime outcomes and registry quality scores.
 
 Important: there is no trained probabilistic routing model in production yet. The system is still lexical + heuristic + empirical aggregate boosts, not ML-routed.
 
@@ -312,18 +313,23 @@ Priority 2:
 
 ### 7.1 Inbound Registry Sources
 
-Current implemented or partially implemented upstream source fetchers:
+Active source fetchers wired into `runIngest()`:
 
-- official MCP registry
-- Smithery
-- Glama
-- GitHub `modelcontextprotocol/servers`
-- vendor / partner GitHub org scan
-- ClaudeMCP
-- MCP.so
-- MCP.run fetcher exists in code but is not wired into `runIngest()`
-- Composio fetcher exists in code but is not wired into `runIngest()`
-- PulseMCP fetcher intentionally returns empty because public API is unavailable
+| Source | Tier | Notes |
+|---|---|---|
+| Official MCP Registry | Primary | Full endpoints + tool schemas |
+| Smithery | Primary | Full endpoints + tool schemas + `verified` flag |
+| Glama | Enrichment | Via github_url, enriches existing rows |
+| mcp.directory | Enrichment | Via github_url, enriches existing rows |
+
+Decommissioned sources (removed from `runIngest()`):
+
+- GitHub `modelcontextprotocol/servers` — no standard MCP server listing API
+- PulseMCP — public API returns 403
+- ClaudeMCP — relied on fragile `__NEXT_DATA__` scraping
+- MCP.so — no JSON API
+- mcpservers.org — no API (static list)
+- MCP.run / Composio — fetchers exist in code but not wired in (no active API contract)
 
 ### 7.2 Runtime Surfaces
 
@@ -526,14 +532,22 @@ If upstream description is missing or low quality:
 
 ### 9.11 Trust Score Initialization
 
-Current ingest-time trust score uses:
+At ingest time, there is no invoke history yet. The pipeline passes `invokeCount: 0, successCount: 0` to `computeTrustScore()`, which applies a Beta(3,1) Bayesian prior to give new servers a floor of ~8 pts in the behavioral reliability slot rather than 0. This correctly signals "unproven" rather than "broken."
 
-- verified publisher signal
-- assumed `uptimePct = 100`
-- synthetic `stars = 50` and `daysSinceChange = 90` for official/partner rows
-- scan score from CVE outcome
+The trust score computation at ingest time uses:
 
-This is deterministic but intentionally optimistic for trusted sources on first ingest.
+- `verified` publisher signal from upstream source
+- `uptimePct: 100` (assumed at ingest; uptime cron will update this within 15 min)
+- `invokeCount: 0, successCount: 0` (Bayesian prior gives ~8pts floor)
+- `scanScore`: 100 if no CVEs found; 50 if high-severity CVEs present
+- `deploymentQuality: 1` if server has a working endpoint **and** at least one tool schema with `inputSchema`; 0 otherwise
+- `daysSinceChange`: computed from `schema_changed_at` if the row already exists; 0 for new servers
+
+This is deterministic and source-agnostic. No synthetic `stars` or hardcoded `daysSinceChange` overrides are applied. The score grows automatically as:
+
+1. Uptime cron recomputes with real uptime data (updates uptime slot)
+2. Agents invoke the server via proxy and `intent_server_mappings` accumulates success/failure data (updates behavioral slot)
+3. `schema_changed_at` ages without mutations (updates stability slot)
 
 ### 9.12 Upsert Stage
 
@@ -839,12 +853,12 @@ The docs should avoid drifting into:
 
 ### Obstacles
 
-- source contract drift across route, schema, and code
-- incomplete wiring of some source adapters
-- endpoint dedup bug
 - transport truth is still partly heuristic
 - `stdio` extraction remains weak without a better execution strategy
 - documentation drift can reintroduce narrative confusion
+- ingest does not yet include MCP.run or Composio (fetchers exist but are not wired into `runIngest()`)
+
+> **Resolved since 2026-04-23:** Source contract drift (route vs ingest) is fixed — the route and `runIngest()` now accept exactly the same four sources. Endpoint dedup is improved. The search RPC schema is fully synchronized in migration 032.
 
 ### Trade-Offs
 

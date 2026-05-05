@@ -1,6 +1,6 @@
 # Relay Architecture System Map
 
-Last updated: 2026-04-25
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Status: Deep code-grounded architecture overview
 
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
@@ -292,12 +292,14 @@ Flow:
 Search is not just retrieval. It is also a control-surface shaper:
 
 - ranked capability options
-- trust score
+- trust score (Bayesian behavioral model; also exposed as `invoke_count` for maturity context)
 - transport
 - proxy availability
 - trimmed schemas
 - credential setup guidance
 - correlation ID for the learning loop
+
+Search diversity (migration 032): a soft 8% penalty is applied to servers from over-represented categories that score below the result-set median. The threshold is always relative to the current query result set — no hardcoded global cutoff.
 
 ## 7. Guarded Invocation Flow
 
@@ -572,8 +574,8 @@ Per server:
    - fall back to README parsing
 8. scan npm dependencies once per repo
 9. enrich weak descriptions from README if needed
-10. compute trust score
-11. derive server status
+10. compute trust score using `computeTrustScore()` with `invokeCount: 0, successCount: 0` at ingest time — Bayesian prior gives a ~8pt floor ("unproven"), not zero ("broken"). Score grows as the uptime cron integrates real invoke data from `intent_server_mappings`
+11. derive server status (`active` or `pending_review` for high-severity CVEs)
 12. insert or update canonical `servers` row
 13. write `scan_results` if needed
 
@@ -585,8 +587,10 @@ Relay search quality depends on registry quality. Ingest is not cosmetic metadat
 - transport truth
 - schema quality
 - auth hints
-- trust score
+- **initial trust score** (behavioral slot starts at ~8pts Bayesian floor; grows as invoke data accumulates)
 - proxy availability
+
+The behavioral reliability slot in the trust score means ingest quality and runtime quality are now coupled: the registry score is honest about what is known at listing time, and it improves automatically as agents use the server — no manual curation required.
 
 ## 12. MCP Probe Flow
 
@@ -643,21 +647,27 @@ This is the live feedback loop that turns Relay from a static registry into a le
 Primary code:
 
 - `src/lib/cron/uptime.ts`
+- `src/lib/security.ts` (`computeTrustScore`)
 
 Flow:
 
-1. cron selects active endpoint-bearing servers
-2. `probeUptime(...)` checks liveness and latency
+1. cron selects all active servers
+2. for HTTP-capable servers: `probeUptime(...)` checks liveness and latency
 3. EWMA uptime is updated
 4. EWMA latency is updated
-5. trust score is recomputed from:
-   - verified status
-   - scan quality
-   - stars
-   - uptime
-   - stability proxy
-6. `scan_results` records the uptime outcome
-7. `cron_job_runs` records the job result
+5. **behavioral data batch fetch**: cron queries `intent_server_mappings` for all active server names in one batch, building an `invokeCount`/`successCount` map
+6. trust score is recomputed using the Bayesian behavioral model:
+   - security quality (scan score)
+   - uptime (EWMA)
+   - publisher credibility (verified flag)
+   - **behavioral reliability**: `(successCount + 3) / (invokeCount + 4) × log10(invokeCount + 5) × 15` — source-agnostic, from proxy invoke history
+   - deployment quality (endpoint + inputSchema)
+   - schema stability (days since schema_hash changed)
+   - runtime penalties: failure rate (−15 max) + DLP rate (−10 max)
+7. `scan_results` records the uptime outcome
+8. `cron_job_runs` records the job result
+
+Note: `stars` and Smithery `use_count` are **not** part of the trust score formula. `use_count` remains a search ranking tiebreaker only.
 
 ## 15. Operational Tracking And Cron Jobs
 

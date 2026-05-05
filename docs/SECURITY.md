@@ -1,7 +1,9 @@
 # Security & Trust Models
 
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Exact rate-limit defaults and keying rules: [`RATE_LIMITS.md`](RATE_LIMITS.md)
+Ingest & trust scoring deep-dive: [`ingest/README.md`](ingest/README.md)
 
 Every server scanned before listing. Every proxy call inspected.
 
@@ -39,17 +41,36 @@ Current OWASP MCP Top 10 coverage target is documented internally as **~70%** to
 
 Every server has a 0–100 trust score returned with every search result.
 
-| Component | Weight | What it measures |
-|---|---|---|
-| Scan quality | 30 | Static scan + CVE scan result quality |
-| Verified publisher | 25 | Publisher completed identity verification |
-| Uptime | 20 | 30-day uptime measured every 15 minutes |
-| Schema stability | 15 | Days since last schema change |
-| Community | 10 | Stars, call volume |
+| Component | Points | What it measures | Source |
+|---|---:|---|---|
+| Security quality | 25 | CVE scan + static scan (the core value prop) | Computed at ingest |
+| Uptime | 20 | EWMA of 15-min probe results | Uptime cron |
+| Publisher credibility | 15 | `verified` flag from a trusted curator | Upstream source |
+| **Behavioral reliability** | **15** | Bayesian-smoothed success rate × log-volume from Relay proxy invocations | `intent_server_mappings` |
+| Deployment quality | 15 | Has live endpoint **and** at least one tool schema with `inputSchema` | Computed at ingest |
+| Schema stability | 10 | Days since `schema_hash` last changed (max 90 days) | Computed at ingest |
 
-**New servers:** get a discovery boost for 90 days — surfaced alongside top servers in their category with a "New" badge. Trust score stays honest; ranking gives them visibility.
+**Runtime penalties** (applied on every uptime cron cycle):
 
-**Category balance:** if a category has 5+ servers above trust score 85, lower-scored servers in that niche are surfaced in search results. High-trust monopolies do not crowd out legitimate alternatives.
+| Condition | Penalty |
+|---|---|
+| Request failure rate > 0% | Up to −15 pts |
+| DLP trigger rate > 5% | Up to −10 pts |
+
+**Behavioral reliability** replaces the old Smithery `use_count` slot. Every `invoke_tool` call through the proxy atomically increments `invoke_count` and `success_count` in `intent_server_mappings`. A Beta(3,1) Bayesian prior is applied so cold-start servers get ~8 pts ("unproven") rather than 0 ("broken"), and the prior washes out as real data accumulates (~20+ invocations).
+
+**Typical score ranges under the new model:**
+
+| Score | Meaning |
+|---|---|
+| 85–100 | Verified + proven runtime reliability ✅ Safe for production |
+| 65–84 | Passed all scans, some invoke history ✅ Suitable for most use cases |
+| 40–64 | New/unproven — scans passed, no invoke history yet ⚠ Test before production |
+| < 40 | Active issues — scan failures, high error rate, or poor uptime 🚫 |
+
+**New servers:** get a discovery ranking boost for 90 days — surfaced alongside top servers in their category with a "New" badge. Trust score stays honest; only search ranking is boosted.
+
+**Category balance:** the search function applies a soft 8% penalty to servers that are (a) from a category over-represented in the current result set **and** (b) score below the result-set median trust score. This always fires because the threshold is relative to the current query results — not a hardcoded global number.
 
 ---
 
@@ -59,7 +80,7 @@ Every server has a 0–100 trust score returned with every search result.
 |------|--------|---------------------------|
 | **Ingest** | L1 static scan, S-14 CVE scan | ❌ Only at ingest time |
 | **Cron (6h)** | L3 schema drift | ✅ Detects tool rug-pulls |
-| **Cron (15m)** | Uptime + trust recomputation | ✅ Detects server outages |
+| **Cron (15m)** | Uptime + trust recomputation (using live ISM behavioral data) | ✅ Detects server outages |
 | **Proxy (every call)** | L4 DLP, S-12 shell injection, S-13 indirect injection, L9 sampling, L10 PII, L11 URL, L12 context | ✅ Runtime defense |
 
 ## Server Status Lifecycle
