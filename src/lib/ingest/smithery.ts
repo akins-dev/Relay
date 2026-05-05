@@ -79,14 +79,24 @@ function normalizeEnvVarsFromConfigSchema(configSchema: any): EnvVarSpec[] {
   const specs: EnvVarSpec[] = [];
 
   for (const [name, def] of Object.entries<any>(props)) {
+    const isExplicitlySecret = def.isSecret === true || def.secret === true;
+    const nameImpliesSecret  = (
+      name.toLowerCase().includes('key') ||
+      name.toLowerCase().includes('token') ||
+      name.toLowerCase().includes('secret')
+    );
+    // H2 fix: heuristic secret detection (name-based) only fires when the variable is
+    // also required AND has no default. Optional keys (e.g. apiKey with a default value)
+    // should NOT trigger 'api_key' auth type — that blocks users from trying the server.
+    const isRequired = required.includes(name);
+    const hasDefault = def.default !== undefined;
+    const isSecret   = isExplicitlySecret || (nameImpliesSecret && isRequired && !hasDefault);
+
     specs.push({
       name,
       description:  typeof def.description === 'string' ? def.description : undefined,
-      isRequired:   required.includes(name),
-      isSecret:     def.isSecret === true || def.secret === true ||
-                    name.toLowerCase().includes('key') ||
-                    name.toLowerCase().includes('token') ||
-                    name.toLowerCase().includes('secret'),
+      isRequired,
+      isSecret,
       defaultValue: def.default !== undefined ? String(def.default) : undefined,
       format:       def.type === 'boolean' ? 'boolean'
                   : def.type === 'number'  ? 'number'
@@ -108,12 +118,18 @@ interface SmitheryDetail {
   env_var_schema: EnvVarSpec[] | null;
 }
 
+interface FetchDetailResult {
+  detail:        SmitheryDetail | null;
+  rateLimitHits: number; // how many 429s were hit for this server
+}
+
 async function fetchDetail(
   qualifiedName: string,
   apiKey: string,
   retries = 3
-): Promise<SmitheryDetail | null> {
+): Promise<FetchDetailResult> {
   const url = `${DETAIL_URL}/${encodeURIComponent(qualifiedName)}`;
+  let rateLimitHits = 0;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     let res: Response;
@@ -127,8 +143,14 @@ async function fetchDetail(
         signal: AbortSignal.timeout(12_000),
       });
     } catch (err) {
-      log.warn(TAG, `Detail fetch failed for ${qualifiedName} (attempt ${attempt})`, err);
-      return null;
+      // M3 fix: retry on transient network errors (DNS, TLS, ECONNRESET) —
+      // the original code returned null immediately, losing servers on transient failures.
+      log.warn(TAG, `Detail fetch network error for ${qualifiedName} (attempt ${attempt})`, err);
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1_000 * attempt)); // 1s, 2s backoff
+        continue;
+      }
+      return { detail: null, rateLimitHits };
     }
 
     // 429 — Rate limited: backoff and retry
@@ -140,19 +162,20 @@ async function fetchDetail(
       log.warn(TAG, `Rate limited on ${qualifiedName} — waiting ${waitMs}ms`, {
         attempt, qualifiedName, waitMs,
       });
+      rateLimitHits++; // C4/L1 fix: accumulate per-server, returned to outer scope
       await new Promise(r => setTimeout(r, waitMs));
       continue;
     }
 
-    if (res.status === 404) return null; // Server exists in listing but no detail — skip
+    if (res.status === 404) return { detail: null, rateLimitHits }; // Server exists in listing but no detail
     if (!res.ok) {
       log.warn(TAG, `Detail ${qualifiedName} returned ${res.status}`);
-      return null;
+      return { detail: null, rateLimitHits };
     }
 
     let data: any;
     try { data = await res.json(); }
-    catch { return null; }
+    catch { return { detail: null, rateLimitHits }; }
 
     const connections: any[] = Array.isArray(data.connections) ? data.connections : [];
     const { endpoint, transport } = resolveSmitheryTransport(connections, data.deploymentUrl);
@@ -185,11 +208,11 @@ async function fetchDetail(
       }))
       .filter((p: McpPrompt) => p.name);
 
-    return { endpoint, transport, tool_schemas, resources, prompts, env_var_schema };
+    return { detail: { endpoint, transport, tool_schemas, resources, prompts, env_var_schema }, rateLimitHits };
   }
 
   log.error(TAG, `Exhausted retries for detail fetch: ${qualifiedName}`);
-  return null;
+  return { detail: null, rateLimitHits };
 }
 
 // ── Concurrency runner ────────────────────────────────────────────────────────
@@ -354,14 +377,16 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
     listingEntries,
     CONCURRENCY,
     async (entry, idx) => {
-      const detail = await fetchDetail(entry.qualifiedName, apiKey);
+      const { detail, rateLimitHits: rlHits } = await fetchDetail(entry.qualifiedName, apiKey);
       detailFetched++;
       if (detail) detailSuccess++;
+      rateLimitHits += rlHits; // C4/L1 fix: accumulate from per-server return value
 
       if ((idx + 1) % 100 === 0) {
         log.info(TAG, `Detail progress: ${idx + 1}/${listingEntries.length}`, {
           success: detailSuccess,
           failed: detailFetched - detailSuccess,
+          rateLimitHits,
         });
       }
 

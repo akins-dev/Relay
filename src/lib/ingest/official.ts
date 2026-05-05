@@ -218,7 +218,9 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
 
       // ── CRITICAL: filter non-latest versions client-side ─────────────────
       // The API returns ALL versions. isLatest query param does NOT filter.
-      if (officialMeta.isLatest === false) continue;
+      // H6 fix: use !== true (not === false) so malformed entries with
+      // isLatest: undefined are also excluded — never import non-latest versions.
+      if (officialMeta.isLatest !== true) continue;
       if (officialMeta.status === 'deleted') continue;
 
       const rawName: string = s.name ?? '';

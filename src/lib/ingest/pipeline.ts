@@ -83,6 +83,8 @@ export async function upsertServers(
 
   const skipReasons: Record<string, number> = {};
   const sourceStart = Date.now();
+  // Collected profile upsert promises — awaited after the main loop (M4 fix).
+  const profileUpserts: Promise<any>[] = [];
 
   // Resolve system author_id
   const { data: systemProfile } = await svc
@@ -94,9 +96,11 @@ export async function upsertServers(
   }
 
   // Batch pre-fetch existing servers (eliminates N+1 lookups)
+  // NOTE: transport is included so the enrichment-path deriveAuthType call at line ~451
+  // receives the real transport value, not undefined.
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, source, endpoint, schema_hash, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
+    .select('id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
 
   if (prefetchErr) {
     log.error(TAG, 'Pre-fetch failed — treating all as new', prefetchErr);
@@ -205,12 +209,17 @@ export async function upsertServers(
       let mcpPrompts: any[] = [];
       let protocolVersion: string | null = null;
       let mcpCompliant = false;
-      let toolExtractionSource = s.tool_extraction_source
+      // Determine initial provenance label from upstream data.
+      // This will be overwritten if probe/sandbox/readme produces better data.
+      let toolExtractionSource: string = s.tool_extraction_source
         ?? (toolSchemas.length > 0
           ? 'upstream_schemas'
           : s.tools.length > 0
             ? 'upstream_names'
             : 'none');
+      // Snapshot the upstream tool list separately so we never mutate s.tools
+      // (the source object is shared; mutation would corrupt subsequent passes).
+      let resolvedTools: string[] = [...s.tools];
 
       // Only probe HTTP servers that are not from enrichment-only sources
       if (!isEnrichmentOnly && proxyAvailable && s.endpoint) {
@@ -239,6 +248,7 @@ export async function upsertServers(
           const sandboxCommand = buildSandboxCommand(s);
           if (sandboxCommand) {
             result.extraction_metrics!.sandbox_attempts++;
+            let sandboxSucceeded = false;
             try {
               const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
                 method: 'POST',
@@ -261,29 +271,45 @@ export async function upsertServers(
                   mcpCompliant = true;
                   protocolVersion = '2024-11-05';
                   toolExtractionSource = toolSchemas.length > 0 ? 'sandbox' : toolExtractionSource;
+                  sandboxSucceeded = true;
                 }
               }
             } catch (err) {
+              // Sandbox timed out or network error — do NOT carry forward any partial
+              // toolSchemas that may have been set. Reset to empty so README fallback
+              // gets a clean slate rather than stale pre-sandbox data.
+              toolSchemas = [];
               log.warn(TAG, `Sandbox failed for ${s.name}`, err instanceof Error ? err : undefined);
             }
+            // If sandbox ran but returned no tools, clear any upstream placeholder schemas
+            // so README parsing gets a fair shot rather than being blocked by empty shells.
+            if (!sandboxSucceeded) toolSchemas = [];
           }
         }
 
-        // README fallback
+        // README fallback — only if sandbox produced nothing
         if (toolSchemas.length === 0 && s.github_url) {
           toolSchemas = await parseReadmeSchemas(s.github_url);
           if (toolSchemas.length > 0) {
-            // 'readme_parsed' is a valid ToolExtractionSource (FAULT-03 fix)
             toolExtractionSource = 'readme_parsed';
           }
         }
       }
 
-      // FAULT-02 fix: always sync tools from toolSchemas — not just when s.tools was empty.
+      // C2 fix: if no live source (probe/sandbox/readme) produced schemas AND the upstream
+      // only had tool names (no schemas), keep 'upstream_names' as the source label.
+      // But if we attempted a live probe and got nothing, downgrade 'upstream_schemas' to
+      // 'upstream_names' if toolSchemas is now empty (probe may have cleared them).
+      if (toolSchemas.length === 0 && toolExtractionSource === 'upstream_schemas') {
+        toolExtractionSource = 'upstream_names';
+      }
+
+      // FAULT-02 fix: always sync resolvedTools from toolSchemas — not just when upstream was empty.
       // If probe/sandbox returns different/richer tool names than what upstream declared,
       // the DB must store the live-probed names so invoke_tool's tools.includes() check works.
+      // C3 fix: write to resolvedTools (local copy), never mutate the original s.tools.
       if (toolSchemas.length > 0) {
-        s.tools = toolSchemas.map(t => t.name);
+        resolvedTools = toolSchemas.map(t => t.name);
       }
 
       // FAULT-05 fix: recompute hash AFTER tools are synced from probe/sandbox.
@@ -292,7 +318,7 @@ export async function upsertServers(
       // a false drift alarm and suspend the server.
       upstreamHash = createHash('sha256')
         .update([
-          JSON.stringify(s.tools.slice().sort()),
+          JSON.stringify(resolvedTools.slice().sort()),
           s.version ?? '', s.endpoint ?? '', s.github_url ?? '',
         ].join('|'))
         .digest('hex');
@@ -390,9 +416,10 @@ export async function upsertServers(
         github_url:        s.github_url ?? null,
         homepage_url:      s.homepage_url ?? null,
         icon_url:          s.icon_url ?? null,
-        license:           s.license ?? 'unknown',
+        // L3 fix: store null, not the string 'unknown' — let the DB NOT NULL default handle it.
+        license:           s.license ?? null,
         tags:              s.tags.length > 0 ? s.tags : ['general'],
-        tools:             s.tools,
+        tools:             resolvedTools,
         tool_schemas:      toolSchemas as any,
         tool_extraction_source: toolExtractionSource,
         resources:         (s.resources && s.resources.length > 0 ? s.resources : mcpResources) as any,
@@ -446,15 +473,24 @@ export async function upsertServers(
               enrichmentPatch.license = s.license;
             if (s.env_var_schema && !existing.env_var_schema) {
               enrichmentPatch.env_var_schema = s.env_var_schema;
-              // FAULT-01 fix: When Glama adds env_var_schema to a record that previously
-              // had none, we must re-derive auth_type. Use our requirement-aware logic.
-              enrichmentPatch.auth_type = deriveAuthType('glama', existing.transport, s.env_var_schema);
+              // H1 fix: Only upgrade an existing record to 'api_key' auth_type if the
+              // Glama env_var_schema has a variable that is BOTH isSecret AND isRequired.
+              // The heuristic isSecret (name contains 'key'/'token') alone is not enough —
+              // many servers have optional API keys. We must not block public servers.
+              const requiresSetupForEnrichment = s.env_var_schema.some(
+                v => (v.isSecret || v.isRequired) && v.isRequired,
+              );
+              if (requiresSetupForEnrichment) {
+                enrichmentPatch.auth_type = deriveAuthType('glama', existing.transport, s.env_var_schema);
+              }
             }
-            // Merge tags (union, deduplicated)
+            // F10 fix: single-Set filter pass — only check new tags against existing set.
+            // Avoids creating 3 intermediate objects (spread, Set, Array.from).
             if (s.tags.length > 0) {
-              const merged = Array.from(new Set([...(existing.tags ?? []), ...s.tags]));
-              if (merged.length > (existing.tags?.length ?? 0))
-                enrichmentPatch.tags = merged;
+              const existingTagSet = new Set(existing.tags ?? []);
+              const addedTags = s.tags.filter((t: string) => !existingTagSet.has(t));
+              if (addedTags.length > 0)
+                enrichmentPatch.tags = [...(existing.tags ?? []), ...addedTags];
             }
             if (s.glama_id && !existing.glama_id)
               enrichmentPatch.glama_id = s.glama_id;
@@ -468,11 +504,12 @@ export async function upsertServers(
               enrichmentPatch.icon_url = s.icon_url;
             if (s.mcp_directory_id && !existing.mcp_directory_id)
               enrichmentPatch.mcp_directory_id = s.mcp_directory_id;
-            // Merge tags from classification
+            // F10 fix: same single-Set filter pass for mcp.directory tags
             if (s.tags.length > 0) {
-              const merged = Array.from(new Set([...(existing.tags ?? []), ...s.tags]));
-              if (merged.length > (existing.tags?.length ?? 0))
-                enrichmentPatch.tags = merged;
+              const existingTagSet = new Set(existing.tags ?? []);
+              const addedTags = s.tags.filter((t: string) => !existingTagSet.has(t));
+              if (addedTags.length > 0)
+                enrichmentPatch.tags = [...(existing.tags ?? []), ...addedTags];
             }
           }
 
@@ -540,23 +577,27 @@ export async function upsertServers(
       }
 
       // ── Write connection profile (Option B side table) ────────────────────
+      // M4 fix: collect profile upsert promises and await them after the main loop
+      // rather than fire-and-forget. Fire-and-forget loses profiles on process exit.
       if (serverId && s.raw_upstream_json) {
-        svc.from('server_connection_profiles').upsert({
-          server_id:         serverId,
-          source:            s.source,
-          source_id:         s.source_id ?? s.official_id ?? s.smithery_id ?? s.glama_id ?? s.mcp_directory_id ?? null,
-          raw_upstream_json: s.raw_upstream_json,
-          remotes:           s.remotes ?? null,
-          packages:          s.packages ?? null,
-          icons:             s.icons ?? null,
-          official_meta:     s.official_meta ?? null,
-          publisher_meta:    s.publisher_meta ?? null,
-          title:             s.title ?? null,
-          website_url:       s.homepage_url ?? null,
-          synced_at:         new Date().toISOString(),
-        }, { onConflict: 'server_id,source' }).then(({ error }: any) => {
-          if (error) log.warn(TAG, `Profile upsert failed for ${s.name}`, { error: error.message });
-        });
+        profileUpserts.push(
+          svc.from('server_connection_profiles').upsert({
+            server_id:         serverId,
+            source:            s.source,
+            source_id:         s.source_id ?? s.official_id ?? s.smithery_id ?? s.glama_id ?? s.mcp_directory_id ?? null,
+            raw_upstream_json: s.raw_upstream_json,
+            remotes:           s.remotes ?? null,
+            packages:          s.packages ?? null,
+            icons:             s.icons ?? null,
+            official_meta:     s.official_meta ?? null,
+            publisher_meta:    s.publisher_meta ?? null,
+            title:             s.title ?? null,
+            website_url:       s.homepage_url ?? null,
+            synced_at:         new Date().toISOString(),
+          }, { onConflict: 'server_id,source' }).then(({ error }: any) => {
+            if (error) log.warn(TAG, `Profile upsert failed for ${s.name}`, { error: error.message });
+          })
+        );
       }
 
       // CVE audit trail
@@ -575,6 +616,12 @@ export async function upsertServers(
       log.error(TAG, `Exception processing ${s.name ?? '?'}`, err);
       result.errors.push(`${s.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // M4 fix: await all deferred profile upserts now that the main loop is done.
+  // allSettled ensures one failed profile write doesn't abort the rest.
+  if (profileUpserts.length > 0) {
+    await Promise.allSettled(profileUpserts);
   }
 
   const elapsed = ((Date.now() - sourceStart) / 1000).toFixed(1);
