@@ -333,14 +333,23 @@ If you are scraping sources with `stdio` servers (like Smithery or GitHub offici
 3. If you previously ingested without the sandbox, run `DELETE FROM public.servers;` again to wipe the database cleanly so the Three-Tier optimization algorithm doesn't aggressively skip them. 
 4. Trigger Ingestion. Your logs will now read: `Sandbox extracted X tools for server-name`.
 
-### 4. Verify admin dashboard
+### 4. Pre-Ingest Health Check
+
+Before running the ingest batch, verify that all external systems (Supabase, Sandbox, external APIs, Redis) are healthy and reachable. If the sandbox is down, stdio servers will silently fall back to degraded README parsing.
+
+```bash
+npm run check:connections
+```
+This script will test all dependent APIs and perform a live MCP protocol handshake against a sample server. If any system is down, it will exit with code `1`. Do not proceed with ingestion until all critical systems report `✅`.
+
+### 5. Verify admin dashboard
 
 - Go to `/admin` → Operations tab
 - Confirm all cron jobs show "no data" (they'll populate over time)
 - Trigger a test ingest from the Ingest tab
 - Verify the Operations tab updates
 
-### 5. Environment variables audit
+### 6. Environment variables audit
 
 Ensure all required env vars are set in Vercel:
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`

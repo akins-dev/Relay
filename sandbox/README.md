@@ -46,3 +46,12 @@ SANDBOX_AUTH_TOKEN=super-secret-sandbox-token-123!
 ```
 
 Once linked, future ingestion runs will automatically query the sandbox for `stdio` servers when the registry has a safe execution strategy. Otherwise, the ingest pipeline falls back to README extraction and description enrichment.
+
+### Step 4: Verify the Connection
+Before running a full ingestion batch, verify that your Sandbox is reachable by running the pre-ingest health check from the project root:
+
+```bash
+npm run check:connections
+```
+
+> **Note:** The Sandbox service may take up to 30 seconds to wake up if it is hosted on Render's free tier. The health check script accounts for this cold start delay and pre-warms the service so the subsequent ingestion run is fast.
