@@ -95,19 +95,39 @@ export async function setCache(key: string, value: any, ttlSeconds: number = 300
 /**
  * Fetch with Cache wrapper.
  * Will fetch using the getter and populate cache if missing.
+ *
+ * Single-flight guarantee: if N concurrent callers all miss the cache for the
+ * same key simultaneously, only ONE call to getter() is made. All other callers
+ * join the in-flight promise and receive the same result. This prevents the
+ * "dog-pile" / "thundering herd" problem on cache expiry under load.
+ * (Pattern: Go's singleflight package, Cloudflare Workers coalescing)
  */
+const inflight = new Map<string, Promise<any>>();
+
 export async function withCache<T>(
-  key: string, 
-  ttlSeconds: number, 
+  key: string,
+  ttlSeconds: number,
   getter: () => Promise<T>
 ): Promise<T> {
   const cached = await getCache<T>(key);
   if (cached !== null && cached !== undefined) return cached;
 
-  const value = await getter();
-  if (value !== null && value !== undefined) {
-    // Fire & forget cache population
-    setCache(key, value, ttlSeconds).catch(() => {});
-  }
-  return value;
+  // If a getter is already in-flight for this key, join it — don't spawn a new one.
+  const existing = inflight.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const promise = getter().then(value => {
+    inflight.delete(key);
+    if (value !== null && value !== undefined) {
+      setCache(key, value, ttlSeconds).catch(() => {});
+    }
+    return value;
+  }).catch((err: unknown) => {
+    inflight.delete(key);
+    throw err;
+  });
+
+  inflight.set(key, promise);
+  return promise;
 }
+

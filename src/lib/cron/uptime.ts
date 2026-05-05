@@ -25,24 +25,27 @@ export async function runUptimeCheck() {
     .eq('status', 'active')
     .not('endpoint', 'is', null);
 
-  // Fetch behavioral reliability in one batch: SUM per server_name across all ISM rows.
-  // We do this separately because Supabase doesn't support GROUP BY in select(),
-  // and an inner join would exclude servers with no ISM rows (new servers).
+  // S14: Fetch behavioral reliability in one SQL-aggregated RPC call.
+  // Before: .from('intent_server_mappings').in('server_name', names)
+  //   → fetches ALL matching ISM rows across all intent hashes, then TS aggregates.
+  //   → O(all ISM rows for these servers) network transfer.
+  // After: get_all_behavioral_reliability(p_server_names)
+  //   → SQL GROUP BY server_name, returns ONE pre-aggregated row per server.
+  //   → O(N servers) network transfer. Aggregation done in Postgres.
   const serverNames = (servers ?? []).map((s: any) => s.name);
   const ismMap = new Map<string, { invoke_count: number; success_count: number }>();
   if (serverNames.length > 0) {
-    const { data: ismRows } = await svc
-      .from('intent_server_mappings')
-      .select('server_name, invoke_count, success_count')
-      .in('server_name', serverNames);
+    const { data: ismRows } = await (svc as any)
+      .rpc('get_all_behavioral_reliability', { p_server_names: serverNames });
+    // Each row is already aggregated — no TS reduction needed.
     for (const row of ismRows ?? []) {
-      const existing = ismMap.get(row.server_name) ?? { invoke_count: 0, success_count: 0 };
       ismMap.set(row.server_name, {
-        invoke_count:  existing.invoke_count  + (row.invoke_count  ?? 0),
-        success_count: existing.success_count + (row.success_count ?? 0),
+        invoke_count:  row.invoke_count  ?? 0,
+        success_count: row.success_count ?? 0,
       });
     }
   }
+
 
   if (error) {
     if (cronRun?.id) {

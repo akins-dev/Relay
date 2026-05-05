@@ -132,13 +132,14 @@ async function callUpstreamMcpTool(
 }> {
   const now = Date.now();
   const state = getCircuitState(endpoint, now);
-  if (state.openUntil > now) {
+  if (state.state !== 'closed' && state.state !== 'half-open') {
+    // Open state — fail fast without hitting upstream
     return {
-      responseBody: JSON.stringify({ error: 'Upstream temporarily unavailable (circuit open)' }),
-      upstreamStatus: 503,
+      responseBody:        JSON.stringify({ error: 'Upstream temporarily unavailable (circuit open)' }),
+      upstreamStatus:      503,
       upstreamContentType: 'application/json',
-      responseTruncated: false,
-      upstreamError: 'circuit_open',
+      responseTruncated:   false,
+      upstreamError:       'circuit_open',
     };
   }
 
@@ -193,15 +194,18 @@ async function callUpstreamMcpTool(
     responseBody = JSON.stringify({ error: 'Upstream unreachable', message: err.message });
   }
 
-  if ((upstreamStatus >= 500 || upstreamError) && state.openUntil <= now) {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+  // ── Retry on 5xx / network error ────────────────────────────────────────────
+  // S5: Full-jitter exponential backoff (AWS Architecture Blog, 2015).
+  // sleep = random(0, min(cap, base × 2^attempt))
+  // Full jitter spreads retries uniformly — prevents all callers spiking at t+300ms.
+  if ((upstreamStatus >= 500 || upstreamError) && state.state !== 'half-open') {
+    const base = 100, cap = 1_500;
+    const waitMs = Math.random() * Math.min(cap, base * 2); // attempt=1: random(0, 200ms)
+    await new Promise(r => setTimeout(r, waitMs));
     try {
       const retry = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: mcpBody,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(20_000),
+        method: 'POST', headers, body: mcpBody,
+        redirect: 'manual', signal: AbortSignal.timeout(20_000),
       });
       upstreamStatus = retry.status;
       upstreamContentType = retry.headers.get('content-type') ?? 'application/json';
@@ -231,30 +235,53 @@ async function callUpstreamMcpTool(
   };
 }
 
-type CircuitState = { failures: number; openUntil: number };
+// ── Circuit Breaker (3-state: Closed → Open → Half-Open → Closed) ────────────
+// S4: Standard Martin Fowler 3-state pattern (2008).
+// Half-Open prevents thundering herd: instead of all callers resuming simultaneously
+// after the open timeout, only ONE probe request is allowed through.
+// If it succeeds → Closed (normal). If it fails → re-Open for another 60s.
+type CBState = 'closed' | 'open' | 'half-open';
+interface CircuitState {
+  state:      CBState;
+  failures:   number;
+  openUntil:  number;
+  halfOpenAt: number; // when to allow the probe request through
+}
 const endpointCircuit = new Map<string, CircuitState>();
 const CIRCUIT_FAILURE_THRESHOLD = 5;
-const CIRCUIT_OPEN_MS = 60_000;
+const CIRCUIT_OPEN_MS           = 60_000;
 
 function getCircuitState(endpoint: string, now: number): CircuitState {
-  const existing = endpointCircuit.get(endpoint);
-  if (!existing) return { failures: 0, openUntil: 0 };
-  if (existing.openUntil > 0 && existing.openUntil <= now) {
-    endpointCircuit.set(endpoint, { failures: 0, openUntil: 0 });
-    return { failures: 0, openUntil: 0 };
+  const s = endpointCircuit.get(endpoint)
+    ?? { state: 'closed', failures: 0, openUntil: 0, halfOpenAt: 0 };
+  // Transition Open → Half-Open once the open window expires
+  if (s.state === 'open' && now >= s.halfOpenAt) {
+    const halfOpen: CircuitState = { ...s, state: 'half-open' };
+    endpointCircuit.set(endpoint, halfOpen);
+    return halfOpen;
   }
-  return existing;
+  return s;
 }
 
 function recordCircuitFailure(endpoint: string, now: number): void {
-  const current = getCircuitState(endpoint, now);
-  const failures = current.failures + 1;
-  const openUntil = failures >= CIRCUIT_FAILURE_THRESHOLD ? now + CIRCUIT_OPEN_MS : current.openUntil;
-  endpointCircuit.set(endpoint, { failures, openUntil });
+  const s        = getCircuitState(endpoint, now);
+  const failures = s.failures + 1;
+  // Failure in half-open or threshold reached → re-open
+  if (failures >= CIRCUIT_FAILURE_THRESHOLD || s.state === 'half-open') {
+    endpointCircuit.set(endpoint, {
+      state:      'open',
+      failures,
+      openUntil:  now + CIRCUIT_OPEN_MS,
+      halfOpenAt: now + CIRCUIT_OPEN_MS,
+    });
+  } else {
+    endpointCircuit.set(endpoint, { ...s, state: 'closed', failures });
+  }
 }
 
 function recordCircuitSuccess(endpoint: string): void {
-  endpointCircuit.set(endpoint, { failures: 0, openUntil: 0 });
+  // Any state → reset to Closed on success
+  endpointCircuit.set(endpoint, { state: 'closed', failures: 0, openUntil: 0, halfOpenAt: 0 });
 }
 
 function audit(svc: ReturnType<typeof createServiceClient>, data: {

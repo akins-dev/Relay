@@ -7,6 +7,7 @@ import { extractIp } from '@/lib/api';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
+import { runSearch } from '@/lib/search';
 
 const PublishSchema = z.object({
   name:             z.string().min(3).max(64).regex(/^[a-z0-9-]+$/),
@@ -51,6 +52,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // S15: When a query string is present, route through the shared search pipeline.
+  // This gives REST callers the same cache, confidence scoring, TF-IDF schema trimming,
+  // and behavioral boosts that the MCP surface gets — previously REST got none of this.
+  if (q) {
+    const { results, cacheHit, searchLatencyMs } = await runSearch({
+      intent: q, limit, surface: 'rest',
+    });
+
+    const total = results.length;
+    return NextResponse.json({
+      servers: results,
+      total,
+      page: 1,
+      pages: 1,
+      meta: {
+        page: 1, page_size: limit, total, pages: 1,
+        from: total === 0 ? 0 : 1, to: total,
+        has_prev: false, has_next: false,
+        sort: 'relevance',
+        cache_hit: cacheHit,
+        search_latency_ms: searchLatencyMs,
+        filters: { q, tag, verified, source, transport },
+      },
+    });
+  }
+
+  // Browse path (no query string) — standard paginated table scan
   let query = supabase
     .from('servers')
     .select(`
