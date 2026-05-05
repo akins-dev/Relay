@@ -94,7 +94,6 @@ export function buildSandboxCommand(
   }
 
   // Priority 2: Official registry npm package_info
-  // Only npm packages can be run via npx — pypi/uvx not yet in sandbox whitelist.
   const npmPkg = s.package_info?.find(
     p => p.registryType === 'npm' && typeof p.identifier === 'string' && p.identifier.length > 0
   );
@@ -105,6 +104,20 @@ export function buildSandboxCommand(
     return {
       command: 'npx',
       args: ['-y', pkg],
+    };
+  }
+
+  // Priority 3: PyPI registry package_info
+  const pypiPkg = s.package_info?.find(
+    p => p.registryType === 'pypi' && typeof p.identifier === 'string' && p.identifier.length > 0
+  );
+  if (pypiPkg) {
+    const pkg = pypiPkg.version
+      ? `${pypiPkg.identifier}==${pypiPkg.version}`
+      : pypiPkg.identifier;
+    return {
+      command: 'uvx',
+      args: [pkg],
     };
   }
 
