@@ -327,12 +327,22 @@ describe('Server analytics summary consistency', () => {
           }),
         };
       }
-      if (table === 'audit_log') {
+      if (table === 'audit_summary') {
+        // analytics/route.ts queries: .from('audit_summary').select(...).eq('server_name', name).order('day', ...)
         return {
           select: jest.fn().mockReturnValue({
             eq: jest.fn().mockReturnValue({
-              gte: jest.fn().mockReturnValue({
-                order: auditOrder,
+              order: jest.fn().mockResolvedValue({
+                data: [{
+                  day: new Date().toISOString().slice(0, 10),
+                  total_calls: 2,
+                  successful_calls: 1,
+                  blocked_calls: 0,
+                  error_calls: 1,
+                  dlp_events: 0,
+                  avg_latency_ms: 110,
+                }],
+                error: null,
               }),
             }),
           }),
@@ -545,6 +555,14 @@ describe('Proxy DLP blocking', () => {
       {},
       { Authorization: 'Bearer sk_mcp_test' }
     );
+    // Configure mock to return a proper 404 result — the server lookup happens
+    // inside executeProxyCall (which is mocked), so we must provide the result.
+    mockExecuteProxyCall.mockResolvedValue({
+      status: 404,
+      body: JSON.stringify({ error: "Server 'nonexistent' not found" }),
+      contentType: 'application/json',
+      headers: {},
+    });
     const res = await POST(req, { params: Promise.resolve({ serverName: 'nonexistent', toolName: 'tool' }) });
     expect(res.status).toBe(404);
   });
