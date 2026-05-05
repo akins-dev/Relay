@@ -80,6 +80,118 @@ flowchart TD
 
 ---
 
+## Data Structures
+
+Every upstream source normalizes into a single `IngestServer` contract before the pipeline runs.
+Field grades indicate importance to `search_tools` / `invoke_tool` reliability.
+
+### `IngestServer`
+
+| Field | Grade | Type | Notes |
+|---|:---:|---|---|
+| `name` | **A** | `string` | Slugified, `[a-z0-9-]+`. DB primary key. |
+| `display_name` | **A** | `string` | Human-readable title. |
+| `description` | **A** | `string` | Core search corpus. Never defaulted — README enriched if absent. |
+| `transport` | **A** | `Transport` | `stdio \| sse \| streamable_http \| unknown` |
+| `endpoint` | **A** | `string \| null` | Live HTTP URL. `null` for stdio — cannot be cloud-proxied. |
+| `tool_schemas` | **A** | `ToolSchema[]` | Full schemas: name + description (search) + inputSchema (invoke). |
+| `env_var_schema` | **A** | `EnvVarSpec[] \| null` | Credential requirements for vault injection. |
+| `package_info` | **A** | `PackageInfo[] \| null` | Install specs. Official registry only. Needed for stdio invoke. |
+| `tags` | **B** | `string[]` | Category tags. Glama `attributes[]` + mcp.directory classification. |
+| `title` | **B** | `string \| null` | High-value for exact-name search. Official registry only. |
+| `verified` | **B** | `boolean` | Trusted third-party vouched for this server. See definition below. |
+| `github_url` | **B** | `string \| null` | Grade B for stdio (CLI install), Grade D for HTTP. |
+| `resources` | **C** | `McpResource[]` | MCP Resources (paginated from probe/sandbox). |
+| `prompts` | **C** | `McpPrompt[]` | MCP Prompts (paginated from probe/sandbox). |
+| `long_description` | **C** | `string \| null` | Extended description from README or upstream. |
+| `license` | **C** | `string \| null` | SPDX identifier. Glama only. `null` if undeclared — stored as `'unknown'` in DB. |
+| `icon_url` | **D** | `string \| null` | Server logo. UI only. |
+| `homepage_url` | **D** | `string \| null` | Documentation / product homepage. |
+| `version` | **D** | `string \| null` | Semver. `null` for Smithery / Glama / mcp.directory (they don't version). |
+| `readme_url` | **D** | `string \| null` | URL to the raw README file. |
+| `use_count` | **F** | `number \| null` | Smithery `useCount`. Analytics + ranking tiebreaker only. Not a trust input. |
+| `by_smithery` | **F** | `boolean` | Smithery built and hosts this server → sets `is_canonical = true` in DB. |
+
+### `ToolSchema`
+
+```ts
+interface ToolSchema {
+  name:         string;            // Must match [a-zA-Z0-9_-]+ per MCP spec
+  description?: string;           // Grade A: search_tools intent matching
+  inputSchema?: Record<string, unknown>; // Grade A: invoke_tool validation
+}
+```
+
+### `EnvVarSpec`
+
+```ts
+interface EnvVarSpec {
+  name:          string;
+  description?:  string;
+  isRequired:    boolean;   // true → user must supply before invoke
+  isSecret:      boolean;   // true → vaulted (api_key auth_type)
+  defaultValue?: string;
+  format?:       'string' | 'number' | 'boolean' | 'filepath';
+  placeholder?:  string;
+  choices?:      string[];
+}
+```
+
+> `deriveAuthType` fires `api_key` only when `isSecret || isRequired`. Optional config
+> fields (neither flag set) do not block invocation.
+
+### `PackageInfo`
+
+```ts
+interface PackageInfo {
+  registryType:     string;   // npm | pypi | oci | nuget | mcpb
+  registryBaseUrl?: string;
+  identifier:       string;   // e.g. '@modelcontextprotocol/server-filesystem'
+  version?:         string;
+  runtimeHint?:     string;   // npx | uvx | docker | dnx
+  fileSha256?:      string;
+  transport:        Transport;
+}
+```
+
+### `IngestResult` / `extraction_metrics`
+
+```ts
+interface IngestResult {
+  added:    number;
+  updated:  number;
+  rejected: number;
+  skipped:  number;
+  errors:   string[];
+  fetched?: number;
+  extraction_metrics?: {
+    smithery_detail_fetched:  number;  // Phase 2 detail API calls attempted
+    smithery_detail_success:  number;  // Phase 2 calls that returned tool_schemas
+    smithery_rate_limited:    number;  // 429s received from Smithery
+    probe_attempts:           number;  // HTTP MCP probes fired
+    probe_success:            number;  // Probes that returned ≥1 tool schema
+    sandbox_attempts:         number;  // Sandbox extraction attempts
+    sandbox_success:          number;  // Sandbox calls that returned ≥1 tool
+    grade_a_complete:         number;  // Servers with all Grade-A fields populated
+    grade_b_complete:         number;  // Servers with all Grade-A + Grade-B populated
+  };
+}
+```
+
+### `ToolExtractionSource` (quality ladder)
+
+| Value | Meaning |
+|---|---|
+| `smithery_detail` | Full inputSchema from Smithery `GET /v2/servers/{id}` |
+| `mcp_probe` | Live MCP handshake to a running HTTP/SSE endpoint |
+| `sandbox` | Sandboxed local execution of a stdio package |
+| `upstream_schemas` | Schemas provided directly by the upstream API |
+| `upstream_names` | Only tool names available (no inputSchema) |
+| `readme_parsed` | Parsed from README markdown (low confidence, stdio fallback) |
+| `none` | No tool data from any source |
+
+---
+
 ## Source → DB Field Coverage
 
 | Field | official | smithery | glama | mcp_directory | probe | sandbox |
