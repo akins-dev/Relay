@@ -43,24 +43,6 @@ Relay is a secure capability access layer that lets agents:
 - record search and invoke outcomes so future routing improves from real usage
 
 Instead of forcing humans to preload and maintain dozens of servers, Relay moves capability resolution into the runtime loop and records outcomes so future routing improves from real usage.
-
-## Thesis
-
-Relay's thesis is explicit:
-
-- large MCP ecosystems should be resolved at runtime, not preloaded by hand
-- the model-facing surface should stay small even when the capability universe is large
-- auth, trust, policy, and execution should stay behind one governed path
-- search and invoke outcomes should compound into better routing over time
-
-The two-tool interface is the current bootstrap implementation, not the thesis by itself. The thesis is that the model-facing surface should stay small while capability discovery, ranking, auth, trust, execution, and learning happen at runtime.
-
-That is why Relay complements, rather than competes with, modern RAG and agent orchestration stacks:
-
-- **RAG** answers "what do I know?"
-- **LangChain / LangGraph** help coordinate reasoning and multi-step workflows
-- **Relay** answers "what can I do safely right now across the MCP ecosystem?"
-
 ---
 
 ## Connect your agent
