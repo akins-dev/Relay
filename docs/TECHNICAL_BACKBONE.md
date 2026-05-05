@@ -585,17 +585,16 @@ Impact:
 
 - identical HTTP servers from multiple registries can survive as duplicate rows under different names
 
-#### B. Source contract drift exists
+#### B. Source contract drift — RESOLVED (migration 032 workstream)
 
-Current drift points:
+Previous drift points (all fixed):
 
-- `/api/ingest` accepts `partner`, `mcp_run`, and `composio`
-- `runIngest()` actually handles `vendor`, not `partner`
-- `fetchMcpRunServers()` and `fetchComposioServers()` exist but are not wired into `runIngest()`
+- `/api/ingest` previously accepted `partner`, `mcp_run`, and `composio` — now accepts only `all`, `official`, `smithery`, `glama`, `mcp_directory`
+- `/api/admin/ingest` previously accepted `github`, `partner`, `vendor` — now matches `/api/ingest` exactly
+- `runIngest()` previously handled `vendor` instead of the documented `partner` — now handles `official`, `smithery`, `glama`, `mcp_directory` only
+- Dead fetchers (`fetchMcpRunServers()`, `fetchComposioServers()`) remain in code for reference but are not wired into `runIngest()`
 
-Impact:
-
-- API surface and actual ingest behavior are misaligned
+Current state: API surface and actual ingest behavior are aligned.
 
 #### C. Search RPC schema drift exists
 
@@ -768,7 +767,7 @@ These fields should be treated as best-effort only:
 #### Fix immediately
 
 - endpoint dedup bug
-- source contract drift (`partner` vs `vendor`, unwired `mcp_run` and `composio`)
+- source contract alignment (resolved in migration 032 workstream — see section 10.2B)
 - search RPC/schema drift
 - API key hint prefix drift was present historically (`sk_relay_` vs accepted `sk_mcp_`) and should now be treated as a regression check item rather than current expected behavior.
 - weak GitHub stdio sandbox execution path

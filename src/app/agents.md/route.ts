@@ -114,9 +114,9 @@ GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 - \`tools[].inputSchema\` — exact arguments required (use this, do not guess)
 - \`resources\` — list of data contexts the server exposes (uri, name, mimeType)
 - \`prompts\` — list of prompt templates (name, description, arguments)
-- \`trust_score\` — 0–100. Earned behavioral reliability score. Prefer > 70 for production. > 85 = verified + proven runtime reliability.
+- \`trust_score\` — 0–100. Earned behavioral reliability score. Prefer >= 65 for production. >= 85 = verified + proven runtime reliability.
 - \`latency_ms\` — average upstream latency
-- \`source\` — \`official\` | \`smithery\` | \`github\` | \`direct\`
+- \`source\` — \`official\` | \`smithery\` | \`glama\` | \`mcp_directory\` | \`direct\`
 
 **Example:**
 \`\`\`
@@ -238,9 +238,8 @@ Then call:
 | Score | Meaning | Recommendation |
 |-------|---------|----------------|
 | 85–100 | Verified publisher + proven runtime reliability (many successful invocations) | Safe for production |
-| 70–84 | Good signal — passed all scans, some invoke history | Suitable for most use cases |
-| 55–69 | New or unproven — scans passed, limited runtime data | Test before production use |
-| < 55 | Active issues — scan failures, high error rate, or poor uptime | Use with caution |
+| 65–84 | Clean scan + some invoke history — production-suitable | Suitable for most use cases |
+| < 65 | Cold start (new/unproven) or active issues (scan failures, high error rate) | Test before production use |
 
 ---
 

@@ -536,18 +536,22 @@ Primary code:
 
 ### 11.2 Source intake
 
-Current source families in code:
+Active sources in `runIngest()`:
 
-- official registry
-- Smithery
-- Glama
-- PulseMCP
-- GitHub
-- partner / vendor feeds
-- ClaudeMCP
-- MCP.so
-- MCP.run
-- Composio
+| Source | Tier | Notes |
+|---|---|---|
+| Official MCP Registry | Primary | Full endpoints + tool schemas |
+| Smithery | Primary | Full endpoints + tool schemas + `verified` flag |
+| Glama | Enrichment | Enriches existing rows via `github_url` |
+| mcp.directory | Enrichment | Enriches existing rows via `github_url` |
+
+Decommissioned (code may still reference, not wired into `runIngest()`):
+
+- GitHub `modelcontextprotocol/servers` — no standard MCP listing API
+- PulseMCP — public API returns 403
+- ClaudeMCP — relied on fragile `__NEXT_DATA__` scraping
+- MCP.so / mcpservers.org — no JSON API
+- MCP.run / Composio — fetchers exist in code but not wired in
 
 ### 11.3 Upsert pipeline
 

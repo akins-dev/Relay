@@ -143,7 +143,7 @@ const SEARCH_INDEX = [
   {
     section: "trust-scores",
     label: "Trust scores",
-    text: "trust scores 0 100 composite five signals verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change frequently mutate lower community signals star count call volume abuse reports 90 100 verified stable 80 89 good production less than 70 use with caution",
+    text: "trust scores 0 100 behavioral reliability bayesian prior verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change invoke history relay proxy outcomes 85 100 verified proven runtime reliability 65 84 clean scan invoke history production suitable below 65 cold start or active issues",
   },
   {
     section: "categories",
@@ -453,7 +453,7 @@ export default function DocsPage() {
             ))}
             <H3>Security on every server and every call</H3>
             <P>
-              Every server ingested from official registry, Smithery, Glama, or GitHub is scanned across
+              Every server ingested from official registry, Smithery, or Glama is scanned across
               15 layers before listing: static injection analysis, npm CVE scanning, schema pinning,
               typosquatting detection, and more. Every proxy call adds DLP, shell injection detection,
               PII scanning, URL elicitation safety, and context isolation. Current OWASP MCP Top 10
@@ -602,9 +602,9 @@ export default function DocsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               {[
-                { range: '90–100', label: 'Verified + stable',   color: 'text-green-400',  border: 'border-green-500/20', bg: 'bg-green-500/[0.06]' },
-                { range: '80–89',  label: 'Good for production', color: 'text-blue-400',   border: 'border-blue-500/20',  bg: 'bg-blue-500/[0.06]' },
-                { range: '< 70',   label: 'Use with caution',    color: 'text-red-400',    border: 'border-red-500/20',   bg: 'bg-red-500/[0.06]' },
+                { range: '85–100', label: 'Verified + proven',      color: 'text-green-400',  border: 'border-green-500/20', bg: 'bg-green-500/[0.06]' },
+                { range: '65–84',  label: 'Production-suitable',    color: 'text-amber-400',  border: 'border-amber-500/20', bg: 'bg-amber-500/[0.06]' },
+                { range: '< 65',   label: 'Cold start or issues',   color: 'text-red-400',    border: 'border-red-500/20',   bg: 'bg-red-500/[0.06]' },
               ].map(s => (
                 <div key={s.range} className={cn('rounded-xl border p-4 text-center', s.bg, s.border)}>
                   <div className={cn('font-mono text-[22px] font-bold', s.color)}>{s.range}</div>

@@ -68,7 +68,7 @@ const TOOLS = [
       'Do NOT call this for questions you can answer from your own knowledge',
       '(definitions, explanations, calculations, writing, reasoning tasks).',
       // How to use results
-      'Use trust_score > 80 for production. Copy the inputSchema exactly when',
+      'Use trust_score >= 65 for production. Copy the inputSchema exactly when',
       'constructing args for invoke_tool.',
     ].join(' '),
     inputSchema: {

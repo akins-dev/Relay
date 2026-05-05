@@ -73,7 +73,7 @@ export async function GET() {
     },
     agent_usage: {
       system_prompt: getAgentBootstrapPrompt(),
-      trust_score_guide: 'Earned behavioral reliability score (0-100). 85-100: verified + proven runtime reliability. 70-84: good signal, passed scans. 55-69: new/unproven. Below 55: active issues.',
+      trust_score_guide: 'Earned behavioral reliability score (0-100). 85-100: verified + proven runtime reliability. 65-84: clean scan + invoke history (production-suitable). Below 65: cold start or active issues.',
     },
     open_source: `${BRAND.githubUrl} — MIT license`,
   });

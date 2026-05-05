@@ -27,14 +27,14 @@ interface ServerCardProps {
 }
 
 function TrustBar({ score }: { score: number }) {
-  const color = score >= 85 ? 'bg-green-500' : score >= 70 ? 'bg-amber-400' : 'bg-red-400';
+  const color = score >= 85 ? 'bg-green-500' : score >= 65 ? 'bg-amber-400' : 'bg-red-400';
   return (
     <div className="flex items-center gap-2">
       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
         <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${score}%` }} />
       </div>
       <span className={cn('min-w-[28px] font-mono text-xs font-semibold',
-        score >= 85 ? 'text-green-700' : score >= 70 ? 'text-amber-600' : 'text-red-500'
+        score >= 85 ? 'text-green-700' : score >= 65 ? 'text-amber-600' : 'text-red-500'
       )}>{score}</span>
     </div>
   );
