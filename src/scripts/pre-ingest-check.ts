@@ -242,7 +242,7 @@ async function probeSampleMCPServer(): Promise<CheckResult> {
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-async function main() {
+export async function runChecks(isCli = false) {
   console.log('\n🔍  Pre-Ingest Connection Health Check');
   console.log('═'.repeat(52));
 
@@ -277,21 +277,27 @@ async function main() {
     console.error(`\n❌  CRITICAL failures (${critical.length}): ingest CANNOT run safely.`);
     for (const r of critical) console.error(`   • ${r.name}: ${r.detail}`);
     console.log('');
-    process.exit(1);
+    if (isCli) process.exit(1);
+    return false;
   }
 
   if (degraded.length > 0) {
     console.warn(`\n⚠️   Degraded systems (${degraded.length}): ingest will run with reduced coverage.`);
     for (const r of degraded) console.warn(`   • ${r.name}: ${r.detail}`);
     console.log('\n✅  Proceeding is safe, but some sources will be unavailable.\n');
-    process.exit(0);
+    if (isCli) process.exit(0);
+    return true;
   }
 
   console.log('\n✅  All systems healthy — safe to run ingest.\n');
-  process.exit(0);
+  if (isCli) process.exit(0);
+  return true;
 }
 
-main().catch((e) => {
-  console.error('Fatal error in pre-ingest check:', e);
-  process.exit(1);
-});
+// Auto-run if executed directly via CLI
+if (require.main === module) {
+  runChecks(true).catch((e) => {
+    console.error('Fatal error in pre-ingest check:', e);
+    process.exit(1);
+  });
+}
