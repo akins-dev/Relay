@@ -390,7 +390,7 @@ export async function upsertServers(
         github_url:        s.github_url ?? null,
         homepage_url:      s.homepage_url ?? null,
         icon_url:          s.icon_url ?? null,
-        license:           s.license ?? null,
+        license:           s.license ?? 'unknown',
         tags:              s.tags.length > 0 ? s.tags : ['general'],
         tools:             s.tools,
         tool_schemas:      toolSchemas as any,
@@ -442,7 +442,7 @@ export async function upsertServers(
 
           // Glama: license (SPDX), env_var_schema (JSON Schema), tags, glama_id
           if (s.source === 'glama') {
-            if (s.license && !existing.license)
+            if (s.license && (!existing.license || existing.license === 'unknown'))
               enrichmentPatch.license = s.license;
             if (s.env_var_schema && !existing.env_var_schema) {
               enrichmentPatch.env_var_schema = s.env_var_schema;
