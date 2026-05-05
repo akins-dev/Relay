@@ -1,6 +1,6 @@
 # Relay Architecture Flows
 
-Last updated: 2026-04-25
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Status: High-level presentation architecture
 
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
@@ -100,19 +100,20 @@ Upstream sources
 Canvas version:
 
 ```text
-[Official registry] ----\
-[Smithery] ------------- \
-[Glama] ----------------- +--> [Ingest pipeline]
-[PulseMCP] ------------- /         |
-[GitHub] ---------------/          v
-                              [Normalize + dedup]
-                                      |
-                                      v
-                              [Scan + trust enrich]
-                                      |
-                                      v
-                              [Canonical registry]
+[Official registry] --\
+[Smithery] ----------- \
+[Glama] -------------- +-> [Ingest pipeline]
+[mcp.directory] ------/         |
+                           [Normalize + dedup]
+                                   |
+                                   v
+                           [Scan + trust enrich]
+                           (behavioral floor ~8pts)
+                                   |
+                                   v
+                           [Canonical registry]
 ```
+
 
 ## 5. Runtime Discovery Flow
 
@@ -211,10 +212,12 @@ Canvas version:
 ```text
 [search_tools] ----> [search_events] --------\
                                              +--> [intent/server learning]
-[invoke_tool] -----> [invoke_outcomes] -----/          |
-                                                        v
-                                               [better future routing]
+[invoke_tool] ------> [invoke_outcomes] ----/          |
+                  |                                    v
+                  +--> [intent_server_mappings] --> [trust score behavioral slot]
+                                                   [better future routing]
 ```
+
 
 ## 8. Stdio Reachability Flow
 

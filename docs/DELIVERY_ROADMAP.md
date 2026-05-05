@@ -1,6 +1,6 @@
 # Relay Delivery Roadmap
 
-Last updated: 2026-04-25
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Status: Canonical sprint-by-sprint delivery plan
 
 This file is the single source of truth for Relay's sprint plan.
@@ -81,16 +81,23 @@ The MVP is launchable only when all P0 gates are green for two consecutive weekl
 - ingestion correctness fixes
 - environment validation at boot
 
+### Migration 032 Workstream (shipped between Sprint 2 and Sprint 3)
+
+- ✅ **Behavioral trust model:** replaced Smithery `use_count` with Bayesian-smoothed `intent_server_mappings` reliability. All ingestion sources now have structural parity in trust scoring.
+- ✅ **Dynamic search diversity:** replaced hardcoded `trust_score >= 85` diversity gate with result-set-relative median threshold. Diversity logic always fires, never silently fails.
+- ✅ **Uptime cron:** now batch-fetches ISM data and recomputes trust from real invoke history on every probe cycle.
+- ✅ **Ingest pipeline:** all paths (automated ingest + manual POST submission) pass `invokeCount: 0, successCount: 0`; Bayesian prior handles cold-start.
+- ✅ **Source contract alignment:** route and `runIngest()` now accept exactly the same four sources. Dead sources decommissioned.
+- ✅ **Search RPC schema:** fully synchronized in migration 032. `compute_trust_score_v2()` critical base-10 log bug fixed.
+
 ## Upcoming Sprints
 
 ### Sprint 3A — Ingest Hardening
 
-- make cron trust recomputation consume the same persisted security findings ingest writes
-- tighten endpoint and repo dedup plus trusted-source overwrite rules
-- improve transport truth so cron and search do not reason from stale heuristics
+**Remaining:**
+
 - replace weak GitHub `stdio` sandbox assumptions with a more reliable extraction path
 - add ingest-quality metrics for extraction coverage, schema coverage, duplicate collisions, and bad-row rate
-- clean up migration and documentation drift around source labels, search RPC shape, and local setup
 - add sandbox and backfill parity so all stdio extraction paths derive commands consistently
 - add explicit stdio extraction provenance so ranking can distinguish sandbox-derived, README-derived, and upstream-provided metadata
 - support source-provided launch manifests or publisher-declared execution commands for monorepo and subdirectory stdio servers
@@ -99,6 +106,12 @@ The MVP is launchable only when all P0 gates are green for two consecutive weekl
 - add ingest observability for sandbox attempts, sandbox success, README fallback, and unresolved stdio rows
 - define stricter retention and ranking rules for weak stdio rows with no extracted tools
 - harden sandbox execution policy further if new runners are introduced beyond `npx`
+
+**Completed early (migration 032):**
+
+- ~~make cron trust recomputation consume the same persisted security findings ingest writes~~ ✅
+- ~~tighten endpoint and repo dedup plus trusted-source overwrite rules~~ ✅
+- ~~clean up migration and documentation drift around source labels, search RPC shape, and local setup~~ ✅
 
 ### Sprint 3 — Sampling Security And OAuth
 
@@ -129,7 +142,7 @@ This sprint closes the biggest current reachability gap: a large share of discov
 ### Sprint 6 — Intelligence And Publisher Program
 
 - Lever 3B learned classifier replacing the current heuristic gate
-- stronger behavioral trust signals from runtime outcomes
+- ~~stronger behavioral trust signals from runtime outcomes~~ ✅ shipped early in migration 032 (Bayesian ISM behavioral reliability replaces `use_count`)
 - hybrid retrieval reranker only if lexical misses justify it
 - verified publisher pipeline
 - TypeScript and Python SDKs

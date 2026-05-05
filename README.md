@@ -90,7 +90,7 @@ For knowledge-only questions, answer directly without searching.
 Never put credentials, API keys, or tokens in tool arguments.
 Search:  GET https://relay.vercel.app/api/servers/search?q={intent}
 Invoke:  POST https://relay.vercel.app/api/proxy/{serverName}/{toolName}
-Prefer servers with trust_score > 80 for production use.
+Prefer servers with trust_score >= 65 for production use.
 Use the returned inputSchema exactly. Do not guess arguments.
 ```
 

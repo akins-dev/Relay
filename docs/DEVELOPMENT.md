@@ -40,11 +40,19 @@ supabase/migrations/022_analytics_intelligence_layer.sql ← search/invoke learn
 supabase/migrations/023_security_hardening.sql  ← rate limit config + official name conflict checks
 supabase/migrations/024_new_sources_and_partner_rename.sql ← vendor→partner rename + new sources
 supabase/migrations/025_ingest_mvp_contract_fixes.sql ← current ingest/search contract alignment
-```
+supabase/migrations/026_new_schema_fields.sql          ← icon_url, env_var_schema, package_info
+supabase/migrations/027_tool_extraction_source.sql     ← extraction provenance per server
+supabase/migrations/028_ingest_quality_views.sql       ← weak stdio + missing metadata views
+supabase/migrations/029_metadata_grade_fields.sql      ← A–F metadata grading fields
+supabase/migrations/030_search_rpc_update.sql          ← updated search_servers RPC with new fields
+supabase/migrations/031_auth_type_derive.sql           ← auth_type derivation from env_var_schema
+supabase/migrations/032_behavioral_trust_and_dynamic_diversity.sql ← Bayesian trust + dynamic search diversity (REQUIRED)
 
 > **Note on 002:** This migration is now intentionally a no-op. Historical demo rows were removed so fresh environments start clean and ingest remains the only source of server truth.
 >
 > **Note on 011:** Read the header first and confirm your Supabase project keeps statement logging at `ddl` or `none`. This is an ongoing operational requirement for any route that stores secrets or OAuth tokens, not just a one-time migration concern.
+>
+> **Note on 032:** This migration replaces `search_servers()` and `compute_trust_score_v2()` entirely. The old `trust_score >= 85` hardcoded diversity gate is replaced with a dynamic result-set median approach. The Smithery `use_count` slot is replaced by Bayesian behavioral reliability from `intent_server_mappings`. Run this migration before triggering any ingest or uptime cron job.
 
 ### 3. Environment
 
@@ -120,16 +128,10 @@ curl -X POST http://localhost:3000/api/ingest \
   -d '{"source": "all"}'
 
 # Or trigger individual sources:
-# "official"  — MCP official registry (~87 servers, highest trust, no key needed)
-# "partner"   — verified organization / company controlled sources
-# "smithery"  — large registry (SMITHERY_API_KEY required)
-# "glama"     — public directory
-# "pulsemcp"  — handler exists, currently returns empty because public API is unavailable
-# "github"    — curated github.com/modelcontextprotocol/servers
-# "claudemcp" — curated directory
-# "mcpso"     — curated directory with API
-# "mcp_run"   — hosted MCP platform
-# "composio"  — MCP-compatible app/integration source
+# "official"      — MCP official registry (~87 servers, highest trust, no key needed)
+# "smithery"      — Smithery registry (SMITHERY_API_KEY required)
+# "glama"         — Glama directory (enrichment source, requires existing rows with github_url)
+# "mcp_directory" — mcp.directory (enrichment source, requires existing rows with github_url)
   -d '{"source": "official"}'
 ```
 
@@ -143,6 +145,7 @@ Important current behavior:
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
+- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Scores grow automatically as agents invoke servers through the proxy.
 
 ### Change detection and reprocessing
 
@@ -318,7 +321,8 @@ curl -X POST http://localhost:3000/api/ingest \
   -H "Content-Type: application/json" \
   -d '{"source": "official"}'
 
-# Then: smithery, glama, pulsemcp, github (one at a time)
+# Then run remaining sources one at a time:
+# smithery, glama, mcp_directory
 ```
 
 ### 3. Deploy the Render Sandbox (Optional but highly recommended)
