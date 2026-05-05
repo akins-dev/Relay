@@ -110,16 +110,56 @@ Content-Type: application/json
 // ─── Searchable content index ─────────────────────────────────────────────────
 
 const SEARCH_INDEX = [
-  { section: `what-is-${BRAND.name}`, label: `What is ${BRAND.name}?`, text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source mit license` },
-  { section: 'how-it-works',      label: 'How it works',       text: `${BRAND.name} agent task send email create pr charge card capability queries ${BRAND.name} intent search servers inputSchema arguments invokes proxy blocks sensitive policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp` },
-  { section: 'quickstart',        label: 'Quickstart',         text: 'quickstart system prompt agents.md add native mcp server claude desktop cursor antigravity config json restart ide search_tools invoke_tool skill file curl openmcp.md live stats teaches agent trust scores how to search read inputschemasad' },
-  { section: 'credentials',       label: 'Credentials & security', text: 'credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest ${BRAND.name} proxy dlp request response blocked aes-256-gcm vault encrypted plaintext secret name authorization header' },
-  { section: 'mcp-server',        label: 'Native MCP server',  text: 'native mcp server standard mcp server connect one hosted mcp connection two tools search_tools invoke_tool transports streamablehttp post primary sse get older clients stdio not supported hosted service cli bridge planned' },
-  { section: 'rest-api',          label: 'REST API reference',  text: 'rest api reference get openmcp.md skill file markdown live stats servers search intent lexical retrieval reranking inputSchema browse filters sort verified source tag page server detail scan history cve issues tools post proxy serverName toolName invocation security audit mcp-server streamablehttp sse analytics latency dlp events' },
-  { section: 'trust-scores',      label: 'Trust scores',        text: 'trust scores 0 100 composite five signals verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change frequently mutate lower community signals star count call volume abuse reports 90 100 verified stable 80 89 good production less than 70 use with caution' },
-  { section: 'categories',        label: 'MCP categories',      text: 'mcp categories developer tools github gitlab jira linear sentry vercel databases postgresql mysql mongodb supabase redis payments stripe paypal paddle lemon squeezy communication slack discord gmail outlook telegram ai ml openai replicate huggingface elevenlabs cloud infra aws gcp cloudflare fly.io crm salesforce hubspot notion airtable public data weather exchange rates wikipedia news search brave tavily exa perplexity design figma canva adobe file storage google drive dropbox s3 analytics posthog mixpanel segment ga credentials required public' },
-  { section: 'faq',               label: 'FAQ',                  text: 'faq frequently asked questions free no credit card freemium transparent limits publisher analytics enterprise private registries register search proxy publish mcp server api keys rate limits credentials api key vault aes-256-gcm proxy inject authorization header 401 variable name dashboard smithery arcade composio gateway oauth credential management discovery trust secure invocation scans scores agentsecrets cli local bridge stdio not yet network reachable http transports 15-layer security stack l1 prompt injection l3 hash tool schemas l4 credentials requests s-12 os command injection s-13 instruction-like language response owasp' },
-  { section: 'known-limitations', label: "What's coming",       text: `what's coming ${BRAND.name} cli local stdio servers next launch wave discovery layer run local mcp servers agentsecrets credential injection per-user oauth delegation v0.3 github gmail slack stripe connected account static key vault api-key wasm sandbox pre-listing execution v0.3 sandboxed execution runtime-only payloads deferred attacks static analysis misses owasp mcp top 10 13 live layers 85%` },
+  {
+    section: `what-is-${BRAND.name}`,
+    label: `What is ${BRAND.name}?`,
+    text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source MIT license`,
+  },
+  {
+    section: "how-it-works",
+    label: "How it works",
+    text: `${BRAND.name} agent task send email create pr charge card capability queries ${BRAND.name} intent search servers inputSchema arguments invokes proxy blocks sensitive policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp`,
+  },
+  {
+    section: "quickstart",
+    label: "Quickstart",
+    text: "quickstart system prompt agents.md add native mcp server claude desktop cursor antigravity config json restart ide search_tools invoke_tool skill file curl agents.md live stats teaches agent trust scores how to search read inputschemasad",
+  },
+  {
+    section: "credentials",
+    label: "Credentials & security",
+    text: "credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest ${BRAND.name} proxy dlp request response blocked aes-256-gcm vault encrypted plaintext secret name authorization header",
+  },
+  {
+    section: "mcp-server",
+    label: "Native MCP server",
+    text: "native mcp server standard mcp server connect one hosted mcp connection two tools search_tools invoke_tool transports streamablehttp post primary sse get older clients stdio not supported hosted service cli bridge planned",
+  },
+  {
+    section: "rest-api",
+    label: "REST API reference",
+    text: "rest api reference get agents.md skill file markdown live stats servers search intent lexical retrieval reranking inputSchema browse filters sort verified source tag page server detail scan history cve issues tools post proxy serverName toolName invocation security audit mcp-server streamablehttp sse analytics latency dlp events",
+  },
+  {
+    section: "trust-scores",
+    label: "Trust scores",
+    text: "trust scores 0 100 behavioral reliability bayesian prior verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change invoke history relay proxy outcomes 85 100 verified proven runtime reliability 65 84 clean scan invoke history production suitable below 65 cold start or active issues",
+  },
+  {
+    section: "categories",
+    label: "MCP categories",
+    text: "mcp categories developer tools github gitlab jira linear sentry vercel databases postgresql mysql mongodb supabase redis payments stripe paypal paddle lemon squeezy communication slack discord gmail outlook telegram ai ml openai replicate huggingface elevenlabs cloud infra aws gcp cloudflare fly.io crm salesforce hubspot notion airtable public data weather exchange rates wikipedia news search brave tavily exa perplexity design figma canva adobe file storage google drive dropbox s3 analytics posthog mixpanel segment ga credentials required public",
+  },
+  {
+    section: "faq",
+    label: "FAQ",
+    text: "faq frequently asked questions free no credit card freemium transparent limits publisher analytics enterprise private registries register search proxy publish mcp server api keys rate limits credentials api key vault aes-256-gcm proxy inject authorization header 401 variable name dashboard smithery arcade composio gateway oauth credential management discovery trust secure invocation scans scores agentsecrets cli local bridge stdio not yet network reachable http transports 15-layer security stack l1 prompt injection l3 hash tool schemas l4 credentials requests s-12 os command injection s-13 instruction-like language response owasp",
+  },
+  {
+    section: "known-limitations",
+    label: "What's coming",
+    text: `what's coming ${BRAND.name} cli local stdio servers next launch wave discovery layer run local mcp servers agentsecrets credential injection per-user oauth delegation v0.3 github gmail slack stripe connected account static key vault api-key wasm sandbox pre-listing execution v0.3 sandboxed execution runtime-only payloads deferred attacks static analysis misses owasp mcp top 10 13 live layers 85%`,
+  },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -413,7 +453,7 @@ export default function DocsPage() {
             ))}
             <H3>Security on every server and every call</H3>
             <P>
-              Every server ingested from official registry, Smithery, Glama, or GitHub is scanned across
+              Every server ingested from official registry, Smithery, or Glama is scanned across
               15 layers before listing: static injection analysis, npm CVE scanning, schema pinning,
               typosquatting detection, and more. Every proxy call adds DLP, shell injection detection,
               PII scanning, URL elicitation safety, and context isolation. Current OWASP MCP Top 10
@@ -562,9 +602,9 @@ export default function DocsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               {[
-                { range: '90–100', label: 'Verified + stable',   color: 'text-green-400',  border: 'border-green-500/20', bg: 'bg-green-500/[0.06]' },
-                { range: '80–89',  label: 'Good for production', color: 'text-blue-400',   border: 'border-blue-500/20',  bg: 'bg-blue-500/[0.06]' },
-                { range: '< 70',   label: 'Use with caution',    color: 'text-red-400',    border: 'border-red-500/20',   bg: 'bg-red-500/[0.06]' },
+                { range: '85–100', label: 'Verified + proven',      color: 'text-green-400',  border: 'border-green-500/20', bg: 'bg-green-500/[0.06]' },
+                { range: '65–84',  label: 'Production-suitable',    color: 'text-amber-400',  border: 'border-amber-500/20', bg: 'bg-amber-500/[0.06]' },
+                { range: '< 65',   label: 'Cold start or issues',   color: 'text-red-400',    border: 'border-red-500/20',   bg: 'bg-red-500/[0.06]' },
               ].map(s => (
                 <div key={s.range} className={cn('rounded-xl border p-4 text-center', s.bg, s.border)}>
                   <div className={cn('font-mono text-[22px] font-bold', s.color)}>{s.range}</div>

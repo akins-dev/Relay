@@ -99,54 +99,147 @@ export function scanServer(params: {
 
 
 
+/**
+ * Trust Score — L5 Security Layer
+ *
+ * Composite 0–100 score answering: "How safe and reliable is this server for
+ * an agent to invoke?" Designed for a security-first MCP proxy registry.
+ *
+ * Weights (total = 100 base pts):
+ *   Security quality      25 pts  CVE + static scan — the core value prop
+ *   Uptime                20 pts  Runtime cron (every 15 min)
+ *   Publisher credibility 15 pts  verified = trusted external party vouched for it
+ *   Behavioral reliability 15 pts Bayesian: success_rate × log10(invoke_count+5) — source-agnostic
+ *   Deployment quality    15 pts  Has working endpoint + tool schemas with inputSchema
+ *   Schema stability      10 pts  Days since schema hash last changed (max 90d)
+ *
+ * Runtime penalties (applied post-ingest from metering):
+ *   High failure rate   up to -15 pts
+ *   DLP trigger rate    up to -10 pts
+ *
+ * Behavioral reliability design (replaces Smithery use_count):
+ *   - Source: intent_server_mappings (invoke_count, success_count) — written on
+ *     every proxy call through recordInvokeOutcome(), all sources, all servers.
+ *   - Bayesian prior: Beta(3,1) — adjusted_rate = (success_count + 3) / (invoke_count + 4)
+ *     New server (0 invocations): adjusted_rate = 0.75 → ~7.9 pts (not zero)
+ *     10 invocations at 100% success: adjusted_rate ≈ 0.93 → capped at 15
+ *     The prior washes out as real data accumulates (~20+ invocations).
+ *   - Formula: min(15, adjusted_rate × log10(invoke_count + 5) × 15)
+ *   - Smithery use_count is NOT removed — it stays as a search ranking tiebreaker.
+ *
+ * Score trajectory (typical high-quality server):
+ *   Day 0 (ingest, verified, no CVEs, has endpoint+tools): ~73 pts
+ *   After first uptime probe (up):                          ~86 pts
+ *   After 30 days stable + 50 successful invocations:       ~95 pts
+ */
 export function computeTrustScore(params: {
-  verified:          number;
-  uptimePct:         number;
-  stars:             number;
-  daysSinceChange:   number;
-  // Optional: scan quality score (0-100, from L1/CVE scan results).
-  // If not provided, assumed clean (100). Used by uptime cron which reads scan_issues.
-  scanScore?:        number;
-  // Optional: request failure rate from metering (0-100, 0=perfect)
-  failureRatePct?:   number;
-  // Optional: DLP trigger rate from proxy calls (0-100, 0=clean)
-  dlpRatePct?:       number;
-  // Optional: days since first listing (for new server boost in ranking, not score)
-  daysSinceListing?: number;
+  /** 1 if publisher verified by trusted source (Smithery review, mcp.directory), 0 otherwise */
+  verified:            number;
+  /** 0–100 uptime percentage from the 15-min uptime cron. Default 100 at ingest. */
+  uptimePct:           number;
+  /**
+   * Total invoke count from intent_server_mappings (all sources, all servers).
+   * 0 for servers with no invoke history. Bayesian prior handles cold-start.
+   */
+  invokeCount?:        number;
+  /**
+   * Successful invoke count from intent_server_mappings.
+   * Used with invokeCount to compute Bayesian-smoothed success rate.
+   */
+  successCount?:       number;
+  /**
+   * Days since the schema_hash last changed.
+   * Compute from schema_changed_at or first_seen_at. Use 0 for new servers.
+   */
+  daysSinceChange:     number;
+  /**
+   * 0–100 scan quality score from the CVE + static scan pipeline.
+   * 100 = fully clean. Defaults to 100 if not provided (optimistic for new servers).
+   */
+  scanScore?:          number;
+  /**
+   * 1 if server has a working HTTP endpoint AND at least one tool_schema with
+   * an inputSchema. Indicates the server is actually invokable end-to-end.
+   */
+  deploymentQuality?:  number;
+  /** Request failure rate from proxy metering (0–100, 0 = perfect). */
+  failureRatePct?:     number;
+  /** DLP trigger rate from proxy calls (0–100, 0 = clean). */
+  dlpRatePct?:         number;
+  /**
+   * @deprecated Use invokeCount + successCount instead.
+   * Kept for backward compatibility with callers not yet migrated.
+   * If invokeCount is provided, usageCount is ignored.
+   */
+  usageCount?:         number;
+  /**
+   * @deprecated Use invokeCount + successCount instead.
+   * GitHub stars — a weak external popularity signal, not a reliability signal.
+   * Only used if usageCount is also absent.
+   */
+  stars?:              number;
 }): number {
-  let s = 0;
+  // ── Security quality — 25 pts ──────────────────────────────────────────────
+  // CVE scan + static scan. The project's primary value prop.
+  const scanScore    = params.scanScore ?? 100;
+  const securityPts  = (Math.min(100, Math.max(0, scanScore)) / 100) * 25;
 
-  // Verified publisher — 40 pts
-  s += params.verified ? 40 : 0;
+  // ── Uptime — 20 pts ────────────────────────────────────────────────────────
+  // Measured every 15 min by the uptime cron. Defaults to 100 at ingest time.
+  const uptimePts = (Math.min(100, Math.max(0, params.uptimePct)) / 100) * 20;
 
-  // Uptime — 25 pts (measured every 15 min by cron)
-  s += (params.uptimePct / 100) * 25;
+  // ── Publisher credibility — 15 pts ─────────────────────────────────────────
+  // verified = a trusted external party (Smithery review, mcp.directory curator)
+  // has explicitly vouched for this server. Not just "it exists in a registry."
+  const credibilityPts = params.verified ? 15 : 0;
 
-  // Schema stability — 15 pts (servers that mutate schemas are less trustworthy)
-  s += (Math.min(params.daysSinceChange, 90) / 90) * 15;
+  // ── Behavioral reliability — 15 pts ────────────────────────────────────────
+  // Source: intent_server_mappings — populated on every proxy invoke_tool call.
+  // Works for ALL servers regardless of ingestion source.
+  //
+  // Bayesian prior Beta(3,1): adjusted_rate = (success_count + 3) / (invoke_count + 4)
+  //   → New server: 3/4 = 0.75 (plausibly good, unproven)
+  //   → 100 invocations at 95% success: 98/104 ≈ 0.942 (data dominates)
+  //
+  // Formula: min(15, adjusted_rate × log10(invoke_count + 5) × 15)
+  //   The +5 inside log ensures new servers (invoke_count=0) get log10(5)≈0.699
+  //   rather than log10(1)=0, giving: 0.75 × 0.699 × 15 ≈ 7.9 pts floor.
+  let behavioralPts: number;
+  if (params.invokeCount !== undefined) {
+    const n           = Math.max(0, params.invokeCount);
+    const s           = Math.max(0, params.successCount ?? 0);
+    const adjustedRate = (s + 3) / (n + 4);  // Bayesian: Beta(3,1) prior
+    behavioralPts      = Math.min(15, adjustedRate * Math.log10(n + 5) * 15);
+  } else {
+    // Legacy path: usageCount (Smithery) or stars — kept for callers mid-migration.
+    // Log scale: 10 uses = 1 pt, 1000 = 3 pts, 100k = 5 pts (× 3 = 15 max)
+    const legacyCount = params.usageCount ?? params.stars ?? 0;
+    behavioralPts     = Math.min(Math.log10(Math.max(legacyCount, 1)) / 5, 1) * 15;
+  }
 
-  // Community signals — 10 pts (log scale prevents large servers dominating)
-  s += Math.min(Math.log10(Math.max(params.stars, 1)) / 4, 1) * 10;
+  // ── Deployment quality — 15 pts ────────────────────────────────────────────
+  // 1 if server has a live HTTP endpoint AND at least one tool schema with
+  // inputSchema. This means an agent can actually call it end-to-end.
+  const deploymentPts = (params.deploymentQuality ?? 0) * 15;
 
-  // Scan quality — 10 pts (CVE and static scan results)
-  // scanScore is 0-100 from the scan pipeline; 100 = fully clean
-  const scanScore = params.scanScore ?? 100;
-  s += (Math.min(100, Math.max(0, scanScore)) / 100) * 10;
+  // ── Schema stability — 10 pts ──────────────────────────────────────────────
+  // Servers that frequently mutate their schema are less predictable.
+  // Computed from actual schema_hash change history (not hardcoded).
+  const stabilityPts = (Math.min(params.daysSinceChange, 90) / 90) * 10;
 
-  // Runtime penalties (from metering — applied after ingest scores stabilise)
+  let score = securityPts + uptimePts + credibilityPts + behavioralPts + deploymentPts + stabilityPts;
+
+  // ── Runtime penalties (from metering — applied after ingest) ───────────────
   // High request failure rate: up to -15 pts
   if (params.failureRatePct !== undefined) {
-    const failurePenalty = (params.failureRatePct / 100) * 15;
-    s = Math.max(0, s - failurePenalty);
+    score = Math.max(0, score - (params.failureRatePct / 100) * 15);
   }
-
-  // DLP trigger rate: up to -10 pts (server returning credentials in responses)
+  // DLP trigger rate: up to -10 pts (server leaking credentials in responses)
   if (params.dlpRatePct !== undefined && params.dlpRatePct > 5) {
-    const dlpPenalty = ((params.dlpRatePct - 5) / 100) * 10;
-    s = Math.max(0, s - dlpPenalty);
+    score = Math.max(0, score - ((params.dlpRatePct - 5) / 100) * 10);
   }
 
-  return Math.round(Math.min(100, Math.max(0, s)));
+  return Math.round(Math.min(100, Math.max(0, score)));
 }
 
 /**
@@ -171,8 +264,14 @@ export function newServerRankingBoost(daysSinceListing: number): number {
  *
  * Used by the search RPC to inject diversity into results.
  */
-export const CATEGORY_SATURATION_THRESHOLD = 5;
-export const CATEGORY_HIGH_SCORE_THRESHOLD = 85;
+/**
+ * @deprecated These constants were used by the old category_counts CTE logic
+ * in search_servers(), which scanned the whole servers table for trust_score >= 85.
+ * That logic is replaced in migration 032 with result-set-relative diversity scoring.
+ * Kept here only for any external references; do not use in new code.
+ */
+export const CATEGORY_SATURATION_THRESHOLD = 2;  // now: result_count > 2 in result set
+export const CATEGORY_HIGH_SCORE_THRESHOLD = 85; // now: median of result set
 
 // ── L4: Proxy DLP — credentials ───────────────────────────────────────────────
 

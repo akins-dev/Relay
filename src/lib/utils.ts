@@ -243,7 +243,7 @@ export async function readBoundedResponse(
 // the user's session cookies, which is a CSRF/session-hijack risk.
 // Instead we allow only the production origin and localhost for development.
 const ALLOWED_ORIGINS = new Set([
-  process.env.NEXT_PUBLIC_APP_URL ?? 'https://openmcp.io',
+  process.env.NEXT_PUBLIC_APP_URL ?? 'https://relay.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
 ]);
@@ -251,7 +251,7 @@ const ALLOWED_ORIGINS = new Set([
 export function corsHeaders(requestOrigin: string | null): Record<string, string> {
   const origin = requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)
     ? requestOrigin
-    : (process.env.NEXT_PUBLIC_APP_URL ?? 'https://openmcp.io');
+    : (process.env.NEXT_PUBLIC_APP_URL ?? 'https://relay.vercel.app');
   return {
     'Access-Control-Allow-Origin':      origin,
     'Access-Control-Allow-Methods':     'GET, POST, OPTIONS',

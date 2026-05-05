@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { createClient } from '@/lib/supabase/server';
+import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
-import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import { resolveApiKey } from '@/lib/auth-server';
+import { ensureRuntimeContracts } from '@/lib/runtime-contracts';
 
 // ── Credential setup — vault instructions injected into search results ─
 // Gives the agent everything it needs to guide the user through credential setup.
@@ -100,30 +101,6 @@ function buildCredentialSetup(serverName: string, authType: string, connectUrl?:
   };
 }
 
-async function resolveApiKeyUser(req: NextRequest): Promise<string | null> {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
-
-  const token = authHeader.slice(7);
-  if (!token.startsWith('sk_mcp_')) return null;
-
-  const keyHash = createHash('sha256').update(token).digest('hex');
-  const svc = createServiceClient();
-  const { data } = await svc
-    .from('api_keys')
-    .select('id, user_id')
-    .eq('key_hash', keyHash)
-    .single();
-
-  if (!data) return null;
-
-  void svc.from('api_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id);
-
-  return data.user_id;
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q     = (searchParams.get('q') ?? '').trim();
@@ -134,9 +111,10 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = extractIp(req);
-  const apiKeyUserId = await resolveApiKeyUser(req);
+  const auth = await resolveApiKey(req);
+  const apiKeyUserId = auth.userId;
   const rlKey = apiKeyUserId ? `search:user:${apiKeyUserId}` : `search:ip:${ip}`;
-  const rlConfig = apiKeyUserId ? LIMITS.proxyAuth : LIMITS.search;
+  const rlConfig = apiKeyUserId ? await getLimitConfig('proxyAuth') : await getLimitConfig('search');
   const rl  = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
@@ -152,23 +130,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    await ensureRuntimeContracts();
     const supabase = createClient();
 
-    let rpcResult = await (supabase as any)
+    const { data: results, error } = await (supabase as any)
       .rpc('search_servers', { query_text: q, result_limit: limit, include_stdio: true });
-
-    // Backwards/forwards compatibility with environments where search_servers()
-    // was migrated back to the 2-arg signature.
-    if (rpcResult?.error) {
-      rpcResult = await (supabase as any)
-        .rpc('search_servers', { query_text: q, result_limit: limit });
-    }
-
-    const { data: results, error } = rpcResult;
 
     if (error) {
       console.error('[search] RPC error:', error.message);
-      return apiError('Search failed', 500, { code: 'SEARCH_ERROR' });
+      return apiError('Search failed: search_servers contract mismatch or RPC error', 500, {
+        code: 'SEARCH_RPC_CONTRACT_ERROR',
+      });
     }
 
     if (!results?.length) {
@@ -183,8 +155,9 @@ export async function GET(req: NextRequest) {
         id, name, display_name, description, version, tags, tools, tool_schemas,
         trust_score, verified, source, scan_status, cve_issues,
         latency_ms, uptime_pct, stars, calls_today,
+        tool_extraction_source, env_var_schema, package_info,
         auth_type, auth_setup_url, oauth_authorization_url,
-        transport, endpoint,
+        transport, endpoint, proxy_available,
         profiles!author_id ( username )
       `)
       .in('id', ids)
@@ -196,9 +169,9 @@ export async function GET(req: NextRequest) {
       const authType = s.oauth_authorization_url ? 'oauth' : (s.auth_type ?? 'managed');
       const connectUrl = s.oauth_authorization_url ? `${SITE_URL}/registry/${s.name}?connect=1` : null;
       const secretsTutorial = buildCredentialSetup(s.name, authType, connectUrl);
-      const transport = s.transport ?? 'http';
+      const transport = s.transport ?? 'unknown';
       const isStdio = transport === 'stdio';
-      const proxyAvailable = !isStdio && !!s.endpoint;
+      const proxyAvailable = s.proxy_available ?? (!isStdio && !!s.endpoint);
 
       return {
         name:         s.name,
@@ -220,7 +193,9 @@ export async function GET(req: NextRequest) {
         transport,
         proxy_available: proxyAvailable,
         ...(!proxyAvailable && {
-          cli_hint: `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`,
+          cli_hint: isStdio
+            ? `This is a stdio server. It requires ${BRAND.cli} (coming soon) to invoke locally. The CLI runs as a native MCP server in your agent host and spawns stdio servers on demand — like npx downloads and runs without a permanent install.`
+            : `This server is currently listed for discovery only. Relay has not verified a proxyable remote transport for it yet.`,
         }),
 
         // Full tool schemas — agent MUST read inputSchema before calling
@@ -228,6 +203,7 @@ export async function GET(req: NextRequest) {
         tool_schemas: (s.tool_schemas?.length ?? 0) > 0
           ? s.tool_schemas
           : (s.tools ?? []).map((name: string) => ({ name })),
+        tool_extraction_source: s.tool_extraction_source ?? 'none',
 
         // Credential transparency
         auth_type: authType,

@@ -464,7 +464,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
                 {BRAND.name}
               </div>
               <div className="font-mono text-[10px] uppercase tracking-[0.18em]">
-                by TheSeventeen
+                by Akinbobola Emmanuel
               </div>
             </div>
           </div>

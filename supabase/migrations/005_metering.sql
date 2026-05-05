@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 005: Per-call metering for revenue share
+-- relay — Migration 005: Per-call metering for revenue share
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Metering events — billing-grade call tracking

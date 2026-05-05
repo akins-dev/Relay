@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 012: Per-server OAuth connections
+-- relay — Migration 012: Per-server OAuth connections
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Adds OAuth metadata to servers and stores per-user OAuth tokens in the vault.
 -- The proxy reads the token from vault and injects it as Authorization header.
@@ -13,7 +13,7 @@ ALTER TABLE public.servers
   ADD COLUMN IF NOT EXISTS oauth_authorization_url TEXT, -- e.g. https://github.com/login/oauth/authorize
   ADD COLUMN IF NOT EXISTS oauth_token_url          TEXT, -- e.g. https://github.com/login/oauth/access_token
   ADD COLUMN IF NOT EXISTS oauth_scopes             TEXT, -- space-separated, e.g. "repo read:user"
-  ADD COLUMN IF NOT EXISTS oauth_client_id          TEXT; -- openMCP's registered client_id for this service
+  ADD COLUMN IF NOT EXISTS oauth_client_id          TEXT; -- relay's registered client_id for this service
   -- oauth_client_secret lives in Vercel env, never in DB
 
 ALTER TABLE public.servers

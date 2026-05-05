@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 
 const Schema = z.object({ email: z.string().email(), password: z.string() });
 
 export async function POST(req: NextRequest) {
   // Rate limit: 10 attempts per IP per minute — brute force protection
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl  = await rateLimit(`auth:${ip}`, LIMITS.auth);
+  const rlConfig = await getLimitConfig('auth');
+  const rl  = await rateLimit(`auth:${ip}`, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Too many login attempts. Please wait a minute before trying again.' },

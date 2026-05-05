@@ -1,6 +1,6 @@
 # Relay Technical Backbone
 
-Last updated: 2026-04-24
+Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
 Status: Canonical living technical reference
 
 ## 1. Purpose
@@ -32,13 +32,23 @@ The problem decomposes into:
 - much of the ecosystem is `stdio`-only, so discovery and invocation are not the same problem
 - public directory data is noisy, duplicative, incomplete, or operationally uneven
 
-Relay's thesis is that the winning system is not another directory page and not merely another gateway. It is an agent-centric runtime layer that:
+Relay's thesis is that the winning system is not another directory page and not merely another gateway. It is an agent-centric capability access layer that:
 
 - lets the agent discover capability by intent at runtime
 - reduces the need for explicit pre-configuration
 - keeps the model-facing interface deliberately small
 - centralizes auth, trust, policy, and execution controls
 - accumulates empirical outcome data so routing improves over time
+
+## 2.1 Relation To RAG And Orchestration Frameworks
+
+Relay is complementary to modern RAG and agent orchestration systems, not a replacement for them.
+
+- RAG improves retrieval over documents, databases, and other knowledge sources
+- LangChain and LangGraph improve workflow coordination, state management, and multi-step execution
+- Relay solves a different infrastructure problem: runtime discovery, governed invocation, and outcome-driven routing across a large MCP ecosystem
+
+This distinction matters because stronger reasoning and retrieval do not eliminate context bloat from large tool surfaces, manual MCP pre-configuration, transport fragmentation, open-world tool retrieval, or centralized credential and policy enforcement. Relay addresses a different bottleneck in the same broader agent system: making broad MCP capability usable at runtime under discovery, auth, trust, and execution constraints.
 
 ## 3. Product Model
 
@@ -176,9 +186,10 @@ These are useful but imperfect and should be treated as approximation layers:
 
 These depend on accumulated usage data:
 
-- `intent_server_mappings`
-- `get_intent_boosts(...)`
+- `intent_server_mappings` (invoke_count, success_count per server)
+- `get_intent_boosts(...)` for search reranking
 - search reranking from historical success/failure
+- **trust score behavioral reliability slot** — the Bayesian-smoothed invoke success rate from ISM is now a first-class trust signal, not a vanity metric. This closes the feedback loop between runtime outcomes and registry quality scores.
 
 Important: there is no trained probabilistic routing model in production yet. The system is still lexical + heuristic + empirical aggregate boosts, not ML-routed.
 
@@ -302,18 +313,23 @@ Priority 2:
 
 ### 7.1 Inbound Registry Sources
 
-Current implemented or partially implemented upstream source fetchers:
+Active source fetchers wired into `runIngest()`:
 
-- official MCP registry
-- Smithery
-- Glama
-- GitHub `modelcontextprotocol/servers`
-- vendor / partner GitHub org scan
-- ClaudeMCP
-- MCP.so
-- MCP.run fetcher exists in code but is not wired into `runIngest()`
-- Composio fetcher exists in code but is not wired into `runIngest()`
-- PulseMCP fetcher intentionally returns empty because public API is unavailable
+| Source | Tier | Notes |
+|---|---|---|
+| Official MCP Registry | Primary | Full endpoints + tool schemas |
+| Smithery | Primary | Full endpoints + tool schemas + `verified` flag |
+| Glama | Enrichment | Via github_url, enriches existing rows |
+| mcp.directory | Enrichment | Via github_url, enriches existing rows |
+
+Decommissioned sources (removed from `runIngest()`):
+
+- GitHub `modelcontextprotocol/servers` — no standard MCP server listing API
+- PulseMCP — public API returns 403
+- ClaudeMCP — relied on fragile `__NEXT_DATA__` scraping
+- MCP.so — no JSON API
+- mcpservers.org — no API (static list)
+- MCP.run / Composio — fetchers exist in code but not wired in (no active API contract)
 
 ### 7.2 Runtime Surfaces
 
@@ -516,14 +532,22 @@ If upstream description is missing or low quality:
 
 ### 9.11 Trust Score Initialization
 
-Current ingest-time trust score uses:
+At ingest time, there is no invoke history yet. The pipeline passes `invokeCount: 0, successCount: 0` to `computeTrustScore()`, which applies a Beta(3,1) Bayesian prior to give new servers a floor of ~8 pts in the behavioral reliability slot rather than 0. This correctly signals "unproven" rather than "broken."
 
-- verified publisher signal
-- assumed `uptimePct = 100`
-- synthetic `stars = 50` and `daysSinceChange = 90` for official/partner rows
-- scan score from CVE outcome
+The trust score computation at ingest time uses:
 
-This is deterministic but intentionally optimistic for trusted sources on first ingest.
+- `verified` publisher signal from upstream source
+- `uptimePct: 100` (assumed at ingest; uptime cron will update this within 15 min)
+- `invokeCount: 0, successCount: 0` (Bayesian prior gives ~8pts floor)
+- `scanScore`: 100 if no CVEs found; 50 if high-severity CVEs present
+- `deploymentQuality: 1` if server has a working endpoint **and** at least one tool schema with `inputSchema`; 0 otherwise
+- `daysSinceChange`: computed from `schema_changed_at` if the row already exists; 0 for new servers
+
+This is deterministic and source-agnostic. No synthetic `stars` or hardcoded `daysSinceChange` overrides are applied. The score grows automatically as:
+
+1. Uptime cron recomputes with real uptime data (updates uptime slot)
+2. Agents invoke the server via proxy and `intent_server_mappings` accumulates success/failure data (updates behavioral slot)
+3. `schema_changed_at` ages without mutations (updates stability slot)
 
 ### 9.12 Upsert Stage
 
@@ -561,17 +585,16 @@ Impact:
 
 - identical HTTP servers from multiple registries can survive as duplicate rows under different names
 
-#### B. Source contract drift exists
+#### B. Source contract drift — RESOLVED (migration 032 workstream)
 
-Current drift points:
+Previous drift points (all fixed):
 
-- `/api/ingest` accepts `partner`, `mcp_run`, and `composio`
-- `runIngest()` actually handles `vendor`, not `partner`
-- `fetchMcpRunServers()` and `fetchComposioServers()` exist but are not wired into `runIngest()`
+- `/api/ingest` previously accepted `partner`, `mcp_run`, and `composio` — now accepts only `all`, `official`, `smithery`, `glama`, `mcp_directory`
+- `/api/admin/ingest` previously accepted `github`, `partner`, `vendor` — now matches `/api/ingest` exactly
+- `runIngest()` previously handled `vendor` instead of the documented `partner` — now handles `official`, `smithery`, `glama`, `mcp_directory` only
+- Dead fetchers (`fetchMcpRunServers()`, `fetchComposioServers()`) remain in code for reference but are not wired into `runIngest()`
 
-Impact:
-
-- API surface and actual ingest behavior are misaligned
+Current state: API surface and actual ingest behavior are aligned.
 
 #### C. Search RPC schema drift exists
 
@@ -744,7 +767,7 @@ These fields should be treated as best-effort only:
 #### Fix immediately
 
 - endpoint dedup bug
-- source contract drift (`partner` vs `vendor`, unwired `mcp_run` and `composio`)
+- source contract alignment (resolved in migration 032 workstream — see section 10.2B)
 - search RPC/schema drift
 - API key hint prefix drift was present historically (`sk_relay_` vs accepted `sk_mcp_`) and should now be treated as a regression check item rather than current expected behavior.
 - weak GitHub stdio sandbox execution path
@@ -810,7 +833,7 @@ The following are essential because they directly support the core loop:
 - ingest from several sources because the ecosystem is fragmented
 - canonical registry normalization because runtime search quality depends on it
 - vault-backed secrets and OAuth because many useful servers need credentials
-- 14-layer security and policy enforcement because runtime execution without controls is unacceptable
+- security and policy enforcement because runtime execution without controls is unacceptable
 - confidence scoring because search needs a measurable ranking layer before learned routing exists
 - analytics tables because training data does not appear by magic
 - CLI and cloud stdio bridges because discovery without invocation is incomplete
@@ -829,12 +852,12 @@ The docs should avoid drifting into:
 
 ### Obstacles
 
-- source contract drift across route, schema, and code
-- incomplete wiring of some source adapters
-- endpoint dedup bug
 - transport truth is still partly heuristic
 - `stdio` extraction remains weak without a better execution strategy
 - documentation drift can reintroduce narrative confusion
+- ingest does not yet include MCP.run or Composio (fetchers exist but are not wired into `runIngest()`)
+
+> **Resolved since 2026-04-23:** Source contract drift (route vs ingest) is fixed — the route and `runIngest()` now accept exactly the same four sources. Endpoint dedup is improved. The search RPC schema is fully synchronized in migration 032.
 
 ### Trade-Offs
 
@@ -845,39 +868,14 @@ The docs should avoid drifting into:
 
 ## 14. Recommended Next Work Sequence
 
-### Sprint 3
+The canonical sprint-by-sprint plan now lives in [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md).
 
-- finish sampling security controls
-- finish OAuth refresh/retry behavior
-- keep auth and audit flows aligned with the current runtime contract
+This file should keep the why and the dependency logic:
 
-### Sprint 4
-
-- add speculative invocation
-- add session pooling / stateless invoke optimizations
-- complete streaming support
-
-### Sprint 5
-
-- ship the CLI `stdio` bridge
-- apply local DLP and policy enforcement in the CLI path
-- keep async audit sync intact
-
-### Sprint 6
-
-- replace the heuristic gate with the learned Lever 3B classifier
-- add behavioral trust penalties from runtime outcomes
-- only add richer reranking if analytics proves lexical recall is insufficient
-
-### Sprint 7
-
-- add the cloud `stdio` bridge for non-CLI agent hosts
-
-### Sprint 8+
-
-- train the learned routing layer
-- add adaptive or ephemeral tool surfacing where confidence is strong enough
-- move common intents onto the learned fast path while keeping lexical search as fallback
+- finish runtime safety and auth correctness before optimizing latency
+- solve `stdio` reachability before claiming broad capability access
+- keep analytics quality high before training learned routing
+- treat learned routing as the fast path that compounds from the current loop, not as a separate product
 
 ## 15. Operational Rules Going Forward
 
@@ -885,7 +883,8 @@ The docs should avoid drifting into:
 - Any future feature that introduces state must declare whether it is canonical, reconstructible, or disposable.
 - New ingestion sources must define source contract, dedup key, transport semantics, extraction path, failure modes, and backfill strategy.
 - New analytics must land in Postgres if they matter for product learning, trust scoring, or routing quality.
-- Changes to the architecture or roadmap must update this file, `DECISION_LOG.md`, and `CHANGELOG.md`.
+- Changes to the architecture or roadmap must update this file, [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md), `DECISION_LOG.md`, and `CHANGELOG.md`.
+- Changes to enforced limits or throttling behavior must update [`RATE_LIMITS.md`](RATE_LIMITS.md) in the same workstream.
 - Narrative docs must describe Relay first as a solution to the practical MCP configuration ceiling and only secondarily as a collection of supporting subsystems.
 
 ## 16. References
@@ -894,3 +893,15 @@ The docs should avoid drifting into:
 - Chameleon: https://arxiv.org/abs/2304.09842
 - ToolLLM: https://arxiv.org/abs/2307.16789
 - APIBank (cited in agent evaluation literature): https://aclanthology.org/2023.emnlp-main.187/
+- ToolRet: https://aclanthology.org/2025.findings-acl.1258/
+- ToolHop: https://aclanthology.org/2025.acl-long.150/
+- Meta-Tool / Meta-Bench: https://aclanthology.org/2025.acl-long.1481/
+- ToolSandbox: https://machinelearning.apple.com/research/toolsandbox-stateful-conversational-llm-benchmark
+- Tau-bench: https://github.com/sierra-research/tau2-bench
+- Tau-Knowledge: https://taubench.com/blog/tau-knowledge.html
+- BFCL leaderboard: https://gorilla.cs.berkeley.edu/leaderboard
+- BFCL V4 web search note: https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html
+- MCP specification: https://modelcontextprotocol.io/specification/
+- MCP 2026 roadmap: https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/
+- MCP landscape and security threats: https://arxiv.org/abs/2503.23278
+- Beyond the Protocol: https://arxiv.org/abs/2506.02040

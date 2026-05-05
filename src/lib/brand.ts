@@ -8,9 +8,9 @@
  *   NEXT_PUBLIC_BRAND_NAME=Relay
  *   NEXT_PUBLIC_BRAND_SLUG=relay
  *   NEXT_PUBLIC_BRAND_DOMAIN=relay.dev
- *   NEXT_PUBLIC_BRAND_ORG=TheSeventeen
- *   NEXT_PUBLIC_GITHUB_URL=https://github.com/the-17/relay
- *   NEXT_PUBLIC_BRAND_TWITTER=@relay_dev
+ *   NEXT_PUBLIC_BRAND_ORG=akins-dev
+ *   NEXT_PUBLIC_GITHUB_URL=https://github.com/akins-dev/relay
+ *   NEXT_PUBLIC_BRAND_TWITTER=@akins_dev
  *   NEXT_PUBLIC_AGENT_MD_ROUTE=/agents.md
  *
  * Never hardcode brand strings outside this file.
@@ -19,7 +19,7 @@
 const name   = process.env.NEXT_PUBLIC_BRAND_NAME   ?? 'Relay';
 const slug   = process.env.NEXT_PUBLIC_BRAND_SLUG   ?? 'relay';
 const domain = process.env.NEXT_PUBLIC_BRAND_DOMAIN ?? 'relay.dev';
-const org    = process.env.NEXT_PUBLIC_BRAND_ORG    ?? 'TheSeventeen';
+const org    = process.env.NEXT_PUBLIC_BRAND_ORG    ?? 'akins-dev';
 
 export const BRAND = {
   name,
@@ -29,7 +29,7 @@ export const BRAND = {
   tagline:     process.env.NEXT_PUBLIC_BRAND_TAGLINE     ?? 'The trust layer for runtime MCP tool discovery and secure invocation.',
   description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION ?? 'Give your agents the power to dynamically discover and securely invoke remote capabilities. Secure by default. Network native.',
   githubUrl:   process.env.NEXT_PUBLIC_GITHUB_URL         ?? `https://github.com/akins-dev/${slug}`,
-  twitterHandle: process.env.NEXT_PUBLIC_BRAND_TWITTER   ?? `@${slug}_dev`,
+  twitterHandle: process.env.NEXT_PUBLIC_BRAND_TWITTER   ?? `@akins_dev`,
   // Product lines — all derived from name, overridable individually
   cloud:       process.env.NEXT_PUBLIC_BRAND_CLOUD  ?? `${name} Cloud`,
   cli:         process.env.NEXT_PUBLIC_BRAND_CLI    ?? `${name} CLI`,

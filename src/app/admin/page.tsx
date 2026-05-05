@@ -60,6 +60,7 @@ interface PlatformKPIs {
   official_servers: number; smithery_servers: number; glama_servers: number;
   github_servers: number; direct_servers: number;
   scan_failures: number; servers_with_cves: number; avg_trust_score: number;
+  no_tool_metadata_servers: number; weak_stdio_rows: number;
   calls_24h: number; calls_7d: number; calls_30d: number; dlp_triggers_7d: number;
   total_users: number; active_api_keys: number;
   total_ingest_runs: number; last_ingest_at: string;
@@ -67,7 +68,13 @@ interface PlatformKPIs {
 interface IngestQuality {
   source: string; total_servers: number; active_servers: number;
   rejected_servers: number; scan_passed: number; has_cve_issues: number;
+  probe_backed: number; sandbox_backed: number; readme_backed: number;
+  no_tool_metadata: number; weak_stdio_rows: number;
   avg_trust_score: number; rejection_rate_pct: number;
+}
+interface IngestProvenanceQuality {
+  source: string; tool_extraction_source: string; server_count: number;
+  stdio_count: number; active_count: number; avg_trust_score: number;
 }
 interface SecurityThreat {
   day: string; total_calls: number; unique_ips: number;
@@ -100,8 +107,21 @@ interface UptimeIssue {
   transport: string; uptime_pct: number; latency_ms: number;
   trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
 }
+interface ReleaseGate {
+  name: string;
+  state: 'pass' | 'fail' | 'warn';
+  value: string;
+  rule: string;
+  notes: string | null;
+}
+interface ReleaseReport {
+  generated_at: string;
+  release: 'go' | 'no-go';
+  blocking_failures: ReleaseGate[];
+  gates: ReleaseGate[];
+}
 
-type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations' | 'analytics' | 'config';
+type Tab = 'overview' | 'ingest' | 'security' | 'servers' | 'threats' | 'operations' | 'analytics' | 'release' | 'config';
 const ADMIN_PAGE_SIZES = [8, 16, 24];
 
 export default function AdminPage() {
@@ -113,6 +133,7 @@ export default function AdminPage() {
   const [tab,        setTab]        = useState<Tab>('overview');
   const [kpis,       setKpis]       = useState<PlatformKPIs | null>(null);
   const [ingest,     setIngest]     = useState<IngestQuality[]>([]);
+  const [ingestProvenance, setIngestProvenance] = useState<IngestProvenanceQuality[]>([]);
   const [threats,    setThreats]    = useState<SecurityThreat[]>([]);
   const [suspIPs,    setSuspIPs]    = useState<SuspiciousIP[]>([]);
   const [topServers, setTopServers] = useState<TopServer[]>([]);
@@ -127,6 +148,7 @@ export default function AdminPage() {
   const [serverReliability,setServerReliability]= useState<any[]>([]);
   // Rate limit config
   const [rateLimits,       setRateLimits]       = useState<any[]>([]);
+  const [releaseReport,    setReleaseReport]    = useState<ReleaseReport | null>(null);
   const [rlSaving,         setRlSaving]         = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
@@ -159,9 +181,10 @@ export default function AdminPage() {
     const svc = supabase;
 
     try {
-      const [kpisRes, ingestRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes, intentRes, gapsRes, sqRes, srRes, rlRes] = await Promise.all([
+      const [kpisRes, ingestRes, ingestProvRes, threatsRes, suspRes, topRes, runsRes, cronRes, driftRes, uptimeRes, intentRes, gapsRes, sqRes, srRes, rlRes] = await Promise.all([
         svc.from('platform_kpis').select('*').single(),
         svc.from('ingest_quality').select('*'),
+        svc.from('ingest_provenance_quality').select('*'),
         svc.from('security_threats').select('*').limit(30),
         svc.from('suspicious_ips').select('*').limit(100),
         svc.from('top_servers_by_usage').select('*').limit(100),
@@ -182,6 +205,7 @@ export default function AdminPage() {
 
       if (kpisRes.data)    setKpis(kpisRes.data as any);
       if (ingestRes.data)  setIngest(ingestRes.data as any);
+      if (ingestProvRes.data) setIngestProvenance(ingestProvRes.data as any);
       if (threatsRes.data) setThreats(threatsRes.data as any);
       if (suspRes.data)    setSuspIPs(suspRes.data as any);
       if (topRes.data)     setTopServers(topRes.data as any);
@@ -194,6 +218,10 @@ export default function AdminPage() {
       if (sqRes?.data)     setSearchQuality(sqRes.data as any);
       if (srRes?.data)     setServerReliability(srRes.data as any);
       if (rlRes?.data)     setRateLimits(rlRes.data as any);
+      const releaseRes = await fetch('/api/admin/release-report')
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (releaseRes) setReleaseReport(releaseRes as ReleaseReport);
       setLastRefresh(new Date());
     } catch (error: any) {
       setAdminError(error.message ?? 'Could not load admin dashboard');
@@ -270,11 +298,84 @@ export default function AdminPage() {
     const d = Math.floor((Date.now() - new Date(s).getTime()) / 60000);
     return d < 60 ? `${d}m ago` : d < 1440 ? `${Math.floor(d/60)}h ago` : `${Math.floor(d/1440)}d ago`;
   };
+  const formatIsoDate = (s?: string | null) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return d.toLocaleString();
+  };
 
   const C = {
     red: '#dc2626', orange: '#d97706', green: '#16a34a',
     blue: '#2563eb', purple: '#7c3aed', grey: '#6b7280',
   };
+
+  function downloadTextFile(filename: string, text: string, mime = 'text/plain;charset=utf-8') {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const releaseMarkdown = useMemo(() => {
+    if (!releaseReport) return '';
+    const title = `Release Report — ${releaseReport.release.toUpperCase()}`;
+    const generated = formatIsoDate(releaseReport.generated_at);
+
+    const rows = (releaseReport.gates ?? []).map((g) => {
+      const icon = g.state === 'pass' ? '✅' : g.state === 'warn' ? '⚠️' : '❌';
+      const notes = (g.notes ?? '—').replace(/\n/g, ' ');
+      const rule = (g.rule ?? '—').replace(/\n/g, ' ');
+      const value = (g.value ?? '—').replace(/\n/g, ' ');
+      return `| ${icon} ${g.name} | ${g.state} | ${value} | ${rule} | ${notes} |`;
+    });
+
+    const blocking = (releaseReport.blocking_failures ?? []).map((g) => `- **${g.name}**: ${g.value} (${g.rule})${g.notes ? ` — ${g.notes}` : ''}`);
+
+    return [
+      `# ${title}`,
+      ``,
+      `- **Decision**: ${releaseReport.release.toUpperCase()}`,
+      `- **Generated**: ${generated}`,
+      ``,
+      `## Blocking failures`,
+      blocking.length ? blocking.join('\n') : `- None`,
+      ``,
+      `## Gates`,
+      `| Gate | Status | Value | Rule | Notes |`,
+      `|---|---|---|---|---|`,
+      ...rows,
+      ``,
+      `## Sprint review notes (template)`,
+      ``,
+      `### Highlights`,
+      `- `,
+      ``,
+      `### Risks / follow-ups`,
+      `- `,
+      ``,
+      `### Decisions`,
+      `- `,
+      ``,
+      `### Next week focus`,
+      `- `,
+      ``,
+    ].join('\n');
+  }, [releaseReport]);
 
   function Stat({ label, value, color = 'var(--text)', sub }: any) {
     return (
@@ -291,6 +392,22 @@ export default function AdminPage() {
   }
   function TD({ children, mono, color }: any) {
     return <td style={{ padding: '9px 12px', fontSize: '13px', fontFamily: mono ? 'var(--mono)' : 'var(--font)', color: color ?? 'var(--text-2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{children ?? '—'}</td>;
+  }
+
+  function Callout({ tone = 'info', title, children }: { tone?: 'info' | 'warn' | 'danger' | 'success'; title: string; children: any }) {
+    const t = tone === 'success'
+      ? { bg: '#f0fdf4', border: '#86efac', text: C.green }
+      : tone === 'warn'
+        ? { bg: '#fffbeb', border: '#fde68a', text: '#92400e' }
+        : tone === 'danger'
+          ? { bg: '#fef2f2', border: '#fecaca', text: C.red }
+          : { bg: 'var(--bg-1)', border: 'var(--border)', text: 'var(--text-2)' };
+    return (
+      <div style={{ padding: '14px 16px', borderRadius: '12px', background: t.bg, border: `1px solid ${t.border}` }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: t.text }}>{title}</div>
+        <div style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.55 }}>{children}</div>
+      </div>
+    );
   }
 
   const pagedIngestRuns = useMemo(
@@ -403,7 +520,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '28px', overflowX: 'auto' }}>
-        {(['overview','ingest','security','servers','threats','operations','analytics','config'] as Tab[]).map(t => (
+        {(['overview','ingest','security','servers','threats','operations','analytics','release','config'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
@@ -412,6 +529,19 @@ export default function AdminPage() {
             whiteSpace: 'nowrap',
           }}>{t}</button>
         ))}
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <Callout title="Admin directions">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div>
+              Use <b>Ingest</b> to refresh sources, <b>Operations</b> to spot uptime/schema drift, and <b>Release</b> to export a release decision packet for sprint review.
+            </div>
+            <div style={{ color: 'var(--text-3)', fontSize: '12px' }}>
+              Tip: this page auto-refreshes every 60 seconds; use “↺ Refresh” after triggering ingest.
+            </div>
+          </div>
+        </Callout>
       </div>
 
       {loading && !kpis && (
@@ -436,6 +566,10 @@ export default function AdminPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
             <Stat label="Scan Failures" value={fmt(kpis.scan_failures)}      color={kpis.scan_failures > 50 ? C.red : C.grey} />
             <Stat label="CVE Servers"   value={fmt(kpis.servers_with_cves)}  color={kpis.servers_with_cves > 10 ? C.orange : C.grey} />
+            <Stat label="Weak Stdio"    value={fmt(kpis.weak_stdio_rows)} color={kpis.weak_stdio_rows > 0 ? C.orange : C.green} sub="readme/none-backed stdio rows" />
+            <Stat label="No Tool Data"  value={fmt(kpis.no_tool_metadata_servers)} color={kpis.no_tool_metadata_servers > 0 ? C.orange : C.green} sub="servers with zero persisted tool metadata" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
             <Stat label="Total Users"   value={fmt(kpis.total_users)}        />
             <Stat label="Last Ingest"   value={ago(kpis.last_ingest_at)}     color={C.green} />
           </div>
@@ -474,7 +608,7 @@ export default function AdminPage() {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
-            {['all','official','smithery','glama','github','claudemcp','mcpso','mcp_run','composio','partner'].map(src => (
+            {['all','official','smithery','glama','github','partner'].map(src => (
               <button key={src} onClick={() => triggerIngest(src)}
                 disabled={ingesting} className="btn btn-ghost btn-sm"
                 style={{ fontFamily: 'var(--mono)' }}>
@@ -488,7 +622,7 @@ export default function AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
               <thead><tr>
                 <TH>Source</TH><TH>Total</TH><TH>Active</TH><TH>Rejected</TH>
-                <TH>Scan Pass</TH><TH>CVE Issues</TH><TH>Avg Trust</TH><TH>Rejection %</TH>
+                <TH>Scan Pass</TH><TH>CVE Issues</TH><TH>Probe</TH><TH>Sandbox</TH><TH>README</TH><TH>No Tools</TH><TH>Weak stdio</TH><TH>Avg Trust</TH><TH>Rejection %</TH>
               </tr></thead>
               <tbody>
                 {ingest.map(row => (
@@ -499,8 +633,34 @@ export default function AdminPage() {
                     <TD color={row.rejected_servers > 0 ? C.red : undefined}>{fmt(row.rejected_servers)}</TD>
                     <TD color={C.green}>{fmt(row.scan_passed)}</TD>
                     <TD color={row.has_cve_issues > 0 ? C.orange : undefined}>{fmt(row.has_cve_issues)}</TD>
+                    <TD color={row.probe_backed > 0 ? C.green : undefined}>{fmt(row.probe_backed)}</TD>
+                    <TD color={row.sandbox_backed > 0 ? C.blue : undefined}>{fmt(row.sandbox_backed)}</TD>
+                    <TD color={row.readme_backed > 0 ? C.orange : undefined}>{fmt(row.readme_backed)}</TD>
+                    <TD color={row.no_tool_metadata > 0 ? C.red : undefined}>{fmt(row.no_tool_metadata)}</TD>
+                    <TD color={row.weak_stdio_rows > 0 ? C.orange : C.green}>{fmt(row.weak_stdio_rows)}</TD>
                     <TD color={C.purple}>{row.avg_trust_score}</TD>
                     <TD color={row.rejection_rate_pct > 10 ? C.red : undefined}>{pct(row.rejection_rate_pct)}</TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Extraction provenance</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <thead><tr>
+                <TH>Source</TH><TH>Provenance</TH><TH>Servers</TH><TH>Stdio</TH><TH>Active</TH><TH>Avg Trust</TH>
+              </tr></thead>
+              <tbody>
+                {ingestProvenance.map(row => (
+                  <tr key={`${row.source}:${row.tool_extraction_source}`}>
+                    <TD mono color={C.blue}>{row.source}</TD>
+                    <TD mono color={row.tool_extraction_source === 'none' ? C.red : row.tool_extraction_source === 'readme' ? C.orange : C.green}>{row.tool_extraction_source}</TD>
+                    <TD>{fmt(row.server_count)}</TD>
+                    <TD color={row.stdio_count > 0 ? C.orange : undefined}>{fmt(row.stdio_count)}</TD>
+                    <TD color={C.green}>{fmt(row.active_count)}</TD>
+                    <TD color={C.purple}>{row.avg_trust_score}</TD>
                   </tr>
                 ))}
               </tbody>
@@ -601,7 +761,7 @@ export default function AdminPage() {
                 <tr key={row.name}>
                   <TD mono color={C.blue}>{row.name}</TD>
                   <TD>{row.source}</TD>
-                  <TD color={row.trust_score >= 85 ? C.green : row.trust_score >= 70 ? C.orange : C.red}>
+                  <TD color={row.trust_score >= 85 ? C.green : row.trust_score >= 65 ? C.orange : C.red}>
                     {row.trust_score}
                   </TD>
                   <TD>{fmt(row.calls_30d)}</TD>
@@ -929,6 +1089,104 @@ export default function AdminPage() {
               )
             }
           </div>
+        </div>
+      )}
+
+      {/* ── RELEASE ────────────────────────────────────────────────────────── */}
+      {tab === 'release' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {!releaseReport ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              Release report not available yet.
+            </div>
+          ) : (
+            <>
+              <Callout title="How to use this tab">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    Export the release packet for sprint review, then paste the Markdown into your notes doc (or download it as a file).
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        const json = JSON.stringify(releaseReport, null, 2);
+                        downloadTextFile(`release-report-${releaseReport.generated_at.slice(0, 10)}.json`, json, 'application/json;charset=utf-8');
+                      }}
+                      style={{ fontFamily: 'var(--mono)' }}
+                    >
+                      Download JSON
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={async () => {
+                        const ok = await copyToClipboard(releaseMarkdown);
+                        if (!ok) setAdminError('Copy failed (clipboard not available). Use Download Markdown instead.');
+                      }}
+                      disabled={!releaseMarkdown}
+                    >
+                      Copy Markdown
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => downloadTextFile(`release-notes-${releaseReport.generated_at.slice(0, 10)}.md`, releaseMarkdown, 'text/markdown;charset=utf-8')}
+                      disabled={!releaseMarkdown}
+                    >
+                      Download Markdown
+                    </button>
+                    <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
+                      Generated: {formatIsoDate(releaseReport.generated_at)}
+                    </span>
+                  </div>
+                </div>
+              </Callout>
+
+              <div style={{ padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>
+                  Release Decision
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: releaseReport.release === 'go' ? C.green : C.red, fontFamily: 'var(--mono)' }}>
+                  {releaseReport.release.toUpperCase()}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>
+                  Generated {ago(releaseReport.generated_at)}
+                </div>
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <thead><tr><TH>Gate</TH><TH>Status</TH><TH>Value</TH><TH>Rule</TH><TH>Notes</TH></tr></thead>
+                <tbody>
+                  {releaseReport.gates.map((g) => (
+                    <tr key={g.name}>
+                      <TD>{g.name}</TD>
+                      <TD color={g.state === 'pass' ? C.green : g.state === 'fail' ? C.red : C.orange}>
+                        {g.state}
+                      </TD>
+                      <TD mono>{g.value}</TD>
+                      <TD mono>{g.rule}</TD>
+                      <TD>{g.notes ?? '—'}</TD>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {releaseMarkdown && (
+                <div style={{ border: '1px solid var(--border)', background: 'var(--surface)', borderRadius: '12px', overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      Markdown preview
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-3)' }}>
+                      Copy or download above (preview is read-only)
+                    </div>
+                  </div>
+                  <pre style={{ margin: 0, padding: '12px 14px', maxHeight: '340px', overflow: 'auto', fontSize: '12px', lineHeight: 1.55, fontFamily: 'var(--mono)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+                    {releaseMarkdown}
+                  </pre>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

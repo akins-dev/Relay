@@ -67,7 +67,7 @@ ${avoidSearchList}
 - Active servers: ${activeServers} (all transports — stdio, SSE, HTTP)
 - Verified servers: ${verifiedServers}
 - Calls today: ${callsToday}
-- Sources: Official MCP Registry + Smithery + Glama + GitHub + ClaudeMCP + MCP.so
+- Sources: Official MCP Registry + Smithery + Glama + GitHub + Verified Vendors
 - MCP spec version: 2025-03-26 (also supports 2024-11-05)
 
 ---
@@ -107,16 +107,16 @@ GET ${SITE_URL}/api/servers/search?q={your intent}&limit=5
 **Response fields you need:**
 - \`name\` — server identifier, used for invocation
 - \`transport\` — \`streamable_http\` | \`sse\` | \`stdio\`
-- \`proxy_available\` — \`true\` = call through web proxy; \`false\` = use CLI bridge (\`openmcp run {name}\`)
+- \`proxy_available\` — \`true\` = call through web proxy; \`false\` = use CLI bridge (\`relay run {name}\`)
 - \`mcp_compliant\` — server passed MCP initialize handshake
 - \`protocol_version\` — e.g. \`2025-03-26\` or \`2024-11-05\`
 - \`tools[].name\` — tool name, used for invocation
 - \`tools[].inputSchema\` — exact arguments required (use this, do not guess)
 - \`resources\` — list of data contexts the server exposes (uri, name, mimeType)
 - \`prompts\` — list of prompt templates (name, description, arguments)
-- \`trust_score\` — 0–100. Prefer > 80 for production. > 90 = verified + stable.
+- \`trust_score\` — 0–100. Earned behavioral reliability score. Prefer >= 65 for production. >= 85 = verified + proven runtime reliability.
 - \`latency_ms\` — average upstream latency
-- \`source\` — \`official\` | \`smithery\` | \`github\` | \`direct\`
+- \`source\` — \`official\` | \`smithery\` | \`glama\` | \`mcp_directory\` | \`direct\`
 
 **Example:**
 \`\`\`
@@ -153,7 +153,7 @@ GET /api/servers/search?q=send transactional email&limit=3
       "transport": "stdio",
       "proxy_available": false,
       "tools": ["read_file", "write_file", "list_directory"],
-      "_hint": "Run locally: openmcp run filesystem"
+      "_hint": "Run locally: relay run filesystem"
     }
   ]
 \`\`\`
@@ -237,10 +237,9 @@ Then call:
 
 | Score | Meaning | Recommendation |
 |-------|---------|----------------|
-| 90–100 | Verified publisher, stable schema, high uptime | Safe for production |
-| 80–89 | Good signal, passed all scans | Suitable for most use cases |
-| 70–79 | Passed scans, limited history | Use with awareness |
-| < 70 | Limited data or minor issues | Test before production use |
+| 85–100 | Verified publisher + proven runtime reliability (many successful invocations) | Safe for production |
+| 65–84 | Clean scan + some invoke history — production-suitable | Suitable for most use cases |
+| < 65 | Cold start (new/unproven) or active issues (scan failures, high error rate) | Test before production use |
 
 ---
 

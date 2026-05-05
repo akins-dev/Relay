@@ -22,7 +22,7 @@ export const SEARCH_DEFLECTION_CASES = [
 export const SEARCH_DECISION_RULE =
   'If the task requires changing state somewhere outside this conversation, search first. If it only requires knowledge, answer directly.';
 
-export const TRUST_GUIDANCE = 'Prefer servers with trust_score > 80 for production use.';
+export const TRUST_GUIDANCE = 'Prefer servers with trust_score >= 65 for production use.';
 export const SCHEMA_GUIDANCE = 'Use the returned inputSchema exactly. Do not guess arguments.';
 export const SECRET_GUIDANCE = 'Never put credentials, API keys, or tokens in tool arguments.';
 export const STDIO_GUIDANCE =

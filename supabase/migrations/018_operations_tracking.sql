@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 018: Operations tracking & ingestion optimization
+-- relay — Migration 018: Operations tracking & ingestion optimization
 --
 -- 1. cron_job_runs table          — admin visibility into background jobs
 -- 2. upstream_updated_at column   — zero-cost skip in ingestion pipeline

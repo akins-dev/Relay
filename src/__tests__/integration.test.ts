@@ -19,6 +19,7 @@ const mockEq        = jest.fn();
 const mockSelect    = jest.fn();
 const mockInsert    = jest.fn();
 const mockResolveApiKey = jest.fn();
+const mockExecuteProxyCall = jest.fn();
 
 // Chainable query builder mock
 const queryChain = () => {
@@ -75,6 +76,14 @@ jest.mock('@/lib/ratelimit', () => ({
   },
 }));
 
+jest.mock('@/lib/runtime-contracts', () => ({
+  ensureRuntimeContracts: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('@/lib/proxy-execute', () => ({
+  executeProxyCall: (...args: any[]) => mockExecuteProxyCall(...args),
+}));
+
 import { NextRequest, type NextRequest as NR } from 'next/server';
 type NRInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
@@ -105,6 +114,7 @@ async function toJson(response: Response) {
 beforeEach(() => {
   mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
   mockRpc.mockResolvedValue({ data: 'allowed', error: null });
+  mockExecuteProxyCall.mockReset();
 });
 
 // ── Security scanner — unit regression ───────────────────────────────────────
@@ -263,6 +273,190 @@ describe('Auth guards', () => {
   });
 });
 
+// ── Search contract hardening ────────────────────────────────────────────────
+describe('Search RPC contract', () => {
+  test('servers/search returns explicit contract error when search_servers RPC mismatches', async () => {
+    mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'function public.search_servers(text,integer,boolean) does not exist' },
+    });
+
+    const { GET } = await import('../app/api/servers/search/route');
+    const req = makeRequest('GET', 'http://localhost/api/servers/search?q=email&limit=5');
+    const res = await GET(req);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(500);
+    expect(body.code).toBe('SEARCH_RPC_CONTRACT_ERROR');
+  });
+});
+
+describe('Server analytics summary consistency', () => {
+  test('error_rate uses proxy-call denominator', async () => {
+    const serversSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: 'srv-analytics-1',
+        author_id: 'u1',
+        status: 'active',
+        trust_score: 90,
+        total_calls: 50,
+        calls_today: 5,
+        latency_ms: 200,
+        uptime_pct: 99.9,
+      },
+      error: null,
+    });
+    const auditOrder = jest.fn().mockResolvedValue({
+      data: [
+        { action: 'proxy_call', tool_name: 'send', latency_ms: 100, status_code: 200, dlp_triggered: false, created_at: new Date().toISOString() },
+        { action: 'proxy_error', tool_name: 'send', latency_ms: 120, status_code: 500, dlp_triggered: false, created_at: new Date().toISOString() },
+        { action: 'profile_view', tool_name: null, latency_ms: null, status_code: null, dlp_triggered: false, created_at: new Date().toISOString() },
+      ],
+      error: null,
+    });
+    const scansLimit = jest.fn().mockResolvedValue({ data: [], error: null });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'servers') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              single: serversSingle,
+            }),
+          }),
+        };
+      }
+      if (table === 'audit_summary') {
+        // analytics/route.ts queries: .from('audit_summary').select(...).eq('server_name', name).order('day', ...)
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              order: jest.fn().mockResolvedValue({
+                data: [{
+                  day: new Date().toISOString().slice(0, 10),
+                  total_calls: 2,
+                  successful_calls: 1,
+                  blocked_calls: 0,
+                  error_calls: 1,
+                  dlp_events: 0,
+                  avg_latency_ms: 110,
+                }],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'scan_results') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              order: jest.fn().mockReturnValue({
+                limit: scansLimit,
+              }),
+            }),
+          }),
+        };
+      }
+      return queryChain();
+    });
+
+    const { GET } = await import('../app/api/servers/[name]/analytics/route');
+    const req = makeRequest('GET', 'http://localhost/api/servers/demo/analytics');
+    const res = await GET(req, { params: Promise.resolve({ name: 'demo' }) });
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body.summary.total_calls).toBe(2);
+    expect(body.summary.total_errors).toBe(1);
+    expect(body.summary.error_rate).toBe('50.0');
+  });
+});
+
+describe('MCP search -> invoke chain wiring', () => {
+  test('invoke_tool forwards search_event_id and intent linkage to proxy execution', async () => {
+    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === 'search_servers') {
+        return Promise.resolve({
+          data: [{ id: 'srv-1', name: 'demo-server', trust_score: 90, tools: ['send_email'] }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: 'allowed', error: null });
+    });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'servers') {
+        const serversRows = [{
+          id: 'srv-1',
+          name: 'demo-server',
+          display_name: 'Demo Server',
+          description: 'Demo',
+          tools: ['send_email'],
+          tool_schemas: [{ name: 'send_email', inputSchema: { type: 'object' } }],
+          trust_score: 90,
+          latency_ms: 100,
+          uptime_pct: 99,
+          source: 'official',
+          verified: true,
+          scan_status: 'passed',
+          proxy_available: true,
+          transport: 'streamable_http',
+          endpoint: 'https://example.com/mcp',
+          status: 'active',
+        }];
+        return {
+          select: jest.fn().mockReturnValue({
+            in: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({ data: serversRows, error: null }),
+            }),
+            eq: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({ data: serversRows[0], error: null }),
+            }),
+          }),
+        };
+      }
+      return queryChain();
+    });
+
+    mockExecuteProxyCall.mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ ok: true }),
+      contentType: 'application/json',
+      headers: {},
+    });
+
+    const { POST } = await import('../app/api/mcp-server/route');
+    const invokeReq = makeRequest('POST', 'http://localhost/api/mcp-server', {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'invoke_tool',
+        arguments: {
+          server: 'demo-server',
+          tool: 'send_email',
+          args: { to: 'a@example.com' },
+          search_event_id: 'evt-123',
+          intent: 'send onboarding email',
+        },
+      },
+    }, { Authorization: 'Bearer sk_mcp_test' });
+
+    const res = await POST(invokeReq);
+    expect(res.status).toBe(200);
+    expect(mockExecuteProxyCall).toHaveBeenCalledWith(expect.objectContaining({
+      searchEventId: 'evt-123',
+      intentText: 'send onboarding email',
+      callerUserId: 'user-123',
+      serverName: 'demo-server',
+      toolName: 'send_email',
+    }));
+  });
+});
+
 // ── DLP proxy layer ───────────────────────────────────────────────────────────
 describe('Proxy DLP blocking', () => {
   test('proxy blocks Stripe key in request arguments', async () => {
@@ -361,6 +555,14 @@ describe('Proxy DLP blocking', () => {
       {},
       { Authorization: 'Bearer sk_mcp_test' }
     );
+    // Configure mock to return a proper 404 result — the server lookup happens
+    // inside executeProxyCall (which is mocked), so we must provide the result.
+    mockExecuteProxyCall.mockResolvedValue({
+      status: 404,
+      body: JSON.stringify({ error: "Server 'nonexistent' not found" }),
+      contentType: 'application/json',
+      headers: {},
+    });
     const res = await POST(req, { params: Promise.resolve({ serverName: 'nonexistent', toolName: 'tool' }) });
     expect(res.status).toBe(404);
   });

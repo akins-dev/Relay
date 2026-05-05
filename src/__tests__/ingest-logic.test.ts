@@ -3,7 +3,7 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { detectTransport, parseReadmeDescription } from '../lib/ingest';
+import { buildSandboxCommand, detectTransport, parseReadmeDescription, resolveSmitheryTransport } from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -48,9 +48,34 @@ describe('ingest hardening logic', () => {
     expect(result?.readme_url).toContain('/src/filesystem/README.md');
   });
 
+  test('buildSandboxCommand only derives commands for smithery-backed stdio servers', () => {
+    expect(buildSandboxCommand({ smithery_id: 'agenttrust/mcp-server' })).toEqual({
+      command: 'npx',
+      args: ['-y', '@smithery/cli@latest', 'run', 'agenttrust/mcp-server'],
+    });
+
+    expect(buildSandboxCommand({
+      github_url: 'https://github.com/agenttrust/mcp-server',
+    })).toBeNull();
+  });
+
+  test('resolveSmitheryTransport prefers a remote HTTP connection over a leading stdio connection', () => {
+    expect(resolveSmitheryTransport([
+      { type: 'stdio' },
+      { type: 'streamable-http', url: 'https://contextstudios.example.com/mcp' },
+    ])).toEqual({
+      endpoint: 'https://contextstudios.example.com/mcp',
+      transport: 'streamable_http',
+    });
+  });
+
   test('resolveSafeRedirectUrl allows safe relative redirects against the upstream base', async () => {
     await expect(
       resolveSafeRedirectUrl('/messages?session=abc', 'https://example.com/sse')
     ).resolves.toBe('https://example.com/messages?session=abc');
   });
+
+  // fetchVendorServers / partner source removed — github.com/mcp org does not expose
+  // a stable JSON API. The concept is replaced by the is_canonical DB field which
+  // Smithery populates for its own curated servers.
 });

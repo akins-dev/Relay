@@ -40,11 +40,19 @@ supabase/migrations/022_analytics_intelligence_layer.sql ← search/invoke learn
 supabase/migrations/023_security_hardening.sql  ← rate limit config + official name conflict checks
 supabase/migrations/024_new_sources_and_partner_rename.sql ← vendor→partner rename + new sources
 supabase/migrations/025_ingest_mvp_contract_fixes.sql ← current ingest/search contract alignment
-```
+supabase/migrations/026_new_schema_fields.sql          ← icon_url, env_var_schema, package_info
+supabase/migrations/027_tool_extraction_source.sql     ← extraction provenance per server
+supabase/migrations/028_ingest_quality_views.sql       ← weak stdio + missing metadata views
+supabase/migrations/029_metadata_grade_fields.sql      ← A–F metadata grading fields
+supabase/migrations/030_search_rpc_update.sql          ← updated search_servers RPC with new fields
+supabase/migrations/031_auth_type_derive.sql           ← auth_type derivation from env_var_schema
+supabase/migrations/032_behavioral_trust_and_dynamic_diversity.sql ← Bayesian trust + dynamic search diversity (REQUIRED)
 
 > **Note on 002:** This migration is now intentionally a no-op. Historical demo rows were removed so fresh environments start clean and ingest remains the only source of server truth.
 >
 > **Note on 011:** Read the header first and confirm your Supabase project keeps statement logging at `ddl` or `none`. This is an ongoing operational requirement for any route that stores secrets or OAuth tokens, not just a one-time migration concern.
+>
+> **Note on 032:** This migration replaces `search_servers()` and `compute_trust_score_v2()` entirely. The old `trust_score >= 85` hardcoded diversity gate is replaced with a dynamic result-set median approach. The Smithery `use_count` slot is replaced by Bayesian behavioral reliability from `intent_server_mappings`. Run this migration before triggering any ingest or uptime cron job.
 
 ### 3. Environment
 
@@ -120,16 +128,10 @@ curl -X POST http://localhost:3000/api/ingest \
   -d '{"source": "all"}'
 
 # Or trigger individual sources:
-# "official"  — MCP official registry (~87 servers, highest trust, no key needed)
-# "partner"   — verified organization / company controlled sources
-# "smithery"  — large registry (SMITHERY_API_KEY required)
-# "glama"     — public directory
-# "pulsemcp"  — handler exists, currently returns empty because public API is unavailable
-# "github"    — curated github.com/modelcontextprotocol/servers
-# "claudemcp" — curated directory
-# "mcpso"     — curated directory with API
-# "mcp_run"   — hosted MCP platform
-# "composio"  — MCP-compatible app/integration source
+# "official"      — MCP official registry (~87 servers, highest trust, no key needed)
+# "smithery"      — Smithery registry (SMITHERY_API_KEY required)
+# "glama"         — Glama directory (enrichment source, requires existing rows with github_url)
+# "mcp_directory" — mcp.directory (enrichment source, requires existing rows with github_url)
   -d '{"source": "official"}'
 ```
 
@@ -139,10 +141,11 @@ Important current behavior:
 
 - `stdio` rows are stored even when they are not cloud-invocable.
 - If a `stdio` server has a `smithery_id`, ingest derives a concrete sandbox command and tries extraction.
-- If a `stdio` server has a repo-root GitHub URL, ingest can derive a sandbox command and try extraction.
+- Relay does not guess an execution command from a plain GitHub repo URL; repo-backed stdio rows fall back to README parsing unless a concrete launcher is known.
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
+- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Scores grow automatically as agents invoke servers through the proxy.
 
 ### Change detection and reprocessing
 
@@ -166,7 +169,7 @@ SET schema_hash = NULL,
     last_scanned_at = NULL;
 ```
 
-Clean rebuild from scratch:
+Clean rebuild from scratch (registry + ingest only):
 
 ```sql
 DELETE FROM public.scan_results;
@@ -175,6 +178,44 @@ DELETE FROM public.cron_job_runs;
 DELETE FROM public.ingest_runs;
 DELETE FROM public.servers;
 ```
+
+Full wipe (including analytics, audit, and metering):
+
+> **⚠️ Destructive:** run in Supabase SQL Editor. Consider taking a backup/snapshot first.
+> Order matters (avoid FK issues).
+
+```sql
+-- Intelligence / search analytics (022)
+DELETE FROM public.invoke_outcomes;
+DELETE FROM public.search_events;
+DELETE FROM public.intent_server_mappings;
+
+-- Audit + metering + connection logs
+DELETE FROM public.audit_log;
+DELETE FROM public.metering_events;
+DELETE FROM public.mcp_connections;
+
+-- Ops history
+DELETE FROM public.cron_job_runs;
+DELETE FROM public.ingest_runs;
+
+-- Registry
+DELETE FROM public.scan_results;
+DELETE FROM public.schema_snapshots;
+DELETE FROM public.server_connection_profiles;
+DELETE FROM public.server_stars;
+DELETE FROM public.tool_policies;
+DELETE FROM public.api_keys;
+DELETE FROM public.servers;
+```
+
+Notes:
+
+- **Views** like `audit_summary` and `server_tool_usage_30d` are derived; they clear when underlying tables are empty.
+- **Users (Auth)**: if you want to remove *all* user accounts (and log everyone out), delete users in **Supabase Dashboard → Authentication → Users** (or `DELETE FROM auth.users;` if your SQL role allows it).
+- **Vault-backed secrets (011)**: secrets live in `vault.secrets` (encrypted). Clearing `public.user_secrets` / deleting users may still leave vault rows depending on your setup. If you need a true vault wipe, follow Supabase Vault docs and remove the relevant `vault.secrets` rows carefully.
+- **Redis (Upstash)**: analytics are not stored in Redis, but rate-limit/cache state is. Flush the Upstash DB if you want *zero* residual limiter/cached state.
+- **Sentry** (or other telemetry): stored outside Postgres; purge there separately if needed.
 
 ### Manual cron routes
 
@@ -215,7 +256,7 @@ Actual scheduled cadence from `vercel.json`:
 
 ```bash
 npm test
-# 40+ unit tests across all 14 security layers with real attack payloads
+# unit tests covering the security stack with real attack payloads
 ```
 
 ---
@@ -252,12 +293,23 @@ To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effort
 ### 1. Delete all development/test servers
 
 ```sql
--- Run in Supabase SQL Editor:
+-- Run in Supabase SQL Editor (registry + ingest only):
 DELETE FROM public.scan_results;
 DELETE FROM public.schema_snapshots;
 DELETE FROM public.cron_job_runs;
 DELETE FROM public.ingest_runs;
 DELETE FROM public.servers;
+```
+
+If you also want to wipe **analytics + audit + metering**, run this first:
+
+```sql
+DELETE FROM public.invoke_outcomes;
+DELETE FROM public.search_events;
+DELETE FROM public.intent_server_mappings;
+DELETE FROM public.audit_log;
+DELETE FROM public.metering_events;
+DELETE FROM public.mcp_connections;
 ```
 
 ### 2. Re-ingest from all sources (fresh)
@@ -269,7 +321,8 @@ curl -X POST http://localhost:3000/api/ingest \
   -H "Content-Type: application/json" \
   -d '{"source": "official"}'
 
-# Then: smithery, glama, pulsemcp, github (one at a time)
+# Then run remaining sources one at a time:
+# smithery, glama, mcp_directory
 ```
 
 ### 3. Deploy the Render Sandbox (Optional but highly recommended)

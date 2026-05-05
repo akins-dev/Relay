@@ -30,7 +30,7 @@ npm test -- --runInBand
 Expected today:
 
 - `4` test suites passed
-- `90` tests passed
+- Tests passed (run `npm test` to see current count — increased from Sprint 2 baseline of ~90 with behavioral trust suite added in migration 032)
 
 ## 2. Know the cron cadence
 
@@ -76,21 +76,27 @@ DELETE FROM public.servers;
 
 Do not start with `all` unless your goal is specifically a full-scale soak test.
 
-Use this order:
+Active sources in `runIngest()` (the only valid values):
 
-1. `official`
-2. `partner`
-3. `github`
-4. `smithery` if your key is configured
-5. `glama`
-6. optional later: `claudemcp`, `mcpso`, `mcp_run`, `composio`
+| Source | Tier | Needs key? | Best for |
+|---|---|---|---|
+| `official` | Primary | No | Clean source, highest data quality |
+| `smithery` | Primary | Yes (`SMITHERY_API_KEY`) | Volume + `verified` flag |
+| `glama` | Enrichment | No | Enriches existing rows via github_url |
+| `mcp_directory` | Enrichment | No | Enriches existing rows via github_url |
+
+Recommended order:
+
+1. `official` — cleanest source, validates normalization
+2. `smithery` — if your key is configured, exercises the sandbox path
+3. `glama` — enrichment layer, requires rows from step 1/2
+4. `mcp_directory` — enrichment layer, requires rows from step 1/2
 
 Why this order:
 
-- `official` is the cleanest source
-- `partner` checks trusted-source behavior
-- `github` exercises README and stdio fallback behavior
-- `smithery` exercises the sandbox path if configured
+- `official` is the cleanest source, no API key needed
+- `smithery` exercises the Smithery SDK and sandbox path if configured
+- enrichment sources (`glama`, `mcp_directory`) need primary rows to exist first to match against
 
 ## 5. Trigger ingest locally
 
@@ -105,10 +111,9 @@ curl -X POST http://localhost:3000/api/ingest \
 
 Then repeat with:
 
-- `partner`
-- `github`
-- `smithery`
+- `smithery` (if key configured)
 - `glama`
+- `mcp_directory`
 
 Full ingest:
 
@@ -148,7 +153,7 @@ curl http://localhost:3000/api/cron/reset-daily-calls \
 This validates:
 
 - health probing
-- trust recomputation
+- trust recomputation (now uses behavioral ISM data from `intent_server_mappings`)
 - schema drift handling
 - cron auth and admin visibility
 
@@ -295,9 +300,9 @@ Use this exact order:
 2. `npm test -- --runInBand`
 3. start local app
 4. ingest `official`
-5. ingest `github`
-6. if sandbox is configured, ingest `smithery`
-7. run manual uptime check
+5. ingest `smithery` if key configured (exercises sandbox path)
+6. ingest `glama` (enrichment — depends on step 4/5 rows)
+7. run manual uptime check (validates trust recomputation with behavioral ISM data)
 8. run manual schema drift
 9. test `search_tools`
 10. test `invoke_tool`

@@ -15,9 +15,11 @@ import { rateLimit, LIMITS, getLimitConfig }         from '@/lib/ratelimit';
 import { extractIp }                 from '@/lib/api';
 import { corsHeaders }               from '@/lib/utils';
 import { BRAND }                     from '@/lib/brand';
+import { SITE_URL }                  from '@/lib/site';
 import { resolveApiKey }             from '@/lib/auth-server';
 import { executeProxyCall }          from '@/lib/proxy-execute';
 import { getRateLimitAuthHint }      from '@/lib/agent-guidance';
+import { dlpScan, shellInjectionScan } from '@/lib/security';
 
 export async function POST(
   req: NextRequest,
@@ -52,6 +54,27 @@ export async function POST(
   }
 
   const rawBody       = await req.text();
+
+  // ── L4 DLP + shell injection (route boundary, defence-in-depth) ──────────────
+  // These are pure-function checks with no DB access. Running them here makes
+  // the route independently testable without un-mocking proxy-execute.
+  // proxy-execute.ts runs the same checks again for calls arriving via the
+  // native MCP server path (invoke_tool) — that's intentional redundancy.
+  const dlpIssues = dlpScan(rawBody);
+  if (dlpIssues.length > 0) {
+    return NextResponse.json(
+      { error: 'Request blocked — credential in args', pattern: dlpIssues[0], vault: `${SITE_URL}/dashboard/secrets` },
+      { status: 400 }
+    );
+  }
+  const shellIssues = shellInjectionScan(rawBody);
+  if (shellIssues.length > 0) {
+    return NextResponse.json(
+      { error: 'Request blocked — shell injection', issues: shellIssues },
+      { status: 400 }
+    );
+  }
+
   const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-relay-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
 
   const result = await executeProxyCall({

@@ -32,6 +32,7 @@ export type Database = {
           oauth_authorization_url?: string | null;
           upstream_updated_at?: string | null;
           description_quality?: string | null; readme_url?: string | null;
+          tool_extraction_source?: string;
           name_normalized: string; search_vector: unknown;
           created_at: string; updated_at: string;
         };

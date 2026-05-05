@@ -360,91 +360,127 @@ describe('L1 — scanServer dangerous tool names', () => {
   });
 });
 
-// ── L5: Trust score (lines 117-149) ───────────────────────────────────────────
+
+// ── L5: Trust score ────────────────────────────────────────────────────────────
 describe('L5 — computeTrustScore', () => {
-  test('unverified server with dirty scan scores 0', () => {
+  test('unverified server with dirty scan, zero invocations scores low (Bayesian floor, not zero)', () => {
     const score = computeTrustScore({
       verified: 0,
       uptimePct: 0,
-      stars: 0,
+      invokeCount: 0,
+      successCount: 0,
       daysSinceChange: 0,
       scanScore: 0,
     });
-    expect(score).toBe(0);
+    // Security=0, uptime=0, credibility=0, stability=0
+    // Behavioral: adjusted_rate=3/4=0.75, log10(5)≈0.699 → 0.75*0.699*15≈7.9 pts
+    // Total ≈ 8 pts (Bayesian prior for new/unproven server, not zero)
+    expect(score).toBeGreaterThanOrEqual(7);
+    expect(score).toBeLessThan(15);
   });
 
-  test('fully verified, perfect uptime, mature server scores high', () => {
+  test('fully verified, perfect uptime, many successful invocations scores very high', () => {
     const score = computeTrustScore({
       verified: 1,
       uptimePct: 100,
-      stars: 5000,
+      invokeCount: 1000,
+      successCount: 970,
       daysSinceChange: 90,
+      deploymentQuality: 1,
     });
     expect(score).toBeGreaterThanOrEqual(90);
   });
 
-  test('omitted scanScore defaults to 100 (adds 10 pts)', () => {
+  test('omitted scanScore defaults to 100 (clean)', () => {
     const withDefault = computeTrustScore({
-      verified: 0, uptimePct: 0, stars: 0, daysSinceChange: 0,
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0, daysSinceChange: 0,
     });
     const withExplicit = computeTrustScore({
-      verified: 0, uptimePct: 0, stars: 0, daysSinceChange: 0, scanScore: 100,
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0, daysSinceChange: 0, scanScore: 100,
     });
     expect(withDefault).toBe(withExplicit);
-    expect(withDefault).toBe(10);
+    // Security=25, behavioral floor ~8, all else=0 → ≈33 pts
+    expect(withDefault).toBeGreaterThanOrEqual(30);
+    expect(withDefault).toBeLessThan(40);
   });
 
-  test('scanScore 0 vs 100 differs by 10 pts', () => {
+  test('scanScore 0 vs 100 differs by 25 pts (security weight)', () => {
     const clean = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 100,
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0, daysSinceChange: 0, scanScore: 100,
     });
     const dirty = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 0,
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0, daysSinceChange: 0, scanScore: 0,
     });
-    expect(clean - dirty).toBe(10);
+    expect(clean - dirty).toBe(25);
   });
 
   test('scanScore clamped — values above 100 do not overflow', () => {
     const score = computeTrustScore({
-      verified: 0, uptimePct: 100, stars: 0, daysSinceChange: 90, scanScore: 200,
+      verified: 0, uptimePct: 100, invokeCount: 0, successCount: 0, daysSinceChange: 90, scanScore: 200,
     });
     expect(score).toBeLessThanOrEqual(100);
   });
 
   test('high failureRatePct reduces score', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, failureRatePct: 100 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90 });
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90, failureRatePct: 100 });
     expect(penalised).toBeLessThan(base);
   });
 
   test('failureRatePct 0 applies no penalty', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, failureRatePct: 0 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90 });
+    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90, failureRatePct: 0 });
     expect(noPenalty).toBe(base);
   });
 
   test('dlpRatePct above 5 reduces score', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, dlpRatePct: 50 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90 });
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90, dlpRatePct: 50 });
     expect(penalised).toBeLessThan(base);
   });
 
   test('dlpRatePct at or below 5 applies no penalty', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90 });
-    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, stars: 100, daysSinceChange: 90, dlpRatePct: 5 });
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90 });
+    const noPenalty = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 100, successCount: 95, daysSinceChange: 90, dlpRatePct: 5 });
     expect(noPenalty).toBe(base);
   });
 
-  test('dlpRatePct small penalty triggers >5 branch', () => {
-    const base = computeTrustScore({ verified: 1, uptimePct: 100, stars: 50, daysSinceChange: 30 });
-    // dlpRatePct=6 gives penalty ((6-5)/100)*10=0.1 which rounds to 0; use 20 for visible penalty
-    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, stars: 50, daysSinceChange: 30, dlpRatePct: 20 });
+  test('dlpRatePct > 5 triggers penalty (small but visible at 20)', () => {
+    const base      = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 50, successCount: 48, daysSinceChange: 30 });
+    const penalised = computeTrustScore({ verified: 1, uptimePct: 100, invokeCount: 50, successCount: 48, daysSinceChange: 30, dlpRatePct: 20 });
     expect(penalised).toBeLessThan(base);
+  });
+
+  test('Bayesian prior: new server (0 invocations) gets floor ~8 pts from behavioral slot', () => {
+    const score = computeTrustScore({
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0,
+      daysSinceChange: 0, scanScore: 0,
+    });
+    // Only behavioral floor applies: 0.75 * log10(5) * 15 ≈ 7.9 → rounds to 8
+    expect(score).toBeGreaterThanOrEqual(7);
+    expect(score).toBeLessThanOrEqual(9);
+  });
+
+  test('Bayesian prior: 10 successful invocations saturates behavioral slot', () => {
+    const score = computeTrustScore({
+      verified: 0, uptimePct: 0, invokeCount: 10, successCount: 10,
+      daysSinceChange: 0, scanScore: 0,
+    });
+    // adjusted_rate = 13/14 ≈ 0.929; log10(15) ≈ 1.176; 0.929*1.176*15 ≈ 16.4 → capped at 15
+    expect(score).toBeGreaterThanOrEqual(14);
+    expect(score).toBeLessThanOrEqual(16);
+  });
+
+  test('legacy usageCount path still works (backward compat)', () => {
+    const score = computeTrustScore({
+      verified: 1, uptimePct: 100, usageCount: 1000, daysSinceChange: 90,
+    });
+    expect(score).toBeGreaterThan(0);
   });
 
   test('score is always clamped between 0 and 100', () => {
     const score = computeTrustScore({
-      verified: 0, uptimePct: 0, stars: 0, daysSinceChange: 0,
+      verified: 0, uptimePct: 0, invokeCount: 0, successCount: 0, daysSinceChange: 0,
       scanScore: 0, failureRatePct: 100, dlpRatePct: 100,
     });
     expect(score).toBeGreaterThanOrEqual(0);

@@ -4,7 +4,7 @@ loadEnvConfig(process.cwd());
 import { runIngest } from '../lib/cron/ingest';
 async function main() {
   const args = process.argv.slice(2);
-  const allowedSources = ['all', 'official', 'smithery', 'glama', 'pulsemcp', 'github', 'partner', 'claudemcp', 'mcpso', 'mcp_run', 'composio', 'vendor'] as const;
+  const allowedSources = ['all', 'official', 'smithery', 'glama', 'mcp_directory'] as const;
   
   let source: typeof allowedSources[number] = 'all';
   if (args[0] && allowedSources.includes(args[0] as any)) {

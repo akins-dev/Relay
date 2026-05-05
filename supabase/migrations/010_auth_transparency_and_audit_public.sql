@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 010: Auth transparency + public audit log access
+-- relay — Migration 010: Auth transparency + public audit log access
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── Auth transparency on servers ──────────────────────────────────────────────

@@ -56,6 +56,7 @@
     "typescript": "^5"
   },
   "description": "Open-source security layer for the MCP ecosystem",
+  "license": "MIT",
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",

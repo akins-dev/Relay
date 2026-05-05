@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveUser } from '@/lib/auth-server';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
+import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
+import { extractIp } from '@/lib/api';
 import { scanServer, computeTrustScore } from '@/lib/security';
 import { createHash } from 'crypto';
 import { SITE_URL } from '@/lib/site';
@@ -24,6 +25,7 @@ const PublishSchema = z.object({
 export async function GET(req: NextRequest) {
   const supabase = createClient();
   const { searchParams } = new URL(req.url);
+  const ip = extractIp(req);
 
   const q         = searchParams.get('q') || '';
   const tag       = searchParams.get('tag') || '';
@@ -39,6 +41,15 @@ export async function GET(req: NextRequest) {
     : 15;
   const from      = (page - 1) * limit;
   const to        = from + limit - 1;
+
+  const rlConfig = await getLimitConfig('browse');
+  const rlCheck = await rateLimit(`browse:${ip}`, rlConfig);
+  if (!rlCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.ceil((rlCheck.resetAt - Date.now()) / 1000))) } }
+    );
+  }
 
   let query = supabase
     .from('servers')
@@ -115,7 +126,8 @@ export async function POST(req: NextRequest) {
   const { user, supabase } = await resolveUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const rlCheck = await rateLimit(`publish:${user.id}`, LIMITS.publish);
+  const rlConfig = await getLimitConfig('publish');
+  const rlCheck = await rateLimit(`publish:${user.id}`, rlConfig);
   if (!rlCheck.allowed) return NextResponse.json({ error: 'Rate limit exceeded', hint: `Create a free API key at ${SITE_URL} for higher limits (200 calls/min)` }, { status: 429 });
 
   try {
@@ -150,7 +162,8 @@ export async function POST(req: NextRequest) {
     const status     = scanResult.passed ? 'active' : 'rejected';
     const trustScore = computeTrustScore({
       verified: 0, scanScore: scanResult.score,
-      uptimePct: 100, stars: 0, daysSinceChange: 0,
+      uptimePct: 100, invokeCount: 0, successCount: 0, daysSinceChange: 0,
+      deploymentQuality: scanResult.passed ? 1 : 0,
     });
 
     const { data: server, error: insertErr } = await serversTable.insert({

@@ -155,7 +155,7 @@ export default function SecretsPage() {
       <div className="mb-6 grid grid-cols-3 gap-2.5">
         {[
           { n: '1', t: 'You store your API key — encrypted in Supabase Vault (AES-256-GCM)' },
-          { n: '2', t: 'Agent calls any tool through the openMCP proxy' },
+          { n: '2', t: 'Agent calls any tool through the relay proxy' },
           { n: '3', t: 'Proxy resolves and injects key — agent never touches the value' },
         ].map(s => (
           <div key={s.n} className="rounded-xl border border-border bg-muted/30 p-3.5">

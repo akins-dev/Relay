@@ -5,6 +5,15 @@ type RawIngestResult = {
   skipped?: number;
   rejected?: number;
   errors?: string[];
+  extraction_metrics?: {
+    smithery_detail_fetched?: number;
+    probe_attempts?: number;
+    probe_success?: number;
+    sandbox_attempts?: number;
+    sandbox_success?: number;
+    grade_a_complete?: number;
+    grade_b_complete?: number;
+  };
 };
 
 type RawIngestResults = Record<string, RawIngestResult>;
@@ -16,6 +25,15 @@ export interface CompactIngestResult {
   skipped: number;
   rejected: number;
   error_count: number;
+  extraction_metrics?: {
+    smithery_detail_fetched: number;
+    probe_attempts: number;
+    probe_success: number;
+    sandbox_attempts: number;
+    sandbox_success: number;
+    grade_a_complete: number;
+    grade_b_complete: number;
+  };
 }
 
 export interface IngestRunSummary {
@@ -39,10 +57,24 @@ export function compactIngestResults(results: RawIngestResults): Record<string, 
         skipped: result.skipped ?? 0,
         rejected: result.rejected ?? 0,
         error_count: Array.isArray(result.errors) ? result.errors.length : 0,
+        ...(result.extraction_metrics
+          ? {
+              extraction_metrics: {
+                smithery_detail_fetched: result.extraction_metrics.smithery_detail_fetched ?? 0,
+                probe_attempts:          result.extraction_metrics.probe_attempts ?? 0,
+                probe_success:           result.extraction_metrics.probe_success ?? 0,
+                sandbox_attempts:        result.extraction_metrics.sandbox_attempts ?? 0,
+                sandbox_success:         result.extraction_metrics.sandbox_success ?? 0,
+                grade_a_complete:        result.extraction_metrics.grade_a_complete ?? 0,
+                grade_b_complete:        result.extraction_metrics.grade_b_complete ?? 0,
+              },
+            }
+          : {}),
       },
     ])
   );
 }
+
 
 export function summarizeIngestResults(results: Record<string, CompactIngestResult>): IngestRunSummary {
   return Object.values(results).reduce<IngestRunSummary>((acc, result) => ({

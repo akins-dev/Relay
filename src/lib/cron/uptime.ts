@@ -2,6 +2,7 @@ import { createServiceClient }        from '@/lib/supabase/server';
 import { isSafeUrl }                  from '@/lib/utils';
 import { computeTrustScore }          from '@/lib/security';
 import { probeUptime }                from '@/lib/mcp-probe';
+import { log }                        from '@/lib/logger';
 
 export async function runUptimeCheck() {
   const svc = createServiceClient();
@@ -14,13 +15,34 @@ export async function runUptimeCheck() {
       job_name: 'uptime_check', status: 'running',
     }).select('id').single();
     cronRun = (data as any) ?? null;
-  } catch {}
+  } catch (err) {
+    log.warn('cron:uptime', 'Could not create cron_job_runs entry', err);
+  }
 
   const { data: servers, error } = await svc
     .from('servers')
-    .select('id, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at')
+    .select('id, name, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at, auth_type')
     .eq('status', 'active')
     .not('endpoint', 'is', null);
+
+  // Fetch behavioral reliability in one batch: SUM per server_name across all ISM rows.
+  // We do this separately because Supabase doesn't support GROUP BY in select(),
+  // and an inner join would exclude servers with no ISM rows (new servers).
+  const serverNames = (servers ?? []).map((s: any) => s.name);
+  const ismMap = new Map<string, { invoke_count: number; success_count: number }>();
+  if (serverNames.length > 0) {
+    const { data: ismRows } = await svc
+      .from('intent_server_mappings')
+      .select('server_name, invoke_count, success_count')
+      .in('server_name', serverNames);
+    for (const row of ismRows ?? []) {
+      const existing = ismMap.get(row.server_name) ?? { invoke_count: 0, success_count: 0 };
+      ismMap.set(row.server_name, {
+        invoke_count:  existing.invoke_count  + (row.invoke_count  ?? 0),
+        success_count: existing.success_count + (row.success_count ?? 0),
+      });
+    }
+  }
 
   if (error) {
     if (cronRun?.id) {
@@ -41,6 +63,13 @@ export async function runUptimeCheck() {
 
       if (!isSafeUrl(server.endpoint)) {
         results.errors++;
+        return;
+      }
+
+      // FAULT-08 fix: Skip authenticated servers — an unauthenticated probe will always
+      // get a 401/403, appear 'down', and permanently depress trust_score + search ranking.
+      // We cannot accurately measure uptime for api_key/oauth servers without credentials.
+      if (server.auth_type === 'api_key' || server.auth_type === 'oauth') {
         return;
       }
 
@@ -70,12 +99,16 @@ export async function runUptimeCheck() {
         ? Math.floor((Date.now() - new Date(server.last_scanned_at).getTime()) / 86_400_000)
         : 0;
 
+      const ismStats = ismMap.get(server.name) ?? { invoke_count: 0, success_count: 0 };
+
       const newTrust = computeTrustScore({
-        verified:        server.verified ? 1 : 0,
+        verified:          server.verified ? 1 : 0,
         scanScore,
-        uptimePct:       newUptime,
-        stars:           server.stars ?? 0,
-        daysSinceChange: Math.min(daysSince, 90),
+        uptimePct:         newUptime,
+        invokeCount:       ismStats.invoke_count,
+        successCount:      ismStats.success_count,
+        daysSinceChange:   Math.min(daysSince, 90),
+        deploymentQuality: up ? 1 : 0,
       });
 
       // ── Write updates ─────────────────────────────────────────────────────────
@@ -96,7 +129,9 @@ export async function runUptimeCheck() {
             ? `Up — ${latencyMs}ms${mcpCompliant ? ' (MCP compliant)' : ' (HTTP only — not MCP compliant)'}`
             : 'Down — all probe tiers failed',
         });
-      } catch { /* non-fatal */ }
+      } catch (err) {
+        log.error('cron:uptime', `DB write failed for server ${server.id}`, err);
+      }
 
       if (up) results.up++; else results.down++;
     }));
@@ -112,6 +147,6 @@ export async function runUptimeCheck() {
   return {
     ...results,
     timestamp: new Date().toISOString(),
-    note: 'Trust scores updated automatically from uptime, scan quality, stars, and verification status.',
+    note: 'Trust scores updated from uptime, scan quality, behavioral invoke history (intent_server_mappings), and verification status.',
   };
 }
