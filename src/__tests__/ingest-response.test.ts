@@ -61,19 +61,24 @@ describe('ingest response formatting', () => {
         rejected: 0,
         errors: [],
         extraction_metrics: {
+          smithery_detail_fetched: 4,
+          probe_attempts: 3,
           sandbox_attempts: 3,
           sandbox_success: 2,
-          readme_fallback_attempts: 1,
-          unresolved_stdio_rows: 1,
+          grade_a_complete: 1,
+          grade_b_complete: 2,
         },
       },
     });
 
     expect(compact.smithery.extraction_metrics).toEqual({
+      smithery_detail_fetched: 4,
+      probe_attempts: 3,
+      probe_success: 0,
       sandbox_attempts: 3,
       sandbox_success: 2,
-      readme_fallback_attempts: 1,
-      unresolved_stdio_rows: 1,
+      grade_a_complete: 1,
+      grade_b_complete: 2,
     });
   });
 });

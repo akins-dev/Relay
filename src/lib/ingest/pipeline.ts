@@ -494,8 +494,7 @@ export async function upsertServers(
 
         // ── Full update for primary sources ───────────────────────────────
         // Protect official/partner records from lower-priority source overwrites
-        if ((existing.source === 'partner' || existing.source === 'official')
-            && s.source !== 'partner' && s.source !== 'official') {
+        if (existing.source === 'official' && s.source !== 'official') {
           result.skipped++;
           continue;
         }
