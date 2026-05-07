@@ -76,11 +76,10 @@ export async function fetchMCPPrimitives(endpoint: string, githubUrl?: string): 
  * Strategy (in priority order):
  *   1. smithery_id present → use @smithery/cli (handles auth + npx internally)
  *   2. package_info npm entry → use npx -y <identifier>[@version]
- *      Only the Official registry provides package_info with npm identifiers.
- *   3. No executable path available → return null (fall back to README parsing)
+ *   3. package_info pypi entry → use uvx <identifier>[==version]
+ *   4. No executable path available → return null (fall back to README parsing)
  *
- * Only 'npx' commands are permitted by the sandbox ALLOWED_COMMANDS whitelist.
- * pypi/uvx packages are not yet supported (uvx not in whitelist).
+ * Only 'npx' and 'uvx' commands are permitted by the sandbox ALLOWED_COMMANDS whitelist.
  */
 export function buildSandboxCommand(
   s: Pick<IngestServer, 'smithery_id' | 'github_url' | 'package_info'>

@@ -4,8 +4,11 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 
 const app = express();
 app.use(express.json());
-const ALLOWED_COMMANDS = new Set(['npx', 'uvx', 'python', 'pip']);
+const ALLOWED_COMMANDS = new Set(['npx', 'uvx']);
 const MAX_ARG_COUNT = 16;
+const SANDBOX_VERSION = '2026-05-07-mvp-stdio-timeout';
+const DEFAULT_CONNECT_TIMEOUT_MS = 180_000;
+const DEFAULT_LIST_TIMEOUT_MS = 30_000;
 
 // Auth token — REQUIRED in all environments. No insecure fallbacks.
 const AUTH_TOKEN = process.env.SANDBOX_AUTH_TOKEN;
@@ -68,20 +71,29 @@ app.post('/extract', async (req, res) => {
     { capabilities: {} }
   );
 
-  try {
-    // 1. Start the subprocess and connect (with 30s timeout)
-    const connectTimeout = AbortSignal.timeout(30_000);
-    await Promise.race([
-      client.connect(transport),
-      new Promise((_, reject) => connectTimeout.addEventListener('abort', () =>
-        reject(new Error('Connection timed out after 30s'))
+  const withTimeout = (promise, timeoutMs, label) => {
+    const signal = AbortSignal.timeout(timeoutMs);
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => signal.addEventListener('abort', () =>
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`))
       ))
     ]);
+  };
+
+  try {
+    // 1. Start the subprocess and connect.
+    // On Render (cold containers) an `npx` spawn may spend 30–120s downloading/installing
+    // before the MCP process is actually ready to speak over stdio.
+    const connectTimeoutMs = Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS);
+    await withTimeout(client.connect(transport), connectTimeoutMs, 'Connection');
+
+    const listTimeoutMs = Number(process.env.SANDBOX_LIST_TIMEOUT_MS || DEFAULT_LIST_TIMEOUT_MS);
 
     // 2. Extract tools
     let tools = [];
     try {
-      const toolsResult = await client.listTools();
+      const toolsResult = await withTimeout(client.listTools(), listTimeoutMs, 'listTools');
       tools = toolsResult.tools || [];
     } catch (e) {
       console.warn(`[extract] Could not list tools: ${e.message}`);
@@ -90,7 +102,7 @@ app.post('/extract', async (req, res) => {
     // 3. Extract resources
     let resources = [];
     try {
-      const resourcesResult = await client.listResources();
+      const resourcesResult = await withTimeout(client.listResources(), listTimeoutMs, 'listResources');
       resources = resourcesResult.resources || [];
     } catch (e) {
       console.warn(`[extract] Could not list resources: ${e.message}`);
@@ -99,7 +111,7 @@ app.post('/extract', async (req, res) => {
     // 4. Extract prompts
     let prompts = [];
     try {
-      const promptsResult = await client.listPrompts();
+      const promptsResult = await withTimeout(client.listPrompts(), listTimeoutMs, 'listPrompts');
       prompts = promptsResult.prompts || [];
     } catch (e) {
       console.warn(`[extract] Could not list prompts: ${e.message}`);
@@ -116,6 +128,12 @@ app.post('/extract', async (req, res) => {
         tools,
         resources,
         prompts
+      },
+      meta: {
+        version: SANDBOX_VERSION,
+        command,
+        connectTimeoutMs,
+        listTimeoutMs
       }
     });
 
@@ -126,7 +144,7 @@ app.post('/extract', async (req, res) => {
     //   1. transport.close() — sends SIGTERM to the spawned child process.
     //      This must be called BEFORE client.close() because if the MCP session
     //      never fully connected, client.close() may not reach the subprocess.
-    //   2. SIGKILL fallback — if the process ignored SIGTERM (some Python/Node
+    //   2. SIGKILL fallback — if the process ignored SIGTERM (some Node/uvx
     //      servers do), forcibly kill via the internal process handle.
     //   3. client.close() — tears down any remaining SDK state.
     try { await transport.close(); } catch (_) {}
@@ -148,7 +166,7 @@ app.post('/extract', async (req, res) => {
 });
 
 // Simple healthcheck
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', version: SANDBOX_VERSION }));
 
 // Authenticated readiness check (validates shared secret without spawning anything)
 app.get('/ready', (req, res) => {
@@ -159,7 +177,34 @@ app.get('/ready', (req, res) => {
   return res.json({ status: 'ok' });
 });
 
+// Authenticated contract check for pre-ingest validation. This lets the app verify
+// command compatibility without spawning an arbitrary package.
+app.get('/capabilities', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+    return res.status(401).json({ status: 'unauthorized' });
+  }
+  return res.json({
+    status: 'ok',
+    version: SANDBOX_VERSION,
+    allowedCommands: Array.from(ALLOWED_COMMANDS).sort(),
+    maxArgCount: MAX_ARG_COUNT,
+    connectTimeoutMs: Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS),
+    listTimeoutMs: Number(process.env.SANDBOX_LIST_TIMEOUT_MS || DEFAULT_LIST_TIMEOUT_MS),
+  });
+});
+
+app.get('/version', (req, res) => {
+  res.json({
+    status: 'ok',
+    version: SANDBOX_VERSION,
+    connectTimeoutMs: Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS),
+    listTimeoutMs: Number(process.env.SANDBOX_LIST_TIMEOUT_MS || DEFAULT_LIST_TIMEOUT_MS),
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`relay MCP Sandbox listening on port ${PORT}`);
+  console.log(`relay MCP Sandbox ${SANDBOX_VERSION} listening on port ${PORT}`);
+  console.log(`[sandbox] connectTimeoutMs=${Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS)} listTimeoutMs=${Number(process.env.SANDBOX_LIST_TIMEOUT_MS || DEFAULT_LIST_TIMEOUT_MS)}`);
 });

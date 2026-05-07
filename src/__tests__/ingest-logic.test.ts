@@ -48,10 +48,24 @@ describe('ingest hardening logic', () => {
     expect(result?.readme_url).toContain('/src/filesystem/README.md');
   });
 
-  test('buildSandboxCommand only derives commands for smithery-backed stdio servers', () => {
+  test('buildSandboxCommand derives commands for supported stdio package sources', () => {
     expect(buildSandboxCommand({ smithery_id: 'agenttrust/mcp-server' })).toEqual({
       command: 'npx',
       args: ['-y', '@smithery/cli@latest', 'run', 'agenttrust/mcp-server'],
+    });
+
+    expect(buildSandboxCommand({
+      package_info: [{ registryType: 'npm', identifier: '@modelcontextprotocol/server-filesystem', transport: 'stdio' }],
+    })).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem'],
+    });
+
+    expect(buildSandboxCommand({
+      package_info: [{ registryType: 'pypi', identifier: 'mcp-server-demo', version: '1.2.3', transport: 'stdio' }],
+    })).toEqual({
+      command: 'uvx',
+      args: ['mcp-server-demo==1.2.3'],
     });
 
     expect(buildSandboxCommand({

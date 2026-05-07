@@ -2,12 +2,12 @@
  * pre-ingest-check.ts
  *
  * Programmatic health check for ingest prerequisites.
- * Intentionally does NOT check registry/source connectivity (those are best-effort).
- * This script only checks systems we directly depend on for correctness/perf:
+ * Checks the systems and contracts ingest depends on before an ingest run:
  * - DB (Supabase)
+ * - Source APIs (Official, Smithery, Glama, mcp.directory)
  * - Sandbox (stdio extraction service)
  * - Cache (Upstash Redis, optional)
- * - Probe (MCP initialize handshake against a known endpoint)
+ * - Probe (MCP initialize handshake against live registry endpoints)
  *
  * Usage (from project root in WSL):
  *   npx tsx src/scripts/pre-ingest-check.ts
@@ -19,6 +19,18 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
 
+// Guard: running `npx tsx` from Windows against a \\wsl.localhost UNC path
+// can cause Node to default cwd to C:\Windows and fail to resolve relative imports.
+if (process.platform === 'win32' && /\\windows$/i.test(process.cwd().replace(/\//g, '\\'))) {
+  console.error(
+    '\n❌  pre-ingest-check must be run inside WSL (Linux) for this repo.\n' +
+      '    Reason: Windows Node cannot use a \\\\wsl.localhost UNC path as cwd and defaults to C:\\\\Windows.\n' +
+      '    Fix: open an Ubuntu/WSL terminal and run:\n' +
+      '      cd /home/akins-dev/projects/mcp-registry-next && npx tsx src/scripts/pre-ingest-check.ts\n'
+  );
+  process.exit(1);
+}
+
 // ── Result type ───────────────────────────────────────────────────────────────
 
 interface CheckResult {
@@ -28,6 +40,32 @@ interface CheckResult {
   detail:    string;
   /** If false, ingest will still run but this source/path will be degraded. */
   critical:  boolean;
+}
+
+type SourceProbe = {
+  name: string;
+  urls: string[];
+  headers?: Record<string, string>;
+  critical: boolean;
+};
+
+const UA = 'relay-pre-ingest-check/1.0';
+
+function trimSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+async function readBody(res: Response): Promise<string> {
+  const text = await res.text();
+  return text.length > 250 ? `${text.slice(0, 250)}...` : text;
+}
+
+async function loadIngestContracts() {
+  const [{ probeUptime }, { buildSandboxCommand }] = await Promise.all([
+    import('@/lib/mcp-probe'),
+    import('@/lib/ingest'),
+  ]);
+  return { probeUptime, buildSandboxCommand };
 }
 
 // ── Individual checks ─────────────────────────────────────────────────────────
@@ -43,15 +81,32 @@ async function checkSupabase(): Promise<CheckResult> {
   }
 
   try {
-    const res = await fetch(`${url}/rest/v1/servers?select=id&limit=1`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(8_000),
-    });
+    const base = trimSlash(url);
+    const headers = { apikey: key, Authorization: `Bearer ${key}` };
+    const requiredTables = [
+      'servers',
+      'profiles',
+      'ingest_runs',
+      'scan_results',
+      'server_connection_profiles',
+    ];
+
+    const checks = await Promise.all(requiredTables.map(async table => {
+      const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1`, {
+        headers,
+        signal: AbortSignal.timeout(8_000),
+      });
+      return { table, res, body: res.ok ? '' : await readBody(res) };
+    }));
+
+    const failed = checks.filter(c => !c.res.ok);
     return {
       name: 'Supabase DB', critical: true,
-      ok: res.ok,
+      ok: failed.length === 0,
       latencyMs: Date.now() - start,
-      detail: res.ok ? `HTTP ${res.status}` : `HTTP ${res.status} — ${await res.text()}`,
+      detail: failed.length === 0
+        ? `tables ok: ${requiredTables.join(', ')}`
+        : failed.map(f => `${f.table}=HTTP ${f.res.status} ${f.body}`).join(' | '),
     };
   } catch (e: any) {
     return { name: 'Supabase DB', ok: false, critical: true,
@@ -60,11 +115,11 @@ async function checkSupabase(): Promise<CheckResult> {
 }
 
 async function checkSandbox(): Promise<CheckResult> {
-  const url   = process.env.SANDBOX_URL;
+  const rawUrl = process.env.SANDBOX_URL;
   const token = process.env.SANDBOX_AUTH_TOKEN;
   const start = Date.now();
 
-  if (!url) {
+  if (!rawUrl) {
     return {
       name: 'Sandbox (Render)',
       ok: false,
@@ -75,23 +130,29 @@ async function checkSandbox(): Promise<CheckResult> {
   }
 
   try {
+    const url = trimSlash(rawUrl);
     // Allow up to 35s: Render free tier cold-starts can take 20–30s
     const healthRes = await fetch(`${url}/health`, {
       signal: AbortSignal.timeout(35_000),
-      headers: { 'User-Agent': 'relay-pre-ingest-check/1.0' },
+      headers: { 'User-Agent': UA },
     });
     const healthBody = healthRes.ok ? (await healthRes.json() as any) : await healthRes.text();
     const healthOk = healthRes.ok && healthBody?.status === 'ok';
 
-    // If a token is configured, validate it quickly without spawning any processes.
+    // If a token is configured, validate auth and the command contract without spawning packages.
     let readyOk: boolean | null = null;
     let readyDetail: string | null = null;
+    let contractOk: boolean | null = null;
+    let contractDetail: string | null = null;
+    let routeOk: boolean | null = null;
+    let routeDetail: string | null = null;
+
     if (token) {
       try {
         const readyRes = await fetch(`${url}/ready`, {
           signal: AbortSignal.timeout(5_000),
           headers: {
-            'User-Agent': 'relay-pre-ingest-check/1.0',
+            'User-Agent': UA,
             Authorization: `Bearer ${token}`,
           },
         });
@@ -109,9 +170,68 @@ async function checkSandbox(): Promise<CheckResult> {
         readyOk = false;
         readyDetail = e.message;
       }
+
+      try {
+        const capsRes = await fetch(`${url}/capabilities`, {
+          signal: AbortSignal.timeout(5_000),
+          headers: {
+            'User-Agent': UA,
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (capsRes.status === 404) {
+          contractOk = null;
+          contractDetail = 'missing (deploy sandbox update to enable command contract check)';
+        } else if (!capsRes.ok) {
+          contractOk = false;
+          contractDetail = `HTTP ${capsRes.status}: ${await readBody(capsRes)}`;
+        } else {
+          const caps = await capsRes.json() as any;
+          const allowed = Array.isArray(caps.allowedCommands) ? caps.allowedCommands : [];
+          const { buildSandboxCommand } = await loadIngestContracts();
+          const expectedCommands = [
+            buildSandboxCommand({ smithery_id: 'owner/server' })?.command,
+            buildSandboxCommand({
+              package_info: [{ registryType: 'npm', identifier: '@modelcontextprotocol/server-filesystem', transport: 'stdio' }],
+            })?.command,
+            buildSandboxCommand({
+              package_info: [{ registryType: 'pypi', identifier: 'mcp-server-demo', transport: 'stdio' }],
+            })?.command,
+          ].filter((c): c is string => Boolean(c));
+          const missing = Array.from(new Set(expectedCommands)).filter(command => !allowed.includes(command));
+          contractOk = missing.length === 0;
+          contractDetail = contractOk
+            ? `allowed=${allowed.join(',')} maxArgs=${caps.maxArgCount ?? 'unknown'}`
+            : `missing allowed command(s): ${missing.join(', ')}; sandbox allows ${allowed.join(',') || 'none'}`;
+        }
+      } catch (e: any) {
+        contractOk = false;
+        contractDetail = e.message;
+      }
+
+      try {
+        const extractRes = await fetch(`${url}/extract`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(5_000),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': UA,
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ command: '__preflight_disallowed__', args: [] }),
+        });
+        routeOk = extractRes.status === 400;
+        routeDetail = routeOk
+          ? 'extract route/auth ok'
+          : `extract expected HTTP 400, got HTTP ${extractRes.status}: ${await readBody(extractRes)}`;
+      } catch (e: any) {
+        routeOk = false;
+        routeDetail = e.message;
+      }
     }
 
-    const ok = healthOk && (readyOk ?? true);
+    const ok = healthOk && (readyOk ?? true) && (contractOk ?? true) && (routeOk ?? true);
     const ms = Date.now() - start;
     return {
       name: 'Sandbox (Render)', critical: false,
@@ -123,6 +243,10 @@ async function checkSandbox(): Promise<CheckResult> {
             token
               ? (readyOk === null ? `ready=${readyDetail}` : 'ready=ok')
               : 'ready=skipped (SANDBOX_AUTH_TOKEN not set)',
+            token
+              ? (contractOk === null ? `capabilities=${contractDetail}` : `capabilities=${contractDetail}`)
+              : null,
+            token ? routeDetail : null,
             ms > 5_000 ? '⚠️  slow — cold start detected' : null,
           ].filter(Boolean).join(' | ')
         : [
@@ -130,6 +254,12 @@ async function checkSandbox(): Promise<CheckResult> {
             token
               ? (readyOk === null ? `ready=${readyDetail}` : (readyOk ? 'ready=ok' : `ready=${readyDetail ?? 'not ok'}`))
               : 'ready=skipped (SANDBOX_AUTH_TOKEN not set)',
+            token
+              ? (contractOk === null ? `capabilities=${contractDetail}` : (contractOk ? `capabilities=${contractDetail}` : `capabilities=${contractDetail ?? 'not ok'}`))
+              : 'capabilities=skipped (SANDBOX_AUTH_TOKEN not set)',
+            token
+              ? (routeOk ? routeDetail : `extract=${routeDetail ?? 'not ok'}`)
+              : 'extract=skipped (SANDBOX_AUTH_TOKEN not set)',
           ].join(' | '),
     };
   } catch (e: any) {
@@ -167,61 +297,181 @@ async function checkUpstash(): Promise<CheckResult> {
   }
 }
 
-/**
- * Live MCP protocol probe against a known public server.
- * Validates that mcp-probe's HTTP fetch path is working end-to-end.
- * Uses the same initialize handshake as probeMCPServer() in mcp-probe.ts.
- */
-async function probeSampleMCPServer(): Promise<CheckResult> {
-  // Configurable because public sample endpoints change over time.
-  // Choose a public MCP server endpoint that accepts an initialize handshake.
-  const SAMPLE_ENDPOINT = process.env.PROBE_SAMPLE_ENDPOINT || 'https://mcp.exa.ai';
+async function checkSourceApis(): Promise<CheckResult> {
   const start = Date.now();
+  const probes: SourceProbe[] = [
+    {
+      name: 'official',
+      urls: [
+        'https://registry.modelcontextprotocol.io/v0/servers?limit=1',
+        'https://registry.modelcontextprotocol.io/v0.1/servers?limit=1',
+      ],
+      critical: true,
+    },
+    {
+      name: 'smithery-listing',
+      urls: ['https://registry.smithery.ai/servers?q=&page=1&pageSize=1'],
+      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
+      critical: true,
+    },
+    {
+      name: 'smithery-detail-auth',
+      urls: [`https://api.smithery.ai/v2/servers/${encodeURIComponent('@smithery-ai/github')}`],
+      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
+      critical: false,
+    },
+    {
+      name: 'glama',
+      urls: ['https://glama.ai/api/mcp/v1/servers?first=1'],
+      critical: false,
+    },
+    {
+      name: 'mcp.directory',
+      urls: ['https://mcp.directory/api/v1/servers?limit=1&offset=0'],
+      critical: false,
+    },
+  ];
+
+  if (!process.env.SMITHERY_API_KEY) {
+    return {
+      name: 'Ingest source APIs',
+      ok: false,
+      latencyMs: 0,
+      critical: true,
+      detail: 'SMITHERY_API_KEY not set — primary Smithery ingest will be skipped',
+    };
+  }
 
   try {
-    const res = await fetch(SAMPLE_ENDPOINT, {
-      method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept':       'application/json, text/event-stream',
-        'User-Agent':   'relay-pre-ingest-check/1.0',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'initialize',
-        params: {
-          protocolVersion: '2025-03-26',
-          capabilities:    {},
-          clientInfo:      { name: 'relay-pre-ingest-check', version: '1.0' },
-        },
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+    const results = await Promise.all(probes.map(async probe => {
+      const failures: string[] = [];
+      for (const url of probe.urls) {
+        try {
+          const res = await fetch(url, {
+            headers: {
+              'User-Agent': UA,
+              'Accept': 'application/json',
+              ...(probe.headers ?? {}),
+            },
+            signal: AbortSignal.timeout(12_000),
+          });
+          if (res.ok) {
+            return { ...probe, ok: true, status: res.status, body: '' };
+          }
+          failures.push(`${url}=HTTP ${res.status} ${await readBody(res)}`);
+        } catch (e: any) {
+          failures.push(`${url}=error ${e.message}`);
+        }
+      }
+      return { ...probe, ok: false, status: 'error', body: failures.join(' || ') };
+    }));
 
-    if (!res.ok) {
-      return { name: 'MCP Probe (sample server)', ok: false, critical: false,
-        latencyMs: Date.now() - start, detail: `HTTP ${res.status} (set PROBE_SAMPLE_ENDPOINT to a working MCP endpoint)` };
-    }
-
-    const ct = res.headers.get('content-type') ?? '';
-    let data: any;
-    if (ct.includes('text/event-stream')) {
-      const text  = await res.text();
-      const match = text.match(/^data:\s*(.+)$/m);
-      data = match ? JSON.parse(match[1]) : null;
-    } else {
-      data = await res.json();
-    }
-
-    const version = data?.result?.protocolVersion as string | undefined;
+    const failed = results.filter(r => !r.ok);
+    const criticalFailed = failed.filter(r => r.critical);
     return {
-      name: 'MCP Probe (sample server)', critical: false,
-      ok:        !!version,
+      name: 'Ingest source APIs',
+      ok: failed.length === 0,
       latencyMs: Date.now() - start,
-      detail:    version ? `protocolVersion=${version}` : 'No protocolVersion in response — probe logic may be broken',
+      critical: criticalFailed.length > 0,
+      detail: failed.length === 0
+        ? `reachable: ${results.map(r => r.name).join(', ')}`
+        : failed.map(r => `${r.name}=HTTP ${r.status}${r.critical ? '' : ' (non-critical)'} ${r.body}`).join(' | '),
     };
   } catch (e: any) {
-    return { name: 'MCP Probe (sample server)', ok: false, critical: false,
-      latencyMs: Date.now() - start, detail: e.message };
+    return {
+      name: 'Ingest source APIs',
+      ok: false,
+      latencyMs: Date.now() - start,
+      critical: true,
+      detail: e.message,
+    };
+  }
+}
+
+/**
+ * Live MCP protocol probe against a known public server.
+ * Validates that our probe logic can reach REAL endpoints from the registry.
+ *
+ * This uses the same code path as production uptime checks (`probeUptime`)
+ * and selects a small sample of active, unauthenticated HTTP servers from DB.
+ */
+async function probeRegistryEndpoints(): Promise<CheckResult> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const start = Date.now();
+
+  if (!url || !key) {
+    return {
+      name: 'MCP Probe (registry endpoints)',
+      ok: false,
+      latencyMs: 0,
+      critical: false,
+      detail: 'Supabase env not set — cannot sample endpoints to probe',
+    };
+  }
+
+  try {
+    const { probeUptime } = await loadIngestContracts();
+    // Only probe endpoints we can check without credentials, mirroring uptime cron:
+    // - status=active
+    // - endpoint present
+    // - not stdio
+    // - auth_type not api_key/oauth (unauthenticated probe would be misleading)
+    const res = await fetch(
+      `${url}/rest/v1/servers?select=name,endpoint,transport,auth_type&status=eq.active&endpoint=not.is.null&transport=not.eq.stdio&auth_type=not.in.(api_key,oauth)&order=updated_at.desc&limit=3`,
+      {
+        headers: { apikey: key, Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
+
+    if (!res.ok) {
+      return {
+        name: 'MCP Probe (registry endpoints)',
+        ok: false,
+        latencyMs: Date.now() - start,
+        critical: false,
+        detail: `DB query failed: HTTP ${res.status} — ${await res.text()}`,
+      };
+    }
+
+    const rows = (await res.json()) as Array<{ name: string; endpoint: string | null }>;
+    const endpoints = rows.map(r => r.endpoint).filter((e): e is string => typeof e === 'string' && e.length > 0);
+    if (endpoints.length === 0) {
+      return {
+        name: 'MCP Probe (registry endpoints)',
+        ok: true,
+        latencyMs: Date.now() - start,
+        critical: false,
+        detail: 'No eligible unauthenticated HTTP endpoints found to probe (skipped)',
+      };
+    }
+
+    // Probe sequentially to keep output deterministic and reduce outbound burst.
+    let up = 0;
+    let mcp = 0;
+    for (const endpoint of endpoints) {
+      const r = await probeUptime(endpoint);
+      if (r.up) up++;
+      if (r.mcpCompliant) mcp++;
+    }
+
+    const ms = Date.now() - start;
+    return {
+      name: 'MCP Probe (registry endpoints)',
+      ok: up > 0,
+      latencyMs: ms,
+      critical: false,
+      detail: `probed=${endpoints.length} up=${up} mcpCompliant=${mcp}`,
+    };
+  } catch (e: any) {
+    return {
+      name: 'MCP Probe (registry endpoints)',
+      ok: false,
+      latencyMs: Date.now() - start,
+      critical: false,
+      detail: e.message,
+    };
   }
 }
 
@@ -233,9 +483,10 @@ export async function runChecks(isCli = false) {
 
   const results = await Promise.all([
     checkSupabase(),
+    checkSourceApis(),
     checkSandbox(),
     checkUpstash(),
-    probeSampleMCPServer(),
+    probeRegistryEndpoints(),
   ]);
 
   const critical: CheckResult[] = [];
