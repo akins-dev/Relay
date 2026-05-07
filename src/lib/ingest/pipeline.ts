@@ -24,6 +24,43 @@ import { log } from '@/lib/logger';
 
 const TAG = 'ingest:pipeline';
 
+function normalizeToolSchemas(tools: any[]): Array<{ name: string; description: string; inputSchema?: Record<string, unknown> }> {
+  if (!Array.isArray(tools)) return [];
+
+  return tools
+    .filter(t => t && typeof t.name === 'string' && t.name.length > 0)
+    .map(t => ({
+      name: t.name,
+      description: typeof t.description === 'string' ? t.description : '',
+      ...(t.inputSchema && typeof t.inputSchema === 'object' ? { inputSchema: t.inputSchema } : {}),
+    }));
+}
+
+function normalizeResources(resources: any[]): Array<{ uri: string; name: string; description?: string; mimeType?: string }> {
+  if (!Array.isArray(resources)) return [];
+
+  return resources
+    .filter(r => r && typeof r.uri === 'string' && r.uri.length > 0)
+    .map(r => ({
+      uri: r.uri,
+      name: typeof r.name === 'string' && r.name.length > 0 ? r.name : r.uri,
+      ...(typeof r.description === 'string' ? { description: r.description } : {}),
+      ...(typeof r.mimeType === 'string' ? { mimeType: r.mimeType } : {}),
+    }));
+}
+
+function normalizePrompts(prompts: any[]): Array<{ name: string; description?: string; arguments?: any[] }> {
+  if (!Array.isArray(prompts)) return [];
+
+  return prompts
+    .filter(p => p && typeof p.name === 'string' && p.name.length > 0)
+    .map(p => ({
+      name: p.name,
+      ...(typeof p.description === 'string' ? { description: p.description } : {}),
+      ...(Array.isArray(p.arguments) ? { arguments: p.arguments } : {}),
+    }));
+}
+
 // ── Auth type derivation ──────────────────────────────────────────────────────
 /**
  * Derive the auth_type for a server from structured upstream data.
@@ -204,7 +241,7 @@ export async function upsertServers(
 
       // ── TIER 3: Full pipeline ─────────────────────────────────────────────
 
-      let toolSchemas = s.tool_schemas ?? [];
+      let toolSchemas = normalizeToolSchemas(s.tool_schemas ?? []);
       let mcpResources: any[] = [];
       let mcpPrompts: any[] = [];
       let protocolVersion: string | null = null;
@@ -229,7 +266,7 @@ export async function upsertServers(
           result.extraction_metrics!.probe_success++;
         }
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
-          toolSchemas = primitives.toolSchemas;
+          toolSchemas = normalizeToolSchemas(primitives.toolSchemas);
         }
         if (primitives.toolSchemas.length > 0) {
           toolExtractionSource = 'mcp_probe';
@@ -266,9 +303,9 @@ export async function upsertServers(
                 const sandboxResult = await req.json();
                 if (sandboxResult.success && sandboxResult.data) {
                   result.extraction_metrics!.sandbox_success++;
-                  toolSchemas = sandboxResult.data.tools || [];
-                  mcpResources = sandboxResult.data.resources || [];
-                  mcpPrompts = sandboxResult.data.prompts || [];
+                  toolSchemas = normalizeToolSchemas(sandboxResult.data.tools || []);
+                  mcpResources = normalizeResources(sandboxResult.data.resources || []);
+                  mcpPrompts = normalizePrompts(sandboxResult.data.prompts || []);
                   mcpCompliant = true;
                   protocolVersion = '2024-11-05';
                   toolExtractionSource = toolSchemas.length > 0 ? 'sandbox' : toolExtractionSource;
@@ -290,7 +327,7 @@ export async function upsertServers(
 
         // README fallback — only if sandbox produced nothing
         if (toolSchemas.length === 0 && s.github_url) {
-          toolSchemas = await parseReadmeSchemas(s.github_url);
+          toolSchemas = normalizeToolSchemas(await parseReadmeSchemas(s.github_url));
           if (toolSchemas.length > 0) {
             toolExtractionSource = 'readme_parsed';
           }
