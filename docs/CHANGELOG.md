@@ -86,3 +86,24 @@ This file is append-only.
 - TECHNICAL_BACKBONE.md: Section 9.11 (trust init), Section 7.1 (inbound sources), Section 13 (obstacles) updated.
 - docs/ingest/README.md: new comprehensive architecture doc for the behavioral trust lifecycle.
 - DECISION_LOG.md: ADR-008 added.
+
+### Architecture: Search Pipeline & CS Algorithm Upgrades
+
+**Infrastructure Hardening (Phase 1):**
+- **Single-Flight Cache:** Added promise coalescing layer to L1 caches to eliminate cache stampedes on key expiry.
+- **Circuit Breaker:** Upgraded proxy failure mitigation to a 3-state (Closed/Open/Half-Open) circuit breaker to prevent thundering herd requests on upstream recovery.
+- **Full-Jitter Backoff:** Replaced fixed 300ms proxy retries with uniform randomized exponential backoff (max 1500ms) to spread retry pressure.
+- **Bounded LRU DNS:** Converted unbounded `dnsSafetyCache` to a 500-entry LRU `Map` to prevent theoretical memory exhaustion from adversarial hostnames.
+- **Combined Regex Fast-Reject:** Replaced N×K individual regex tests in the proxy security layer with a single `COMBINED_X` alternation regex per family. Clean payloads now bypass detailed inspection in O(1) time.
+
+**Search Quality & Ranking (Phase 2):**
+- **Wilson Score Confidence:** Replaced linear ranking history weights with a 95% Confidence Interval (Wilson Score lower bound), correctly ranking servers with high variance (e.g., 10/10 vs 2/2).
+- **TF-IDF Schema Trimming:** Replaced raw word-overlap with a smoothed TF-IDF scoring algorithm. Rare, highly specific tool schema terms now rank higher than common action words.
+- **Porter Stemmer:** Integrated a 5-step Porter Stemmer into intent hashing. Morphological variants (e.g., "sending email" vs "send email") now yield identical cache keys, massively boosting hit rates.
+- **Cache-Set Gate:** Prevented unproven servers (high score but 0 uses) from being cached for long durations. Caching now requires either 5+ real invocations or an established >85 trust score.
+- **Ranking Decay:** Replaced linear new-server ranking boost with an exponential 14-day half-life curve.
+
+**SQL & Route Parity (Phase 3 & 4):**
+- **Single Roundtrip RPC:** Collapsed three sequential database lookups into a single `search_servers` execution by pushing `tool_extraction_source` into the returns table and adding an `intent_hash` LATERAL join.
+- **GROUP BY Aggregation:** Replaced application-layer intent aggregation in the uptime cron with an O(servers) SQL `get_all_behavioral_reliability` RPC.
+- **Shared `runSearch` Module:** Extracted the 6-stage search pipeline into `src/lib/search.ts`. The REST (`/api/servers?q=`) and MCP (`/api/mcp-server`) surfaces now share identical cache semantics, schema trimming, and confidence scoring capabilities.

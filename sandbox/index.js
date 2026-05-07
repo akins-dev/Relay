@@ -4,7 +4,7 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 
 const app = express();
 app.use(express.json());
-const ALLOWED_COMMANDS = new Set(['npx']);
+const ALLOWED_COMMANDS = new Set(['npx', 'uvx', 'python', 'pip']);
 const MAX_ARG_COUNT = 16;
 
 // Auth token — REQUIRED in all environments. No insecure fallbacks.
@@ -45,11 +45,20 @@ app.post('/extract', async (req, res) => {
 
   console.log(`[extract] Spawning: ${command} ${args ? args.join(' ') : ''}`);
 
+  // Only pass safe OS variables to prevent leaking SANDBOX_AUTH_TOKEN
+  const SAFE_ENV_KEYS = new Set(['PATH', 'NODE_ENV', 'PYTHONPATH', 'USER', 'HOME', 'LANG', 'LC_ALL']);
+  const safeEnv = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (SAFE_ENV_KEYS.has(k) || k.startsWith('npm_config_')) {
+      safeEnv[k] = v;
+    }
+  }
+
   const transport = new StdioClientTransport({
     command,
     args: args || [],
     env: {
-      ...process.env,
+      ...safeEnv,
       ...(env || {})
     }
   });
@@ -140,6 +149,15 @@ app.post('/extract', async (req, res) => {
 
 // Simple healthcheck
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Authenticated readiness check (validates shared secret without spawning anything)
+app.get('/ready', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+    return res.status(401).json({ status: 'unauthorized' });
+  }
+  return res.json({ status: 'ok' });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

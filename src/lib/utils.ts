@@ -109,8 +109,31 @@ function isPrivateIpLiteral(host: string): boolean {
   return isPrivateIpv4(host) || isPrivateIpv6(host);
 }
 
+// S6: Bounded LRU DNS safety cache — caps at DNS_CACHE_MAX entries.
+// An unbounded Map grows without limit if an adversary sends requests for thousands
+// of distinct hostnames (real or FQDN-spoofed), exhausting heap until OOM.
+// Uses the same delete+re-insert LRU pattern as MemLRU in cache.ts.
+const DNS_CACHE_MAX    = 500;
+const DNS_SAFETY_TTL_MS = 10 * 60 * 1000; // 10 min — safe regardless of upstream TTL
 const dnsSafetyCache = new Map<string, { ok: boolean; checkedAt: number }>();
-const DNS_SAFETY_TTL_MS = 10 * 60 * 1000;
+
+function dnsLruGet(host: string): { ok: boolean; checkedAt: number } | undefined {
+  const entry = dnsSafetyCache.get(host);
+  if (!entry) return undefined;
+  // Refresh position for LRU (delete + re-set moves to tail of insertion order)
+  dnsSafetyCache.delete(host);
+  dnsSafetyCache.set(host, entry);
+  return entry;
+}
+
+function dnsLruSet(host: string, value: { ok: boolean; checkedAt: number }): void {
+  if (dnsSafetyCache.size >= DNS_CACHE_MAX) {
+    // Evict LRU (head of insertion order)
+    const oldest = dnsSafetyCache.keys().next().value;
+    if (oldest) dnsSafetyCache.delete(oldest);
+  }
+  dnsSafetyCache.set(host, value);
+}
 
 function isAllowedLocalPrototypeUrl(parsed: URL): boolean {
   if (process.env.ALLOW_LOCAL_PROTOTYPE_ENDPOINTS !== '1') return false;
@@ -145,14 +168,14 @@ export async function isSafeUrlForServerFetch(url: string): Promise<boolean> {
     if (isPrivateIpLiteral(parsed.hostname)) return false;
 
     const host = parsed.hostname.toLowerCase();
-    const cached = dnsSafetyCache.get(host);
+    const cached = dnsLruGet(host);
     if (cached && (Date.now() - cached.checkedAt) < DNS_SAFETY_TTL_MS) {
       return cached.ok;
     }
 
     const records = await dns.lookup(host, { all: true, verbatim: true });
     const ok = records.length > 0 && records.every(record => !isPrivateIpLiteral(record.address));
-    dnsSafetyCache.set(host, { ok, checkedAt: Date.now() });
+    dnsLruSet(host, { ok, checkedAt: Date.now() });
     return ok;
   } catch {
     return false;

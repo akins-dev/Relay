@@ -60,15 +60,26 @@ function normalizeEnvVarsFromJsonSchema(schema: any): EnvVarSpec[] | null {
   const specs: EnvVarSpec[] = [];
   for (const [name, def] of Object.entries<any>(props)) {
     if (!name) continue;
+
+    const isExplicitlySecret = def.isSecret === true;
+    const nameImpliesSecret  = (
+      name.toLowerCase().includes('key') ||
+      name.toLowerCase().includes('token') ||
+      name.toLowerCase().includes('secret') ||
+      name.toLowerCase().includes('password')
+    );
+    // H3 fix: mirror the Smithery fix — name-based heuristic only fires when the variable
+    // is required AND has no default. Optional credential fields (e.g. an optional apiKey)
+    // should not force api_key auth type and block users from trying the server.
+    const isRequired = required.includes(name);
+    const hasDefault = def.default !== undefined;
+    const isSecret   = isExplicitlySecret || (nameImpliesSecret && isRequired && !hasDefault);
+
     specs.push({
       name,
       description:  typeof def.description === 'string' ? def.description : undefined,
-      isRequired:   required.includes(name),
-      isSecret:     def.isSecret === true ||
-                    name.toLowerCase().includes('key') ||
-                    name.toLowerCase().includes('token') ||
-                    name.toLowerCase().includes('secret') ||
-                    name.toLowerCase().includes('password'),
+      isRequired,
+      isSecret,
       defaultValue: def.default !== undefined ? String(def.default) : undefined,
       format:       def.type === 'boolean' ? 'boolean'
                   : def.type === 'number'  ? 'number'

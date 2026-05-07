@@ -402,8 +402,11 @@ export async function probeMCPServer(
     return { ...empty, status: 'blocked:ssrf' };
   }
 
-  // Step 1: MCP initialization handshake
-  const init = await mcpInitialize(endpoint, timeoutMs);
+  // Step 1: MCP initialization handshake (with 1 retry for transient network drops)
+  let init = await mcpInitialize(endpoint, timeoutMs);
+  if (!init) {
+    init = await mcpInitialize(endpoint, timeoutMs);
+  }
   const latencyMs = Date.now() - start;
 
   if (!init) {
@@ -419,7 +422,7 @@ export async function probeMCPServer(
   }
 
   const { protocolVersion, capabilities, serverInfo } = init;
-  const transport = (await detectTransportFromLiveProbe(endpoint)) ?? inferTransportFromEndpoint(endpoint);
+  const transport = inferTransportFromEndpoint(endpoint);
 
   // Step 2: Fetch primitives based on capabilities
   // Only call tools/list if server declared tools capability (or if we don't know — try anyway)

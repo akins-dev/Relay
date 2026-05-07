@@ -248,12 +248,20 @@ export function computeTrustScore(params: {
  * Only used in search ranking to surface new servers alongside established ones.
  *
  * Returns a multiplier (1.0 = no boost, up to 1.4 = 40% ranking boost).
- * Decays linearly over 90 days from first listing.
+ *
+ * S13: Exponential half-life decay (14-day half-life) replaces linear decay.
+ * Model: attention/interest signals follow exponential decay, not linear.
+ * Same model used by HackerNews (gravity parameter) and Reddit (time factor).
+ *   Day 0:  +40% boost (same as before)
+ *   Day 14: +20% boost (half)
+ *   Day 28: +10% boost
+ *   Day 42: +5%  boost
+ *   Day 90: +0.4% (effectively zero, naturally)
  */
 export function newServerRankingBoost(daysSinceListing: number): number {
   if (daysSinceListing >= 90) return 1.0;
-  // Max 40% boost in first week, decays to 0% at day 90
-  const boost = 0.4 * (1 - daysSinceListing / 90);
+  const HALF_LIFE_DAYS = 14;
+  const boost = 0.4 * Math.pow(0.5, daysSinceListing / HALF_LIFE_DAYS);
   return 1.0 + boost;
 }
 
@@ -301,8 +309,19 @@ const CREDENTIAL_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /key-[a-f0-9]{32}/,                                                label: 'Mailgun API key' },
 ];
 
+// S3: Pre-compiled combined alternation regex for fast-path rejection.
+// For ~95%+ of clean inputs, a single O(N) pass returns [] without running all K patterns.
+// Only on a match do we run individual patterns to produce labels.
+// Technique: "combined alternation fast-reject" (standard in antivirus + IDS engines).
+const COMBINED_CREDENTIAL = new RegExp(
+  CREDENTIAL_PATTERNS.map(p => `(?:${p.pattern.source})`).join('|'),
+  'i'
+);
+
 export function dlpScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
+  // Fast-path: single pass rejects clean inputs immediately
+  if (!COMBINED_CREDENTIAL.test(text)) return [];
   return CREDENTIAL_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label);
 }
 
@@ -318,11 +337,19 @@ const SAMPLING_INJECTION_PATTERNS = [
   /override your (previous|original|initial) (instructions?|prompt|system)/i,
 ];
 
+const COMBINED_SAMPLING = new RegExp(
+  SAMPLING_INJECTION_PATTERNS.map(p => `(?:${p.source})`).join('|'),
+  'i'
+);
+
 export function samplingDlpScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
   const issues: string[] = [];
-  for (const pattern of SAMPLING_INJECTION_PATTERNS) {
-    if (pattern.test(text)) issues.push(`Sampling injection: ${pattern.source.slice(0, 60)}`);
+  // Fast-path: only run individual patterns if combined fires
+  if (COMBINED_SAMPLING.test(text)) {
+    for (const pattern of SAMPLING_INJECTION_PATTERNS) {
+      if (pattern.test(text)) issues.push(`Sampling injection: ${pattern.source.slice(0, 60)}`);
+    }
   }
   issues.push(...dlpScan(text));
   return issues;
@@ -353,8 +380,14 @@ const PII_PATTERNS: { pattern: RegExp; label: string }[] = [
     label: 'Passport number' },
 ];
 
+const COMBINED_PII = new RegExp(
+  PII_PATTERNS.map(p => `(?:${p.pattern.source})`).join('|'),
+  'i'
+);
+
 export function piiScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
+  if (!COMBINED_PII.test(text)) return [];
   return PII_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label);
 }
 
@@ -408,12 +441,18 @@ const CONTEXT_LEAK_PATTERNS: { pattern: RegExp; label: string }[] = [
     label: 'JWT token in response' },
 ];
 
+const COMBINED_CONTEXT_LEAK = new RegExp(
+  CONTEXT_LEAK_PATTERNS.map(p => `(?:${p.pattern.source})`).join('|'),
+  'i'
+);
+
 export function contextLeakScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
-  const found = [
-    ...CONTEXT_LEAK_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label),
-    ...dlpScan(text),
-  ];
+  const found: string[] = [];
+  if (COMBINED_CONTEXT_LEAK.test(text)) {
+    found.push(...CONTEXT_LEAK_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => label));
+  }
+  found.push(...dlpScan(text));
   return [...new Set(found)];
 }
 
@@ -445,6 +484,11 @@ const SHELL_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /\bspawnSync\s*\(|\bexecSync\s*\(/i,                           label: 'Node.js sync shell execution' },
 ];
 
+const COMBINED_SHELL = new RegExp(
+  SHELL_INJECTION_PATTERNS.map(p => `(?:${p.pattern.source})`).join('|'),
+  'i'
+);
+
 /**
  * S-12: Scan tool call arguments for shell injection patterns.
  * Call this on the parsed JSON body of proxy requests, not the raw string.
@@ -452,6 +496,7 @@ const SHELL_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
  */
 export function shellInjectionScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
+  if (!COMBINED_SHELL.test(text)) return [];
   return SHELL_INJECTION_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ label }) => label);
@@ -477,6 +522,11 @@ const INDIRECT_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /exfiltrate|send.*to.*http/i,                                   label: 'Exfiltration instruction in data' },
 ];
 
+const COMBINED_INDIRECT = new RegExp(
+  INDIRECT_INJECTION_PATTERNS.map(p => `(?:${p.pattern.source})`).join('|'),
+  'i'
+);
+
 /**
  * S-13: Scan tool response data for indirect prompt injection.
  * Applied to response bodies in the proxy layer.
@@ -484,6 +534,7 @@ const INDIRECT_INJECTION_PATTERNS: { pattern: RegExp; label: string }[] = [
  */
 export function indirectInjectionScan(rawText: string): string[] {
   const text = truncateForScan(rawText);
+  if (!COMBINED_INDIRECT.test(text)) return [];
   return INDIRECT_INJECTION_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ label }) => label);

@@ -22,9 +22,7 @@
  */
 
 import { NextRequest, NextResponse }   from 'next/server';
-import { createClient }                 from '@/lib/supabase/server';
-import { rateLimit, LIMITS, getLimitConfig }            from '@/lib/ratelimit';
-import { SITE_URL }                     from '@/lib/site';
+import { rateLimit, getLimitConfig }   from '@/lib/ratelimit';
 import { BRAND }                        from '@/lib/brand';
 import { resolveApiKey }                from '@/lib/auth-server';
 import { corsHeaders }                  from '@/lib/utils';
@@ -32,13 +30,8 @@ import { after }                        from '@/lib/after';
 import { executeProxyCall }             from '@/lib/proxy-execute';
 import { getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
 import { ensureRuntimeContracts }       from '@/lib/runtime-contracts';
-import {
-  hashIntent, getIntentCache, setIntentCache,
-  getIntentBoosts, trimSchemasToIntent, computeConfidence,
-  recordSearchEvent,
-  MAX_TOOLS_PER_RESULT,
-  type CachedServer,
-} from '@/lib/search-analytics';
+import { hashIntent, recordSearchEvent } from '@/lib/search-analytics';
+import { runSearch, MAX_TOOLS_PER_RESULT } from '@/lib/search';
 
 // ── MCP Protocol constants ────────────────────────────────────────────────────
 const MCP_VERSION     = '2025-03-26';
@@ -206,13 +199,16 @@ async function handleSearchTools(
   // Every no_tool_needed response is logged as a knowledge deflection — this
   // becomes training data for Lever 3B (ML classifier, Sprint 6).
   const KNOWLEDGE_PATTERNS: RegExp[] = [
-    /^(what|who|when|where|why|how)\s+(is|are|was|were|does|do|did|has|have|can|could|would|should|will)\b/i,
-    /^(explain|define|describe|tell me about|what does .+ mean|what is the difference)\b/i,
-    /^(compare|vs\.?|versus|difference between|which is better)\b/i,
-    /^(calculate|compute|solve|what is \d|convert \d)/i,
-    /^(write|draft|summarize|translate|rewrite|fix|improve|edit)\s+(a |an |the |this |my )?(text|paragraph|sentence|email template|summary|description|copy)\b/i,
-    /^(list|name|give me|tell me)\s+(the\s+)?(top|best|main|key|common|example|type)/i,
-    /^(history of|background on|overview of|introduction to)\b/i,
+    // S10: ^ anchors removed — patterns now match anywhere in the intent string.
+    // "I need to know how to send email" was not deflected by ^how because the
+    // sentence doesn't start with "how". Anchor-free matching fixes this.
+    /(what|who|when|where|why|how)\s+(is|are|was|were|does|do|did|has|have|can|could|would|should|will)\b/i,
+    /(explain|define|describe|tell me about|what does .+ mean|what is the difference)\b/i,
+    /(compare|vs\.?|versus|difference between|which is better)\b/i,
+    /(calculate|compute|solve|what is \d|convert \d)/i,
+    /(write|draft|summarize|translate|rewrite|fix|improve|edit)\s+(a |an |the |this |my )?(text|paragraph|sentence|email template|summary|description|copy)\b/i,
+    /(list|name|give me|tell me)\s+(the\s+)?(top|best|main|key|common|example|type)/i,
+    /(history of|background on|overview of|introduction to)\b/i,
   ];
   const ACTION_OVERRIDES: RegExp[] = [
     /\b(send|create|delete|update|fetch|get|post|push|pull|deploy|run|execute|invoke|call|trigger|schedule|notify|email|message|upload|download|save|store|insert|query|search(?! for tools| registry))\b/i,
@@ -245,110 +241,12 @@ async function handleSearchTools(
     });
   }
 
-  // ── Intent cache — check before DB query ──────────────────────────────────────
-  // Frequent intent→server mappings are cached aggressively.
-  // Cache hit: return pre-computed results in ~0ms, skip DB entirely.
-  const cached = getIntentCache(intentHash);
-  if (cached && cached.servers.length > 0) {
-    const supabase = createClient();
-    const cachedOrder = new Map(cached.servers.map((row, idx) => [row.server_name, idx]));
-    const cachedBoostByServer = new Map(cached.servers.map(row => [row.server_name, row]));
-    const serverNames = cached.servers.map(s => s.server_name);
-    const { data: cachedRows } = await (supabase as any)
-      .from('servers')
-      .select(`
-        id, name, display_name, description, tools, tool_schemas,
-        trust_score, latency_ms, uptime_pct, source, verified, scan_status,
-        tool_extraction_source,
-        proxy_available, transport, endpoint
-      `)
-      .in('name', serverNames)
-      .eq('status', 'active');
-    const orderedRows = (cachedRows ?? [])
-      .sort((a: any, b: any) => (cachedOrder.get(a.name) ?? 9999) - (cachedOrder.get(b.name) ?? 9999))
-      .slice(0, limit);
-    const formatted = orderedRows.map((s: any) => {
-      const boost = cachedBoostByServer.get(s.name);
-      const rawTools: any[] = (s.tool_schemas?.length ?? 0) > 0
-        ? s.tool_schemas
-        : (s.tools ?? []).map((t: any) =>
-            typeof t === 'string' ? { name: t } : { name: t.name, description: t.description, inputSchema: t.inputSchema }
-          );
-      const trimmedTools = trimSchemasToIntent(rawTools, intent);
-      const proxyAvailable = s.proxy_available ?? ((s.transport ?? 'streamable_http') !== 'stdio' && Boolean(s.endpoint));
-      const isStdio = s.transport === 'stdio';
-      return {
-        name: s.name,
-        display_name: s.display_name,
-        description: s.description,
-        confidence: boost?.success_rate ?? 0,
-        trust_score: s.trust_score,
-        latency_ms: boost?.avg_latency_ms ?? s.latency_ms,
-        uptime_pct: s.uptime_pct,
-        source: s.source ?? 'direct',
-        verified: s.verified,
-        scan_status: s.scan_status,
-        tool_extraction_source: s.tool_extraction_source ?? 'none',
-        invoke_history: boost ? {
-          success_rate: Math.round((boost.success_rate ?? 0) * 100),
-          invoke_count: boost.invoke_count ?? 0,
-        } : null,
-        tools: trimmedTools,
-        total_tools: rawTools.length,
-        proxy_available: proxyAvailable,
-        transport: s.transport ?? null,
-        usage: proxyAvailable === false
-          ? isStdio
-            ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
-            : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
-          : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
-        is_new: s.is_new ?? false,
-      };
-    });
-    const topResult = formatted[0];
-    after(() => recordSearchEvent({
-      searchEventId,
-      userId: auth?.userId ?? null, sessionId,
-      interface: 'mcp_server', intentText: intent,
-      intentClass: 'action', resultCount: formatted.length,
-      resultServers: formatted.map((s: any) => s.name),
-      topServer: topResult?.name ?? null,
-      topConfidence: topResult?.confidence ?? null,
-      cacheHit: true, noToolNeeded: false,
-      searchLatencyMs: 0, totalLatencyMs: Date.now() - handlerStart,
-    }));
+  // ── S15: Shared search pipeline ───────────────────────────────────────────────
+  // Delegates to runSearch() — identical pipeline used by REST surface too.
+  const searchResult = await runSearch({ intent, limit, surface: 'mcp', intentHash });
+  const { results: formatted, cacheHit, searchLatencyMs } = searchResult;
 
-    return mcpResponse(id, {
-      content: [{ type: 'text', text: JSON.stringify({
-        intent,
-        intent_hash: intentHash,
-        search_event_id: searchEventId,
-        results: formatted,
-        tip: [
-          'Cache hit — server ordering comes from historical success for this intent.',
-          'Use invoke_tool with the exact server and tool names shown.',
-          'Pass search_event_id and intent through to invoke_tool so Relay can learn from successful chains.',
-          `Schemas trimmed to ${MAX_TOOLS_PER_RESULT} most relevant tools per server — use total_tools to see if more exist.`,
-        ].join(' '),
-        cache_hit: true,
-      }, null, 2) }],
-    });
-  }
-
-  // ── Full DB search ────────────────────────────────────────────────────────────
-  const searchStart = Date.now();
-  const supabase    = createClient();
-
-  const { data: results, error: searchError } = await (supabase as any)
-    .rpc('search_servers', { query_text: intent, result_limit: limit });
-
-  const searchLatencyMs = Date.now() - searchStart;
-
-  if (searchError) {
-    return mcpError(id, -32000, `Search failed: ${searchError.message ?? 'unknown error'}`);
-  }
-
-  if (!results || results.length === 0) {
+  if (formatted.length === 0) {
     after(() => recordSearchEvent({
       searchEventId,
       userId: auth?.userId ?? null, sessionId,
@@ -370,95 +268,7 @@ async function handleSearchTools(
     });
   }
 
-  // ── Confidence scoring + historical boost ─────────────────────────────────────
-  // Fetch historical success rates for the returned servers (one RPC call for all).
-  const ids = results.map((s: any) => s.id).filter(Boolean);
-  const { data: enrichedRows } = ids.length > 0
-    ? await (supabase as any)
-        .from('servers')
-        .select(`
-          id, name, display_name, description, tools, tool_schemas,
-          trust_score, latency_ms, uptime_pct, source, verified, scan_status,
-          tool_extraction_source,
-          proxy_available, transport, endpoint
-        `)
-        .in('id', ids)
-        .eq('status', 'active')
-    : { data: [] };
-
-  const enrichedById = new Map((enrichedRows ?? []).map((row: any) => [row.id, row]));
-  const finalResults = results.map((row: any) => enrichedById.get(row.id) ?? row);
-  const serverNames = finalResults.map((s: any) => s.name);
-  const boosts      = await getIntentBoosts(intentHash, serverNames);
-
-  // ── Format results with confidence scores and trimmed schemas ─────────────────
-  const formatted = finalResults.map((s: any, idx: number) => {
-    const boost    = boosts.get(s.name);
-    const confidence = computeConfidence({
-      rank:         idx,
-      totalResults: finalResults.length,
-      trustScore:   s.trust_score ?? 50,
-      successRate:  boost?.successRate ?? 0,
-      invokeCount:  boost?.invokeCount ?? 0,
-    });
-
-    // Schema trimming: only return tools relevant to the intent (max 3)
-    const rawTools: any[] = (s.tool_schemas?.length ?? 0) > 0
-      ? s.tool_schemas
-      : (s.tools ?? []).map((t: any) =>
-          typeof t === 'string' ? { name: t } : { name: t.name, description: t.description, inputSchema: t.inputSchema }
-        );
-    const trimmedTools = trimSchemasToIntent(rawTools, intent);
-
-    const proxyAvailable = s.proxy_available ?? ((s.transport ?? 'streamable_http') !== 'stdio' && Boolean(s.endpoint));
-    const isStdio = s.transport === 'stdio';
-
-    return {
-      name:           s.name,
-      display_name:   s.display_name,
-      description:    s.description,
-      confidence,                              // 0–1 ranking signal for the model
-      trust_score:    s.trust_score,
-      latency_ms:     boost?.avgLatencyMs ?? s.latency_ms,  // prefer behavioral data
-      uptime_pct:     s.uptime_pct,
-      source:         s.source ?? 'direct',
-      verified:       s.verified,
-      scan_status:    s.scan_status,
-      tool_extraction_source: s.tool_extraction_source ?? 'none',
-      invoke_history: boost ? {
-        success_rate: Math.round((boost.successRate ?? 0) * 100),
-        invoke_count: boost.invokeCount,
-      } : null,
-      tools:          trimmedTools,
-      total_tools:    rawTools.length,         // so agent knows if we trimmed
-      proxy_available: proxyAvailable,
-      transport: s.transport ?? null,
-      usage: proxyAvailable === false
-        ? isStdio
-          ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
-          : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
-        : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
-      is_new: s.is_new ?? false,
-    };
-  });
-
   const topResult = formatted[0];
-
-  // ── Populate intent cache for next time ───────────────────────────────────────
-  // Only cache results with reasonable confidence. Low quality results
-  // should always re-query so search quality improvements apply immediately.
-  if (topResult && topResult.confidence > 0.5) {
-    const cacheableServers: CachedServer[] = formatted
-      .filter((r: any) => r.confidence > 0.4)
-      .map((r: any) => ({
-        server_name:    r.name,
-        tool_name:      r.tools?.[0]?.name ?? null,
-        success_rate:   r.confidence,
-        invoke_count:   r.invoke_history?.invoke_count ?? 0,
-        avg_latency_ms: r.latency_ms ?? null,
-      }));
-    setIntentCache(intentHash, cacheableServers);
-  }
 
   // ── Record search event (non-blocking) ────────────────────────────────────────
   after(() => recordSearchEvent({
@@ -469,10 +279,10 @@ async function handleSearchTools(
     intentText:   intent,
     intentClass:  'action',
     resultCount:  formatted.length,
-    resultServers: serverNames,
+    resultServers: formatted.map(s => s.name),
     topServer:    topResult?.name ?? null,
     topConfidence: topResult?.confidence ?? null,
-    cacheHit:     false,
+    cacheHit,
     noToolNeeded: false,
     searchLatencyMs,
     totalLatencyMs: Date.now() - handlerStart,
@@ -485,11 +295,14 @@ async function handleSearchTools(
       search_event_id: searchEventId,
       results: formatted,
       tip: [
-        'Results ordered by confidence (position + trust + history).',
+        cacheHit
+          ? 'Cache hit — server ordering comes from historical success for this intent.'
+          : 'Results ordered by confidence (position + trust + history).',
         'Use invoke_tool with the exact server and tool names shown.',
         'Pass search_event_id and intent through to invoke_tool so Relay can learn from successful chains.',
         `Schemas trimmed to ${MAX_TOOLS_PER_RESULT} most relevant tools per server — use total_tools to see if more exist.`,
       ].join(' '),
+      cache_hit: cacheHit,
     }, null, 2) }],
   });
 }

@@ -68,10 +68,17 @@ export async function runIngest(source: SourceInput = 'all') {
     return { error: `Unknown source: ${source}` };
   }
 
-  // Track run
-  const { data: run } = await ingestRuns.insert({
+  // Track run — M2 fix: guard for DB errors so a tracking failure doesn't
+  // silently hide the ingest results or prevent the run from completing.
+  const { data: run, error: runInsertErr } = await ingestRuns.insert({
     source, started_at: startedAt,
   }).select('id').single();
+
+  if (runInsertErr) {
+    log.warn('ingest:cron', 'Failed to create ingest_runs record — run will not be tracked', {
+      error: runInsertErr.message,
+    });
+  }
 
   try {
     for (const src of toRun) {
