@@ -257,9 +257,10 @@ export async function upsertServers(
                   'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}`,
                 },
                 body: JSON.stringify(sandboxCommand),
-                // Hard cap: sandbox may cold-start on Render (up to ~30s) + process spawn time.
+                // Hard cap: sandbox may cold-start on Render plus spend up to 120s
+                // connecting while npx/uvx downloads the package on a cold container.
                 // Without this, a hung sandbox blocks the entire ingest run indefinitely.
-                signal: AbortSignal.timeout(60_000),
+                signal: AbortSignal.timeout(Number(process.env.SANDBOX_EXTRACT_TIMEOUT_MS || 150_000)),
               });
               if (req.ok) {
                 const sandboxResult = await req.json();

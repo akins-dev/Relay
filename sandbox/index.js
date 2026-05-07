@@ -4,8 +4,9 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 
 const app = express();
 app.use(express.json());
-const ALLOWED_COMMANDS = new Set(['npx', 'uvx', 'python', 'pip']);
+const ALLOWED_COMMANDS = new Set(['npx', 'uvx']);
 const MAX_ARG_COUNT = 16;
+const DEFAULT_CONNECT_TIMEOUT_MS = 120_000;
 
 // Auth token — REQUIRED in all environments. No insecure fallbacks.
 const AUTH_TOKEN = process.env.SANDBOX_AUTH_TOKEN;
@@ -69,12 +70,15 @@ app.post('/extract', async (req, res) => {
   );
 
   try {
-    // 1. Start the subprocess and connect (with 30s timeout)
-    const connectTimeout = AbortSignal.timeout(30_000);
+    // 1. Start the subprocess and connect.
+    // On Render (cold containers) an `npx` spawn may spend 30–90s downloading/installing
+    // before the MCP process is actually ready to speak over stdio.
+    const connectTimeoutMs = Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS);
+    const connectTimeout = AbortSignal.timeout(connectTimeoutMs);
     await Promise.race([
       client.connect(transport),
       new Promise((_, reject) => connectTimeout.addEventListener('abort', () =>
-        reject(new Error('Connection timed out after 30s'))
+        reject(new Error(`Connection timed out after ${connectTimeoutMs}ms`))
       ))
     ]);
 
@@ -126,7 +130,7 @@ app.post('/extract', async (req, res) => {
     //   1. transport.close() — sends SIGTERM to the spawned child process.
     //      This must be called BEFORE client.close() because if the MCP session
     //      never fully connected, client.close() may not reach the subprocess.
-    //   2. SIGKILL fallback — if the process ignored SIGTERM (some Python/Node
+    //   2. SIGKILL fallback — if the process ignored SIGTERM (some Node/uvx
     //      servers do), forcibly kill via the internal process handle.
     //   3. client.close() — tears down any remaining SDK state.
     try { await transport.close(); } catch (_) {}
@@ -157,6 +161,21 @@ app.get('/ready', (req, res) => {
     return res.status(401).json({ status: 'unauthorized' });
   }
   return res.json({ status: 'ok' });
+});
+
+// Authenticated contract check for pre-ingest validation. This lets the app verify
+// command compatibility without spawning an arbitrary package.
+app.get('/capabilities', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+    return res.status(401).json({ status: 'unauthorized' });
+  }
+  return res.json({
+    status: 'ok',
+    allowedCommands: Array.from(ALLOWED_COMMANDS).sort(),
+    maxArgCount: MAX_ARG_COUNT,
+    connectTimeoutMs: Number(process.env.SANDBOX_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS),
+  });
 });
 
 const PORT = process.env.PORT || 3000;
