@@ -150,6 +150,15 @@ app.post('/extract', async (req, res) => {
 // Simple healthcheck
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// Authenticated readiness check (validates shared secret without spawning anything)
+app.get('/ready', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+    return res.status(401).json({ status: 'unauthorized' });
+  }
+  return res.json({ status: 'ok' });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`relay MCP Sandbox listening on port ${PORT}`);
