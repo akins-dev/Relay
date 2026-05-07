@@ -42,6 +42,11 @@ interface CheckResult {
   critical:  boolean;
 }
 
+interface CheckOptions {
+  /** Strict mode is the CLI gate before an actual ingest. Background mode is dev diagnostics. */
+  strict: boolean;
+}
+
 type SourceProbe = {
   name: string;
   urls: string[];
@@ -50,6 +55,10 @@ type SourceProbe = {
 };
 
 const UA = 'relay-pre-ingest-check/1.0';
+const DB_TIMEOUT_MS = Number(process.env.PRE_INGEST_DB_TIMEOUT_MS || 15_000);
+const SOURCE_TIMEOUT_MS = Number(process.env.PRE_INGEST_SOURCE_TIMEOUT_MS || 20_000);
+const CACHE_TIMEOUT_MS = Number(process.env.PRE_INGEST_CACHE_TIMEOUT_MS || 10_000);
+const PROBE_DB_TIMEOUT_MS = Number(process.env.PRE_INGEST_PROBE_DB_TIMEOUT_MS || 15_000);
 
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -58,6 +67,15 @@ function trimSlash(value: string): string {
 async function readBody(res: Response): Promise<string> {
   const text = await res.text();
   return text.length > 250 ? `${text.slice(0, 250)}...` : text;
+}
+
+function describeError(e: any): string {
+  const parts = [
+    e?.message,
+    e?.cause?.code,
+    e?.cause?.message,
+  ].filter(Boolean);
+  return parts.length > 0 ? Array.from(new Set(parts)).join(' — ') : String(e);
 }
 
 async function loadIngestContracts() {
@@ -70,7 +88,7 @@ async function loadIngestContracts() {
 
 // ── Individual checks ─────────────────────────────────────────────────────────
 
-async function checkSupabase(): Promise<CheckResult> {
+async function checkSupabase(options: CheckOptions): Promise<CheckResult> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const start = Date.now();
@@ -92,25 +110,29 @@ async function checkSupabase(): Promise<CheckResult> {
     ];
 
     const checks = await Promise.all(requiredTables.map(async table => {
-      const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1`, {
-        headers,
-        signal: AbortSignal.timeout(8_000),
-      });
-      return { table, res, body: res.ok ? '' : await readBody(res) };
+      try {
+        const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1`, {
+          headers,
+          signal: AbortSignal.timeout(DB_TIMEOUT_MS),
+        });
+        return { table, ok: res.ok, status: res.status, body: res.ok ? '' : await readBody(res) };
+      } catch (e: any) {
+        return { table, ok: false, status: 'error', body: describeError(e) };
+      }
     }));
 
-    const failed = checks.filter(c => !c.res.ok);
+    const failed = checks.filter(c => !c.ok);
     return {
-      name: 'Supabase DB', critical: true,
+      name: 'Supabase DB', critical: options.strict,
       ok: failed.length === 0,
       latencyMs: Date.now() - start,
       detail: failed.length === 0
         ? `tables ok: ${requiredTables.join(', ')}`
-        : failed.map(f => `${f.table}=HTTP ${f.res.status} ${f.body}`).join(' | '),
+        : failed.map(f => `${f.table}=HTTP ${f.status} ${f.body}`).join(' | '),
     };
   } catch (e: any) {
-    return { name: 'Supabase DB', ok: false, critical: true,
-      latencyMs: Date.now() - start, detail: e.message };
+    return { name: 'Supabase DB', ok: false, critical: options.strict,
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
@@ -168,7 +190,7 @@ async function checkSandbox(): Promise<CheckResult> {
         }
       } catch (e: any) {
         readyOk = false;
-        readyDetail = e.message;
+        readyDetail = describeError(e);
       }
 
       try {
@@ -207,7 +229,7 @@ async function checkSandbox(): Promise<CheckResult> {
         }
       } catch (e: any) {
         contractOk = false;
-        contractDetail = e.message;
+        contractDetail = describeError(e);
       }
 
       try {
@@ -227,7 +249,7 @@ async function checkSandbox(): Promise<CheckResult> {
           : `extract expected HTTP 400, got HTTP ${extractRes.status}: ${await readBody(extractRes)}`;
       } catch (e: any) {
         routeOk = false;
-        routeDetail = e.message;
+        routeDetail = describeError(e);
       }
     }
 
@@ -264,7 +286,7 @@ async function checkSandbox(): Promise<CheckResult> {
     };
   } catch (e: any) {
     return { name: 'Sandbox (Render)', ok: false, critical: false,
-      latencyMs: Date.now() - start, detail: e.message };
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
@@ -281,7 +303,7 @@ async function checkUpstash(): Promise<CheckResult> {
   try {
     const res  = await fetch(`${url}/ping`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(CACHE_TIMEOUT_MS),
     });
     const body = await res.json() as any;
     const ok   = res.ok && body?.result === 'PONG';
@@ -293,11 +315,11 @@ async function checkUpstash(): Promise<CheckResult> {
     };
   } catch (e: any) {
     return { name: 'Upstash Redis', ok: false, critical: false,
-      latencyMs: Date.now() - start, detail: e.message };
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
-async function checkSourceApis(): Promise<CheckResult> {
+async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
   const start = Date.now();
   const probes: SourceProbe[] = [
     {
@@ -353,14 +375,14 @@ async function checkSourceApis(): Promise<CheckResult> {
               'Accept': 'application/json',
               ...(probe.headers ?? {}),
             },
-            signal: AbortSignal.timeout(12_000),
+            signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
           });
           if (res.ok) {
             return { ...probe, ok: true, status: res.status, body: '' };
           }
           failures.push(`${url}=HTTP ${res.status} ${await readBody(res)}`);
         } catch (e: any) {
-          failures.push(`${url}=error ${e.message}`);
+          failures.push(`${url}=error ${describeError(e)}`);
         }
       }
       return { ...probe, ok: false, status: 'error', body: failures.join(' || ') };
@@ -372,7 +394,7 @@ async function checkSourceApis(): Promise<CheckResult> {
       name: 'Ingest source APIs',
       ok: failed.length === 0,
       latencyMs: Date.now() - start,
-      critical: criticalFailed.length > 0,
+      critical: options.strict && criticalFailed.length > 0,
       detail: failed.length === 0
         ? `reachable: ${results.map(r => r.name).join(', ')}`
         : failed.map(r => `${r.name}=HTTP ${r.status}${r.critical ? '' : ' (non-critical)'} ${r.body}`).join(' | '),
@@ -382,8 +404,8 @@ async function checkSourceApis(): Promise<CheckResult> {
       name: 'Ingest source APIs',
       ok: false,
       latencyMs: Date.now() - start,
-      critical: true,
-      detail: e.message,
+      critical: options.strict,
+      detail: describeError(e),
     };
   }
 }
@@ -421,7 +443,7 @@ async function probeRegistryEndpoints(): Promise<CheckResult> {
       `${url}/rest/v1/servers?select=name,endpoint,transport,auth_type&status=eq.active&endpoint=not.is.null&transport=not.eq.stdio&auth_type=not.in.(api_key,oauth)&order=updated_at.desc&limit=3`,
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(PROBE_DB_TIMEOUT_MS),
       }
     );
 
@@ -470,20 +492,24 @@ async function probeRegistryEndpoints(): Promise<CheckResult> {
       ok: false,
       latencyMs: Date.now() - start,
       critical: false,
-      detail: e.message,
+      detail: describeError(e),
     };
   }
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-export async function runChecks(isCli = false) {
-  console.log('\n🔍  Pre-Ingest Connection Health Check');
+export async function runChecks(isCli = false, options: Partial<CheckOptions> = {}) {
+  const checkOptions: CheckOptions = {
+    strict: options.strict ?? isCli,
+  };
+
+  console.log(`\n🔍  Pre-Ingest Connection Health Check${checkOptions.strict ? '' : ' (background diagnostics)'}`);
   console.log('═'.repeat(52));
 
   const results = await Promise.all([
-    checkSupabase(),
-    checkSourceApis(),
+    checkSupabase(checkOptions),
+    checkSourceApis(checkOptions),
     checkSandbox(),
     checkUpstash(),
     probeRegistryEndpoints(),
@@ -515,7 +541,7 @@ export async function runChecks(isCli = false) {
   }
 
   if (degraded.length > 0) {
-    console.warn(`\n⚠️   Degraded systems (${degraded.length}): ingest will run with reduced coverage.`);
+    console.warn(`\n⚠️   Degraded systems (${degraded.length}): ${checkOptions.strict ? 'ingest will run with reduced coverage' : 'background check only; run npm run check:connections before ingest'}.`);
     for (const r of degraded) console.warn(`   • ${r.name}: ${r.detail}`);
     console.log('\n✅  Proceeding is safe, but some sources will be unavailable.\n');
     if (isCli) process.exit(0);
