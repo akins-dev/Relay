@@ -3,6 +3,7 @@ const path = require('path');
 const { withSentryConfig } = require('@sentry/nextjs');
 
 const isDev = process.env.NODE_ENV === 'development';
+const enableSentry = !isDev || process.env.NEXT_PUBLIC_SENTRY_ENABLE_DEV === 'true';
 
 const CSP = [
   "default-src 'self'",
@@ -65,7 +66,7 @@ const nextConfig = {
   logging: { fetches: { fullUrl: isDev } },
 };
 
-module.exports = withSentryConfig(nextConfig, {
+const sentryConfig = {
   // Sentry build-time config
   org:     process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
@@ -82,7 +83,9 @@ module.exports = withSentryConfig(nextConfig, {
     },
   },
 
-  // Tunnel Sentry requests through our own domain
-  // Avoids ad-blockers blocking sentry.io requests
-  tunnelRoute: '/monitoring',
-});
+  // Tunnel Sentry requests through our own domain in production.
+  // Keeping this off locally avoids noisy dev-server proxy retries.
+  ...(isDev ? {} : { tunnelRoute: '/monitoring' }),
+};
+
+module.exports = enableSentry ? withSentryConfig(nextConfig, sentryConfig) : nextConfig;

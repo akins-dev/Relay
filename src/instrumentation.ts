@@ -4,9 +4,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('./lib/env');
     
-    // Only run the background connection check during local development
-    // so we don't delay or break production Vercel cold starts.
-    if (process.env.NODE_ENV === 'development') {
+    // Keep startup fast by making network diagnostics opt-in during dev.
+    // Run `npm run check:connections` for an explicit health check.
+    if (process.env.NODE_ENV === 'development' && process.env.RUN_PRE_INGEST_CHECK_ON_BOOT === 'true') {
       const { runChecks } = await import('./scripts/pre-ingest-check');
       // Fire and forget — do not block the server boot
       runChecks(false, { strict: false }).catch(err => {

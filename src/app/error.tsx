@@ -2,14 +2,20 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
-import * as Sentry from '@sentry/nextjs';
+
+const enableSentry = process.env.NODE_ENV === 'production' ||
+  process.env.NEXT_PUBLIC_SENTRY_ENABLE_DEV === 'true';
 
 export default function GlobalError({ error, reset }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    if (!enableSentry) return;
+
+    void import('@sentry/nextjs').then(Sentry => {
+      Sentry.captureException(error);
+    });
   }, [error]);
 
   return (

@@ -1,32 +1,10 @@
 import type { Metadata, Viewport } from 'next';
-import { Space_Grotesk, Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Nav }           from '@/components/layout/Nav';
 import { AuthProvider }  from '@/components/AuthProvider';
 import { LenisProvider } from '@/components/LenisProvider';
 import { SITE_URL }      from '@/lib/site';
 import { BRAND }         from '@/lib/brand';
-
-// ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
-const spaceGrotesk = Space_Grotesk({
-  subsets:  ['latin'],
-  variable: '--font-inter', // mapped to original css variable for ease
-  display:  'swap',
-});
-
-const outfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-editorial', // mapped to original display variable
-  weight: ['300', '400', '500', '600', '700'],
-  display: 'swap',
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-ibm-plex-mono', // mapped to original mono variable
-  weight: ['400', '500', '600'],
-  display: 'swap',
-});
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 const SITE_NAME   = BRAND.name;
@@ -110,7 +88,7 @@ export const viewport: Viewport = {
 // ── Root layout ───────────────────────────────────────────────────────────────
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${spaceGrotesk.variable} ${outfit.variable} ${jetbrainsMono.variable} dark`}>
+    <html lang="en" className="dark">
       <body className="bg-black text-white antialiased">
         <LenisProvider>
           <AuthProvider>
