@@ -30,7 +30,7 @@ The core scaling problem in MCP is not raw server count. It is the amount of cap
 
 Even with strong progress in **RAG** and orchestration frameworks like **LangChain** and **LangGraph**, the infrastructure problem remains: agents still need a clean, secure, and scalable way to discover, rank, authorize, and invoke tools at runtime across a fragmented ecosystem without pre-loading everything.
 
-## The Vision: Relay
+## The Solution: Relay
 
 **Relay removes the practical MCP configuration ceiling.**
 

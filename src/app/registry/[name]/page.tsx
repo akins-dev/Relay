@@ -91,6 +91,15 @@ export default function ServerDetailPage() {
 
   const resources: any[] = useMemo(() => (server as any)?.resources ?? [], [server]);
   const prompts:   any[] = useMemo(() => (server as any)?.prompts   ?? [], [server]);
+  const toolSchemas: any[] = useMemo(() => {
+    const raw = (server as any)?.tool_schemas;
+    return Array.isArray(raw) ? raw.filter((tool: any) => tool?.name) : [];
+  }, [server]);
+  const toolSchemaByName = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const tool of toolSchemas) map.set(tool.name, tool);
+    return map;
+  }, [toolSchemas]);
   
   const pagedTools = useMemo(() => paginateItems(server?.tools ?? [], listPages.tools, 12), [server?.tools, listPages.tools]);
   const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
@@ -292,14 +301,19 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
 
             <div className="card" style={{ padding: '22px' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Tools ({server.tools.length})</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {previewTools.map(t => (
-                  <span key={t} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 12px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>
-                    fn {t}()
-                  </span>
+                  <div key={t} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>fn {t}()</div>
+                    {toolSchemaByName.get(t)?.description && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '3px', lineHeight: 1.45 }}>
+                        {toolSchemaByName.get(t).description}
+                      </div>
+                    )}
+                  </div>
                 ))}
                 {server.tools.length === 0 && (
-                  <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet — tools are listed after a live probe</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet. This entry is discovery-incomplete until ingest can fetch Smithery detail, live probe it, or extract tools in the sandbox.</span>
                 )}
               </div>
               {server.tools.length > previewTools.length && (
@@ -369,24 +383,46 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
             </div>
           )}
           {server.tools.length === 0 && (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>No tools discovered yet</div>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>
+              No tools discovered yet. This server should not be considered callable until tool metadata is present.
+            </div>
           )}
-          {pagedTools.items.map(tool => (
-            <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
-                <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
+          {pagedTools.items.map(tool => {
+            const schema = toolSchemaByName.get(tool);
+            const inputSchema = schema?.inputSchema ?? schema?.input_schema ?? schema?.input_schema_json;
+            return (
+            <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
+                  </div>
+                  {schema?.description && (
+                    <div style={{ fontSize: '13px', color: 'var(--text-2)', marginTop: '5px', lineHeight: 1.5 }}>
+                      {schema.description}
+                    </div>
+                  )}
+                </div>
+                {proxyAvailable ? (
+                  <button onClick={() => copy(`POST /api/proxy/${server.name}/${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px', flexShrink: 0 }}>
+                    {copied === tool ? '✓ copied' : 'copy endpoint'}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)', flexShrink: 0 }}>
+                    {isStdio ? '⬡ stdio only' : '⚠ not proxyable'}
+                  </span>
+                )}
               </div>
-              {proxyAvailable ? (
-                <button onClick={() => copy(`POST /api/proxy/${server.name}/${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>
-                  {copied === tool ? '✓ copied' : 'copy endpoint'}
-                </button>
-              ) : (
-                <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)' }}>
-                  {isStdio ? '⬡ stdio only' : '⚠ not proxyable'}
-                </span>
+              {inputSchema && (
+                <details>
+                  <summary style={{ cursor: 'pointer', color: 'var(--blue)', fontFamily: 'var(--mono)', fontSize: '12px' }}>input schema</summary>
+                  <pre style={{ marginTop: '8px', padding: '12px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-2)', fontSize: '11px', lineHeight: 1.5, overflow: 'auto', maxHeight: '260px', whiteSpace: 'pre-wrap' }}>
+                    {JSON.stringify(inputSchema, null, 2)}
+                  </pre>
+                </details>
               )}
             </div>
-          ))}
+          );})}
           <PaginationControls
             className="mt-4"
             page={pagedTools.page}
