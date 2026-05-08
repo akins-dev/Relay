@@ -182,7 +182,7 @@ interface IngestResult {
 
 | Value | Meaning |
 |---|---|
-| `smithery_detail` | Full inputSchema from Smithery `GET /v2/servers/{id}` |
+| `smithery_detail` | Full inputSchema from Smithery `GET /servers/{id}` |
 | `mcp_probe` | Live MCP handshake to a running HTTP/SSE endpoint |
 | `sandbox` | Sandboxed local execution of a stdio package |
 | `upstream_schemas` | Schemas provided directly by the upstream API |

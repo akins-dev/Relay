@@ -42,6 +42,11 @@ interface CheckResult {
   critical:  boolean;
 }
 
+interface CheckOptions {
+  /** Strict mode is the CLI gate before an actual ingest. Background mode is dev diagnostics. */
+  strict: boolean;
+}
+
 type SourceProbe = {
   name: string;
   urls: string[];
@@ -49,7 +54,17 @@ type SourceProbe = {
   critical: boolean;
 };
 
+type SourceResult = SourceProbe & {
+  ok: boolean;
+  status: number | string;
+  body: string;
+};
+
 const UA = 'relay-pre-ingest-check/1.0';
+const DB_TIMEOUT_MS = Number(process.env.PRE_INGEST_DB_TIMEOUT_MS || 15_000);
+const SOURCE_TIMEOUT_MS = Number(process.env.PRE_INGEST_SOURCE_TIMEOUT_MS || 20_000);
+const CACHE_TIMEOUT_MS = Number(process.env.PRE_INGEST_CACHE_TIMEOUT_MS || 10_000);
+const PROBE_DB_TIMEOUT_MS = Number(process.env.PRE_INGEST_PROBE_DB_TIMEOUT_MS || 15_000);
 
 function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -58,6 +73,30 @@ function trimSlash(value: string): string {
 async function readBody(res: Response): Promise<string> {
   const text = await res.text();
   return text.length > 250 ? `${text.slice(0, 250)}...` : text;
+}
+
+function describeError(e: any): string {
+  const parts = [
+    e?.message,
+    e?.cause?.code,
+    e?.cause?.message,
+  ].filter(Boolean);
+  return parts.length > 0 ? Array.from(new Set(parts)).join(' — ') : String(e);
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e: any) {
+      lastError = e;
+      if (attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 1_000 * attempt));
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function loadIngestContracts() {
@@ -70,7 +109,7 @@ async function loadIngestContracts() {
 
 // ── Individual checks ─────────────────────────────────────────────────────────
 
-async function checkSupabase(): Promise<CheckResult> {
+async function checkSupabase(options: CheckOptions): Promise<CheckResult> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const start = Date.now();
@@ -92,25 +131,29 @@ async function checkSupabase(): Promise<CheckResult> {
     ];
 
     const checks = await Promise.all(requiredTables.map(async table => {
-      const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1`, {
-        headers,
-        signal: AbortSignal.timeout(8_000),
-      });
-      return { table, res, body: res.ok ? '' : await readBody(res) };
+      try {
+        const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1`, {
+          headers,
+          signal: AbortSignal.timeout(DB_TIMEOUT_MS),
+        });
+        return { table, ok: res.ok, status: res.status, body: res.ok ? '' : await readBody(res) };
+      } catch (e: any) {
+        return { table, ok: false, status: 'error', body: describeError(e) };
+      }
     }));
 
-    const failed = checks.filter(c => !c.res.ok);
+    const failed = checks.filter(c => !c.ok);
     return {
-      name: 'Supabase DB', critical: true,
+      name: 'Supabase DB', critical: options.strict,
       ok: failed.length === 0,
       latencyMs: Date.now() - start,
       detail: failed.length === 0
         ? `tables ok: ${requiredTables.join(', ')}`
-        : failed.map(f => `${f.table}=HTTP ${f.res.status} ${f.body}`).join(' | '),
+        : failed.map(f => `${f.table}=HTTP ${f.status} ${f.body}`).join(' | '),
     };
   } catch (e: any) {
-    return { name: 'Supabase DB', ok: false, critical: true,
-      latencyMs: Date.now() - start, detail: e.message };
+    return { name: 'Supabase DB', ok: false, critical: options.strict,
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
@@ -132,10 +175,10 @@ async function checkSandbox(): Promise<CheckResult> {
   try {
     const url = trimSlash(rawUrl);
     // Allow up to 35s: Render free tier cold-starts can take 20–30s
-    const healthRes = await fetch(`${url}/health`, {
+    const healthRes = await fetchWithRetry(`${url}/health`, {
       signal: AbortSignal.timeout(35_000),
       headers: { 'User-Agent': UA },
-    });
+    }, 3);
     const healthBody = healthRes.ok ? (await healthRes.json() as any) : await healthRes.text();
     const healthOk = healthRes.ok && healthBody?.status === 'ok';
 
@@ -149,13 +192,13 @@ async function checkSandbox(): Promise<CheckResult> {
 
     if (token) {
       try {
-        const readyRes = await fetch(`${url}/ready`, {
+        const readyRes = await fetchWithRetry(`${url}/ready`, {
           signal: AbortSignal.timeout(5_000),
           headers: {
             'User-Agent': UA,
             Authorization: `Bearer ${token}`,
           },
-        });
+        }, 2);
         // Back-compat: older sandbox deployments won't have /ready yet.
         // In that case we can't validate the token here, but /extract will still be auth-gated.
         if (readyRes.status === 404) {
@@ -168,17 +211,17 @@ async function checkSandbox(): Promise<CheckResult> {
         }
       } catch (e: any) {
         readyOk = false;
-        readyDetail = e.message;
+        readyDetail = describeError(e);
       }
 
       try {
-        const capsRes = await fetch(`${url}/capabilities`, {
+        const capsRes = await fetchWithRetry(`${url}/capabilities`, {
           signal: AbortSignal.timeout(5_000),
           headers: {
             'User-Agent': UA,
             Authorization: `Bearer ${token}`,
           },
-        });
+        }, 2);
 
         if (capsRes.status === 404) {
           contractOk = null;
@@ -207,11 +250,11 @@ async function checkSandbox(): Promise<CheckResult> {
         }
       } catch (e: any) {
         contractOk = false;
-        contractDetail = e.message;
+        contractDetail = describeError(e);
       }
 
       try {
-        const extractRes = await fetch(`${url}/extract`, {
+        const extractRes = await fetchWithRetry(`${url}/extract`, {
           method: 'POST',
           signal: AbortSignal.timeout(5_000),
           headers: {
@@ -220,14 +263,14 @@ async function checkSandbox(): Promise<CheckResult> {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ command: '__preflight_disallowed__', args: [] }),
-        });
+        }, 2);
         routeOk = extractRes.status === 400;
         routeDetail = routeOk
           ? 'extract route/auth ok'
           : `extract expected HTTP 400, got HTTP ${extractRes.status}: ${await readBody(extractRes)}`;
       } catch (e: any) {
         routeOk = false;
-        routeDetail = e.message;
+        routeDetail = describeError(e);
       }
     }
 
@@ -264,7 +307,7 @@ async function checkSandbox(): Promise<CheckResult> {
     };
   } catch (e: any) {
     return { name: 'Sandbox (Render)', ok: false, critical: false,
-      latencyMs: Date.now() - start, detail: e.message };
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
@@ -281,7 +324,7 @@ async function checkUpstash(): Promise<CheckResult> {
   try {
     const res  = await fetch(`${url}/ping`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(CACHE_TIMEOUT_MS),
     });
     const body = await res.json() as any;
     const ok   = res.ok && body?.result === 'PONG';
@@ -293,12 +336,82 @@ async function checkUpstash(): Promise<CheckResult> {
     };
   } catch (e: any) {
     return { name: 'Upstash Redis', ok: false, critical: false,
-      latencyMs: Date.now() - start, detail: e.message };
+      latencyMs: Date.now() - start, detail: describeError(e) };
   }
 }
 
-async function checkSourceApis(): Promise<CheckResult> {
+async function checkSmitheryDetailApi(headers: Record<string, string>): Promise<SourceResult> {
+  const probe: SourceProbe = {
+    name: 'smithery-detail-auth',
+    urls: ['https://registry.smithery.ai/servers/{qualifiedName-from-listing}'],
+    headers,
+    critical: false,
+  };
+
+  try {
+    const listingRes = await fetch('https://registry.smithery.ai/servers?q=&page=1&pageSize=10', {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        ...headers,
+      },
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+    if (!listingRes.ok) {
+      return {
+        ...probe,
+        ok: false,
+        status: listingRes.status,
+        body: `could not pick detail sample from listing -> HTTP ${listingRes.status} ${await readBody(listingRes)}`,
+      };
+    }
+
+    const listing = await listingRes.json() as any;
+    const entries = Array.isArray(listing.servers) ? listing.servers : [];
+    const qualifiedName = entries.find((s: any) => typeof s?.qualifiedName === 'string')?.qualifiedName;
+    if (!qualifiedName) {
+      return {
+        ...probe,
+        ok: true,
+        status: 'skipped',
+        body: 'listing returned no qualifiedName to detail-check',
+      };
+    }
+
+    const detailUrl = `https://registry.smithery.ai/servers/${encodeURIComponent(qualifiedName)}`;
+    const detailRes = await fetch(detailUrl, {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        ...headers,
+      },
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+
+    return {
+      ...probe,
+      urls: [detailUrl],
+      ok: detailRes.ok,
+      status: detailRes.status,
+      body: detailRes.ok
+        ? `sample=${qualifiedName}`
+        : `${detailUrl} -> HTTP ${detailRes.status} ${await readBody(detailRes)}`,
+    };
+  } catch (e: any) {
+    return {
+      ...probe,
+      ok: false,
+      status: 'error',
+      body: describeError(e),
+    };
+  }
+}
+
+async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
   const start = Date.now();
+  const smitheryHeaders = process.env.SMITHERY_API_KEY
+    ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` }
+    : undefined;
   const probes: SourceProbe[] = [
     {
       name: 'official',
@@ -311,14 +424,8 @@ async function checkSourceApis(): Promise<CheckResult> {
     {
       name: 'smithery-listing',
       urls: ['https://registry.smithery.ai/servers?q=&page=1&pageSize=1'],
-      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
+      headers: smitheryHeaders,
       critical: true,
-    },
-    {
-      name: 'smithery-detail-auth',
-      urls: [`https://api.smithery.ai/v2/servers/${encodeURIComponent('@smithery-ai/github')}`],
-      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
-      critical: false,
     },
     {
       name: 'glama',
@@ -343,7 +450,7 @@ async function checkSourceApis(): Promise<CheckResult> {
   }
 
   try {
-    const results = await Promise.all(probes.map(async probe => {
+    const results: SourceResult[] = await Promise.all(probes.map(async probe => {
       const failures: string[] = [];
       for (const url of probe.urls) {
         try {
@@ -353,18 +460,23 @@ async function checkSourceApis(): Promise<CheckResult> {
               'Accept': 'application/json',
               ...(probe.headers ?? {}),
             },
-            signal: AbortSignal.timeout(12_000),
+            signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
           });
           if (res.ok) {
             return { ...probe, ok: true, status: res.status, body: '' };
           }
-          failures.push(`${url}=HTTP ${res.status} ${await readBody(res)}`);
+          failures.push(`${url} -> HTTP ${res.status} ${await readBody(res)}`);
         } catch (e: any) {
-          failures.push(`${url}=error ${e.message}`);
+          failures.push(`${url} -> ${describeError(e)}`);
         }
       }
       return { ...probe, ok: false, status: 'error', body: failures.join(' || ') };
     }));
+
+    const listingOk = results.some(r => r.name === 'smithery-listing' && r.ok);
+    if (listingOk && smitheryHeaders) {
+      results.push(await checkSmitheryDetailApi(smitheryHeaders));
+    }
 
     const failed = results.filter(r => !r.ok);
     const criticalFailed = failed.filter(r => r.critical);
@@ -372,18 +484,18 @@ async function checkSourceApis(): Promise<CheckResult> {
       name: 'Ingest source APIs',
       ok: failed.length === 0,
       latencyMs: Date.now() - start,
-      critical: criticalFailed.length > 0,
+      critical: options.strict && criticalFailed.length > 0,
       detail: failed.length === 0
         ? `reachable: ${results.map(r => r.name).join(', ')}`
-        : failed.map(r => `${r.name}=HTTP ${r.status}${r.critical ? '' : ' (non-critical)'} ${r.body}`).join(' | '),
+        : failed.map(r => `${r.name}${r.critical ? '' : ' (non-critical)'}: ${r.body}`).join(' | '),
     };
   } catch (e: any) {
     return {
       name: 'Ingest source APIs',
       ok: false,
       latencyMs: Date.now() - start,
-      critical: true,
-      detail: e.message,
+      critical: options.strict,
+      detail: describeError(e),
     };
   }
 }
@@ -421,7 +533,7 @@ async function probeRegistryEndpoints(): Promise<CheckResult> {
       `${url}/rest/v1/servers?select=name,endpoint,transport,auth_type&status=eq.active&endpoint=not.is.null&transport=not.eq.stdio&auth_type=not.in.(api_key,oauth)&order=updated_at.desc&limit=3`,
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(PROBE_DB_TIMEOUT_MS),
       }
     );
 
@@ -470,20 +582,24 @@ async function probeRegistryEndpoints(): Promise<CheckResult> {
       ok: false,
       latencyMs: Date.now() - start,
       critical: false,
-      detail: e.message,
+      detail: describeError(e),
     };
   }
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-export async function runChecks(isCli = false) {
-  console.log('\n🔍  Pre-Ingest Connection Health Check');
+export async function runChecks(isCli = false, options: Partial<CheckOptions> = {}) {
+  const checkOptions: CheckOptions = {
+    strict: options.strict ?? isCli,
+  };
+
+  console.log(`\n🔍  Pre-Ingest Connection Health Check${checkOptions.strict ? '' : ' (background diagnostics)'}`);
   console.log('═'.repeat(52));
 
   const results = await Promise.all([
-    checkSupabase(),
-    checkSourceApis(),
+    checkSupabase(checkOptions),
+    checkSourceApis(checkOptions),
     checkSandbox(),
     checkUpstash(),
     probeRegistryEndpoints(),
@@ -515,7 +631,7 @@ export async function runChecks(isCli = false) {
   }
 
   if (degraded.length > 0) {
-    console.warn(`\n⚠️   Degraded systems (${degraded.length}): ingest will run with reduced coverage.`);
+    console.warn(`\n⚠️   Degraded systems (${degraded.length}): ${checkOptions.strict ? 'ingest will run with reduced coverage' : 'background check only; run npm run check:connections before ingest'}.`);
     for (const r of degraded) console.warn(`   • ${r.name}: ${r.detail}`);
     console.log('\n✅  Proceeding is safe, but some sources will be unavailable.\n');
     if (isCli) process.exit(0);

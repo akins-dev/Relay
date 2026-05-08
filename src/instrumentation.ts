@@ -9,7 +9,7 @@ export async function register() {
     if (process.env.NODE_ENV === 'development') {
       const { runChecks } = await import('./scripts/pre-ingest-check');
       // Fire and forget — do not block the server boot
-      runChecks(false).catch(err => {
+      runChecks(false, { strict: false }).catch(err => {
         console.error('Background connection check failed to execute:', err);
       });
     }
