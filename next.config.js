@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
 const { withSentryConfig } = require('@sentry/nextjs');
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -60,10 +61,8 @@ const nextConfig = {
     ];
   },
   serverExternalPackages: ['@upstash/redis', '@upstash/ratelimit'],
+  outputFileTracingRoot: path.join(__dirname),
   logging: { fetches: { fullUrl: isDev } },
-  experimental: {
-    instrumentationHook: true,
-  },
 };
 
 module.exports = withSentryConfig(nextConfig, {
