@@ -1,7 +1,7 @@
 /**
  * Smithery Registry Fetcher
  *
- * Source: registry.smithery.ai + api.smithery.ai
+ * Source: registry.smithery.ai
  * Tier:   PRIMARY — provides live endpoints + pre-stored tool schemas
  *
  * Two-phase strategy:
@@ -12,7 +12,7 @@
  *     — NO tools, NO endpoint.
  *
  *   Phase 2 — Detail fetch for ALL servers (concurrency 5):
- *     GET https://api.smithery.ai/v2/servers/{qualifiedName}
+ *     GET https://registry.smithery.ai/servers/{qualifiedName}
  *     Returns: deploymentUrl (endpoint), connections[].type (transport),
  *              connections[].configSchema (→ env_var_schema),
  *              tools[] with inputSchema, resources[], prompts[]
@@ -34,7 +34,7 @@ import { log } from '@/lib/logger';
 
 const TAG = 'ingest:smithery';
 const LISTING_URL  = 'https://registry.smithery.ai/servers';
-const DETAIL_URL   = 'https://api.smithery.ai/v2/servers';
+const DETAIL_URL   = 'https://registry.smithery.ai/servers';
 const CONCURRENCY  = 5;    // Conservative — avoids rate-limit triggers
 const PAGE_SIZE    = 100;
 const BACKOFF_BASE = 2_000; // ms — base for exponential backoff on 429

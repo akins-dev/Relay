@@ -39,7 +39,7 @@ export type Transport = 'stdio' | 'sse' | 'streamable_http' | 'unknown';
  * Used for quality grading and retry logic.
  */
 export type ToolExtractionSource =
-  | 'smithery_detail'   // Full inputSchema from Smithery GET /v2/servers/{id}
+  | 'smithery_detail'   // Full inputSchema from Smithery GET /servers/{id}
   | 'mcp_probe'         // Live MCP handshake to a running HTTP/SSE endpoint
   | 'sandbox'           // Sandboxed local execution of a stdio package
   | 'upstream_schemas'  // Schemas provided directly by the upstream API

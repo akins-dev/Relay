@@ -54,6 +54,12 @@ type SourceProbe = {
   critical: boolean;
 };
 
+type SourceResult = SourceProbe & {
+  ok: boolean;
+  status: number | string;
+  body: string;
+};
+
 const UA = 'relay-pre-ingest-check/1.0';
 const DB_TIMEOUT_MS = Number(process.env.PRE_INGEST_DB_TIMEOUT_MS || 15_000);
 const SOURCE_TIMEOUT_MS = Number(process.env.PRE_INGEST_SOURCE_TIMEOUT_MS || 20_000);
@@ -76,6 +82,21 @@ function describeError(e: any): string {
     e?.cause?.message,
   ].filter(Boolean);
   return parts.length > 0 ? Array.from(new Set(parts)).join(' — ') : String(e);
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e: any) {
+      lastError = e;
+      if (attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 1_000 * attempt));
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function loadIngestContracts() {
@@ -154,10 +175,10 @@ async function checkSandbox(): Promise<CheckResult> {
   try {
     const url = trimSlash(rawUrl);
     // Allow up to 35s: Render free tier cold-starts can take 20–30s
-    const healthRes = await fetch(`${url}/health`, {
+    const healthRes = await fetchWithRetry(`${url}/health`, {
       signal: AbortSignal.timeout(35_000),
       headers: { 'User-Agent': UA },
-    });
+    }, 3);
     const healthBody = healthRes.ok ? (await healthRes.json() as any) : await healthRes.text();
     const healthOk = healthRes.ok && healthBody?.status === 'ok';
 
@@ -171,13 +192,13 @@ async function checkSandbox(): Promise<CheckResult> {
 
     if (token) {
       try {
-        const readyRes = await fetch(`${url}/ready`, {
+        const readyRes = await fetchWithRetry(`${url}/ready`, {
           signal: AbortSignal.timeout(5_000),
           headers: {
             'User-Agent': UA,
             Authorization: `Bearer ${token}`,
           },
-        });
+        }, 2);
         // Back-compat: older sandbox deployments won't have /ready yet.
         // In that case we can't validate the token here, but /extract will still be auth-gated.
         if (readyRes.status === 404) {
@@ -194,13 +215,13 @@ async function checkSandbox(): Promise<CheckResult> {
       }
 
       try {
-        const capsRes = await fetch(`${url}/capabilities`, {
+        const capsRes = await fetchWithRetry(`${url}/capabilities`, {
           signal: AbortSignal.timeout(5_000),
           headers: {
             'User-Agent': UA,
             Authorization: `Bearer ${token}`,
           },
-        });
+        }, 2);
 
         if (capsRes.status === 404) {
           contractOk = null;
@@ -233,7 +254,7 @@ async function checkSandbox(): Promise<CheckResult> {
       }
 
       try {
-        const extractRes = await fetch(`${url}/extract`, {
+        const extractRes = await fetchWithRetry(`${url}/extract`, {
           method: 'POST',
           signal: AbortSignal.timeout(5_000),
           headers: {
@@ -242,7 +263,7 @@ async function checkSandbox(): Promise<CheckResult> {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ command: '__preflight_disallowed__', args: [] }),
-        });
+        }, 2);
         routeOk = extractRes.status === 400;
         routeDetail = routeOk
           ? 'extract route/auth ok'
@@ -319,8 +340,78 @@ async function checkUpstash(): Promise<CheckResult> {
   }
 }
 
+async function checkSmitheryDetailApi(headers: Record<string, string>): Promise<SourceResult> {
+  const probe: SourceProbe = {
+    name: 'smithery-detail-auth',
+    urls: ['https://registry.smithery.ai/servers/{qualifiedName-from-listing}'],
+    headers,
+    critical: false,
+  };
+
+  try {
+    const listingRes = await fetch('https://registry.smithery.ai/servers?q=&page=1&pageSize=10', {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        ...headers,
+      },
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+    if (!listingRes.ok) {
+      return {
+        ...probe,
+        ok: false,
+        status: listingRes.status,
+        body: `could not pick detail sample from listing -> HTTP ${listingRes.status} ${await readBody(listingRes)}`,
+      };
+    }
+
+    const listing = await listingRes.json() as any;
+    const entries = Array.isArray(listing.servers) ? listing.servers : [];
+    const qualifiedName = entries.find((s: any) => typeof s?.qualifiedName === 'string')?.qualifiedName;
+    if (!qualifiedName) {
+      return {
+        ...probe,
+        ok: true,
+        status: 'skipped',
+        body: 'listing returned no qualifiedName to detail-check',
+      };
+    }
+
+    const detailUrl = `https://registry.smithery.ai/servers/${encodeURIComponent(qualifiedName)}`;
+    const detailRes = await fetch(detailUrl, {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        ...headers,
+      },
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+
+    return {
+      ...probe,
+      urls: [detailUrl],
+      ok: detailRes.ok,
+      status: detailRes.status,
+      body: detailRes.ok
+        ? `sample=${qualifiedName}`
+        : `${detailUrl} -> HTTP ${detailRes.status} ${await readBody(detailRes)}`,
+    };
+  } catch (e: any) {
+    return {
+      ...probe,
+      ok: false,
+      status: 'error',
+      body: describeError(e),
+    };
+  }
+}
+
 async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
   const start = Date.now();
+  const smitheryHeaders = process.env.SMITHERY_API_KEY
+    ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` }
+    : undefined;
   const probes: SourceProbe[] = [
     {
       name: 'official',
@@ -333,14 +424,8 @@ async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
     {
       name: 'smithery-listing',
       urls: ['https://registry.smithery.ai/servers?q=&page=1&pageSize=1'],
-      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
+      headers: smitheryHeaders,
       critical: true,
-    },
-    {
-      name: 'smithery-detail-auth',
-      urls: [`https://api.smithery.ai/v2/servers/${encodeURIComponent('@smithery-ai/github')}`],
-      headers: process.env.SMITHERY_API_KEY ? { Authorization: `Bearer ${process.env.SMITHERY_API_KEY}` } : undefined,
-      critical: false,
     },
     {
       name: 'glama',
@@ -365,7 +450,7 @@ async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
   }
 
   try {
-    const results = await Promise.all(probes.map(async probe => {
+    const results: SourceResult[] = await Promise.all(probes.map(async probe => {
       const failures: string[] = [];
       for (const url of probe.urls) {
         try {
@@ -380,13 +465,18 @@ async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
           if (res.ok) {
             return { ...probe, ok: true, status: res.status, body: '' };
           }
-          failures.push(`${url}=HTTP ${res.status} ${await readBody(res)}`);
+          failures.push(`${url} -> HTTP ${res.status} ${await readBody(res)}`);
         } catch (e: any) {
-          failures.push(`${url}=error ${describeError(e)}`);
+          failures.push(`${url} -> ${describeError(e)}`);
         }
       }
       return { ...probe, ok: false, status: 'error', body: failures.join(' || ') };
     }));
+
+    const listingOk = results.some(r => r.name === 'smithery-listing' && r.ok);
+    if (listingOk && smitheryHeaders) {
+      results.push(await checkSmitheryDetailApi(smitheryHeaders));
+    }
 
     const failed = results.filter(r => !r.ok);
     const criticalFailed = failed.filter(r => r.critical);
@@ -397,7 +487,7 @@ async function checkSourceApis(options: CheckOptions): Promise<CheckResult> {
       critical: options.strict && criticalFailed.length > 0,
       detail: failed.length === 0
         ? `reachable: ${results.map(r => r.name).join(', ')}`
-        : failed.map(r => `${r.name}=HTTP ${r.status}${r.critical ? '' : ' (non-critical)'} ${r.body}`).join(' | '),
+        : failed.map(r => `${r.name}${r.critical ? '' : ' (non-critical)'}: ${r.body}`).join(' | '),
     };
   } catch (e: any) {
     return {
