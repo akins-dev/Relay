@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit, getLimitConfig } from '@/lib/ratelimit';
 import { extractIp, apiError } from '@/lib/api';
 import { SITE_URL } from '@/lib/site';
+import { deriveServerQualityStatus, deriveServerTrustState } from '@/lib/server-quality';
 import { BRAND } from '@/lib/brand';
 import { resolveApiKey } from '@/lib/auth-server';
 import { ensureRuntimeContracts } from '@/lib/runtime-contracts';
@@ -219,11 +220,13 @@ export async function GET(req: NextRequest) {
 
         // How to invoke (only for proxy-available servers)
         ...(proxyAvailable && {
-          invoke: {
+        invoke: {
             rest: `POST /api/proxy/${s.name}/{toolName}`,
             mcp:  `invoke_tool({ server: "${s.name}", tool: "{toolName}", args: {} })`,
           },
         }),
+        quality_status: deriveServerQualityStatus(s),
+        trust_state: deriveServerTrustState(s),
       };
     });
 

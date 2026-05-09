@@ -75,6 +75,15 @@ function buildNonProxyableResult(serverName: string, toolName: string, transport
   });
 }
 
+function buildNotReadyResult(serverName: string, toolName: string, reason: string): ProxyCallResult {
+  return jsonResult(400, {
+    error: `'${serverName}' is discoverable but not ready for Cloud Proxy invocation.`,
+    reason,
+    attempted_tool: toolName,
+    resolution: `Use search_tools again and choose a result marked proxy_ready, schema_ready, or verified.`,
+  });
+}
+
 function buildUpstreamHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -400,7 +409,7 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
   const server = await withCache(`server:${serverName}`, 60, async () => {
     const { data } = await createClient()
       .from('servers')
-      .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, proxy_available, transport')
+      .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, proxy_available, transport, tool_schemas, scan_status')
       .eq('name', serverName).eq('status', 'active').single();
     return data ?? null;
   });
@@ -409,6 +418,10 @@ export async function executeProxyCall(params: ProxyCallParams): Promise<ProxyCa
 
   if (server.proxy_available === false) {
     return buildNonProxyableResult(serverName, toolName, server.transport ?? null);
+  }
+
+  if (!server.endpoint || !Array.isArray(server.tools) || server.tools.length === 0) {
+    return buildNotReadyResult(serverName, toolName, 'missing endpoint or tool metadata');
   }
 
   if (!Array.isArray(server.tools) || !server.tools.includes(toolName)) {

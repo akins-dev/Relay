@@ -24,6 +24,7 @@ import {
   MAX_TOOLS_PER_RESULT,
   type CachedServer,
 } from '@/lib/search-analytics';
+import { deriveServerQualityStatus, deriveServerTrustState, type ServerQualityStatus, type ServerTrustState } from '@/lib/server-quality';
 
 export interface SearchResult {
   name:                   string;
@@ -44,6 +45,8 @@ export interface SearchResult {
   transport:              string | null;
   usage:                  string;
   is_new:                 boolean;
+  quality_status:         ServerQualityStatus;
+  trust_state:            ServerTrustState;
 }
 
 export interface RunSearchOptions {
@@ -97,7 +100,7 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
       .sort((a: any, b: any) => (cachedOrder.get(a.name) ?? 9999) - (cachedOrder.get(b.name) ?? 9999))
       .slice(0, limit);
 
-    return {
+      return {
       results:         formatResults(ordered, cachedBoostByName, intent, surface, 'cache'),
       intentHash,
       cacheHit:        true,
@@ -176,6 +179,8 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
           : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
         : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
       is_new: s.is_new ?? false,
+      quality_status: deriveServerQualityStatus(s),
+      trust_state: deriveServerTrustState(s),
     } satisfies SearchResult;
   });
 
@@ -249,6 +254,8 @@ function formatResults(
           : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
         : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
       is_new: s.is_new ?? false,
+      quality_status: deriveServerQualityStatus(s),
+      trust_state: deriveServerTrustState(s),
     };
   });
 }

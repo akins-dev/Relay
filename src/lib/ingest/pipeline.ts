@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'crypto';
-import type { IngestServer, IngestResult, EnvVarSpec } from './types';
+import type { IngestMode, IngestServer, IngestResult, EnvVarSpec } from './types';
 import {
   isSafeUrl, detectTransport, parseReadmeSchemas,
   parseReadmeDescription, agoStr,
@@ -21,6 +21,7 @@ import {
 import { computeTrustScore, scanNpmDependencies } from '@/lib/security';
 import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
 import { log } from '@/lib/logger';
+import { enqueueServerProcessingJobs } from '@/lib/processing-jobs';
 
 const TAG = 'ingest:pipeline';
 
@@ -101,8 +102,11 @@ function deriveAuthType(
 
 export async function upsertServers(
   servers: IngestServer[],
-  svc: any
+  svc: any,
+  options: { mode?: IngestMode } = {}
 ): Promise<IngestResult> {
+  const mode = options.mode ?? 'full';
+  const runHeavyChecks = mode === 'full';
   const result: IngestResult = {
     added: 0, updated: 0, rejected: 0, skipped: 0, errors: [],
     extraction_metrics: {
@@ -259,7 +263,7 @@ export async function upsertServers(
       let resolvedTools: string[] = [...s.tools];
 
       // Only probe HTTP servers that are not from enrichment-only sources
-      if (!isEnrichmentOnly && proxyAvailable && s.endpoint) {
+      if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
         result.extraction_metrics!.probe_attempts++;
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url ?? undefined);
         if (primitives.toolSchemas.length > 0) {
@@ -279,7 +283,7 @@ export async function upsertServers(
           transport = primitives.transport;
           proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
         }
-      } else if (!isEnrichmentOnly && transport === 'stdio') {
+      } else if (runHeavyChecks && !isEnrichmentOnly && transport === 'stdio') {
         // Sandbox extraction attempt
         if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id || s.package_info)) {
           const sandboxCommand = buildSandboxCommand(s);
@@ -364,7 +368,7 @@ export async function upsertServers(
       // CVE scan (deduplicated by repo)
       const repoKey = s.github_url?.replace(/\.git$/, '').toLowerCase();
       let cveIssues: any[] = [];
-      if (repoKey) {
+      if (runHeavyChecks && repoKey) {
         if (scannedRepos.has(repoKey)) {
           cveIssues = scannedRepos.get(repoKey)!;
         } else {
@@ -392,7 +396,7 @@ export async function upsertServers(
         || s.description.startsWith('Official MCP reference server:')
         || s.description === 'No description provided';
 
-      if (needsEnrichment && s.github_url && isSafeUrl(s.github_url)) {
+      if (runHeavyChecks && needsEnrichment && s.github_url && isSafeUrl(s.github_url)) {
         const readme = await parseReadmeDescription(s.github_url);
         if (readme?.description) {
           finalDescription   = readme.description;
@@ -479,13 +483,13 @@ export async function upsertServers(
         verified:          s.verified ?? false,
         status,
         schema_hash:       upstreamHash,
-        scan_status:       (hasHighSeverity ? 'failed' : 'passed') as any,
+        scan_status:       (runHeavyChecks ? (hasHighSeverity ? 'failed' : 'passed') : 'pending') as any,
         scan_issues:       scanIssues as any,
         cve_issues:        cveIssues as any,
-        cve_scan_at:       new Date().toISOString(),
+        ...(runHeavyChecks ? { cve_scan_at: new Date().toISOString() } : {}),
         shell_issues:      [] as any,
         trust_score:       trustScore,
-        last_scanned_at:   new Date().toISOString(),
+        ...(runHeavyChecks ? { last_scanned_at: new Date().toISOString() } : {}),
         upstream_updated_at: s.upstream_updated_at ?? null,
         // is_canonical: true when Smithery itself built and hosts this server.
         // These are Smithery's own curated integrations — the definitive canonical
@@ -638,8 +642,20 @@ export async function upsertServers(
         );
       }
 
+      if (!runHeavyChecks && serverId) {
+        await enqueueServerProcessingJobs(svc, serverId, {
+          endpoint: s.endpoint ?? null,
+          transport,
+          github_url: s.github_url ?? null,
+          smithery_id: s.smithery_id ?? null,
+          package_info: s.package_info ?? null,
+          description: finalDescription,
+          tool_extraction_source: toolExtractionSource,
+        });
+      }
+
       // CVE audit trail
-      if (serverId && cveIssues.length > 0) {
+      if (runHeavyChecks && serverId && cveIssues.length > 0) {
         svc.from('scan_results').insert({
           server_id: serverId, scan_type: 'ingest',
           passed: !hasHighSeverity, score: hasHighSeverity ? 50 : 100,

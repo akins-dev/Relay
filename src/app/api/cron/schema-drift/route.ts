@@ -1,9 +1,9 @@
-import { safeCompare } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { runSchemaDrift } from '@/lib/cron/schema-drift';
+import { isCronAuthorized } from '@/lib/cron/cron-auth';
 
 export async function GET(req: NextRequest) {
-  if (!safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`)) {
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {

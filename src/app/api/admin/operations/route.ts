@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (!user || !ADMIN_UID || user.id !== ADMIN_UID) return apiError('Unauthorized', 401);
 
   const svc = createServiceClient();
-  const [historyRes, driftRes, uptimeRes, suspendedRes] = await Promise.all([
+  const [historyRes, driftRes, uptimeRes, suspendedRes, jobHealthRes] = await Promise.all([
     (svc.from('cron_job_runs') as any)
       .select('*')
       .order('started_at', { ascending: false })
@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       .eq('status', 'suspended')
       .order('updated_at', { ascending: false })
       .limit(50),
+    svc.from('processing_job_health').select('*'),
   ]);
 
   const firstError = historyRes.error ?? driftRes.error ?? uptimeRes.error ?? suspendedRes.error;
@@ -32,5 +33,6 @@ export async function GET(req: NextRequest) {
     drift_events: driftRes.data ?? [],
     uptime_issues: uptimeRes.data ?? [],
     suspended_servers: suspendedRes.data ?? [],
+    processing_job_health: jobHealthRes.error ? [] : (jobHealthRes.data ?? []),
   });
 }

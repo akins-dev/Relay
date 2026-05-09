@@ -47,6 +47,8 @@ export type ToolExtractionSource =
   | 'readme_parsed'     // Parsed from README markdown (low confidence, stdio fallback)
   | 'none';             // No tool data from any source
 
+export type IngestMode = 'catalog' | 'full';
+
 
 // ── Capability sub-types ─────────────────────────────────────────────────────
 

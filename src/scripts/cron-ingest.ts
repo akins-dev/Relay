@@ -12,7 +12,9 @@ async function main() {
   }
 
   console.log(`[cron] Starting ingest for source: ${source}...`);
-  const result = await runIngest(source);
+  const mode = args[1] === 'full' ? 'full' : 'catalog';
+
+  const result = await runIngest(source, { mode });
   
   if (result.error) {
     console.error('[cron] Ingest Error:', result.error);

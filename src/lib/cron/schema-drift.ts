@@ -20,11 +20,33 @@ export async function runSchemaDrift() {
     log.warn('cron:schema-drift', 'Could not create cron_job_runs entry', err);
   }
 
-  const { data: servers } = await svc
-    .from('servers')
-    .select('id, name, endpoint, tools, schema_hash, version, github_url, transport')
-    .eq('status', 'active')
-    .not('schema_hash', 'is', null);
+  const pageSize = 500;
+  let lastName = '';
+  const servers: any[] = [];
+
+  while (true) {
+    let query = svc
+      .from('servers')
+      .select('id, name, endpoint, tools, schema_hash, version, github_url, transport')
+      .eq('status', 'active')
+      .not('schema_hash', 'is', null)
+      .order('name', { ascending: true })
+      .limit(pageSize);
+
+    if (lastName) query = query.gt('name', lastName);
+
+    const { data, error } = await query;
+    if (error) {
+      results.errors++;
+      log.error('cron:schema-drift', 'Failed to fetch server page', error);
+      break;
+    }
+
+    const rows = data ?? [];
+    servers.push(...rows);
+    if (rows.length < pageSize) break;
+    lastName = rows[rows.length - 1].name;
+  }
 
   for (const server of servers ?? []) {
     results.checked++;

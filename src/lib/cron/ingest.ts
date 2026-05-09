@@ -35,6 +35,11 @@ import { log } from '@/lib/logger';
 
 type SourceKey   = 'official' | 'smithery' | 'glama' | 'mcp_directory';
 type SourceInput = 'all' | SourceKey;
+type IngestMode  = 'catalog' | 'full';
+
+interface RunIngestOptions {
+  mode?: IngestMode;
+}
 
 interface SourceConfig {
   key:     SourceKey;
@@ -52,11 +57,12 @@ const SOURCES: SourceConfig[] = [
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-export async function runIngest(source: SourceInput = 'all') {
+export async function runIngest(source: SourceInput = 'all', options: RunIngestOptions = {}) {
   const svc = createServiceClient();
   const ingestRuns = svc.from('ingest_runs') as any;
   const startedAt = new Date().toISOString();
   const results: Record<string, any> = {};
+  const mode = options.mode ?? 'full';
 
   // Determine which sources to run
   const toRun = source === 'all'
@@ -98,7 +104,7 @@ export async function runIngest(source: SourceInput = 'all') {
       log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${((Date.now() - t0) / 1000).toFixed(1)}s. Upserting...`);
 
       try {
-        results[src.key] = await upsertServers(servers, svc);
+        results[src.key] = await upsertServers(servers, svc, { mode });
         results[src.key].fetched = servers.length;
       } catch (err) {
         log.error(`ingest:${src.key}`, 'Upsert failed', err);
@@ -132,6 +138,7 @@ export async function runIngest(source: SourceInput = 'all') {
       run: {
         id:          run?.id ?? null,
         source,
+        mode,
         started_at:  startedAt,
         finished_at: finishedAt,
         duration_ms: new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
@@ -157,6 +164,7 @@ export async function runIngest(source: SourceInput = 'all') {
       run: {
         id:          run?.id ?? null,
         source,
+        mode,
         started_at:  startedAt,
         finished_at: finishedAt,
       },
