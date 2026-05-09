@@ -26,8 +26,8 @@ export const BRAND = {
   slug,
   domain,
   org,
-  tagline:     process.env.NEXT_PUBLIC_BRAND_TAGLINE     ?? 'The trust layer for runtime MCP tool discovery and secure invocation.',
-  description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION ?? 'Give your agents the power to dynamically discover and securely invoke remote capabilities. Secure by default. Network native.',
+  tagline:     process.env.NEXT_PUBLIC_BRAND_TAGLINE     ?? 'Runtime tool discovery for AI agents.',
+  description: process.env.NEXT_PUBLIC_BRAND_DESCRIPTION ?? 'Give your agents a lightweight way to discover MCP servers and run them locally without explicit preconfiguration or context bloat.',
   githubUrl:   process.env.NEXT_PUBLIC_GITHUB_URL         ?? `https://github.com/akins-dev/${slug}`,
   twitterHandle: process.env.NEXT_PUBLIC_BRAND_TWITTER   ?? `@akins_dev`,
   // Product lines — all derived from name, overridable individually

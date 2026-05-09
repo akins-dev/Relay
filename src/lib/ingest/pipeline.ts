@@ -21,7 +21,6 @@ import {
 import { computeTrustScore, scanNpmDependencies } from '@/lib/security';
 import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
 import { log } from '@/lib/logger';
-import { enqueueServerProcessingJobs } from '@/lib/processing-jobs';
 
 const TAG = 'ingest:pipeline';
 
@@ -141,7 +140,7 @@ export async function upsertServers(
   // receives the real transport value, not undefined.
   const { data: allExisting, error: prefetchErr } = await svc
     .from('servers')
-    .select('id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at');
+    .select('id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at, status, scan_status, scan_issues, cve_issues, cve_scan_at');
 
   if (prefetchErr) {
     log.error(TAG, 'Pre-fetch failed — treating all as new', prefetchErr);
@@ -481,11 +480,11 @@ export async function upsertServers(
         glama_id:          s.glama_id ?? null,
         mcp_directory_id:  s.mcp_directory_id ?? null,
         verified:          s.verified ?? false,
-        status,
+        status:            runHeavyChecks ? status : (existing?.status ?? status),
         schema_hash:       upstreamHash,
-        scan_status:       (runHeavyChecks ? (hasHighSeverity ? 'failed' : 'passed') : 'pending') as any,
-        scan_issues:       scanIssues as any,
-        cve_issues:        cveIssues as any,
+        scan_status:       (runHeavyChecks ? (hasHighSeverity ? 'failed' : 'passed') : (existing?.scan_status ?? 'pending')) as any,
+        scan_issues:       (runHeavyChecks ? scanIssues : (existing?.scan_issues ?? [])) as any,
+        cve_issues:        (runHeavyChecks ? cveIssues : (existing?.cve_issues ?? [])) as any,
         ...(runHeavyChecks ? { cve_scan_at: new Date().toISOString() } : {}),
         shell_issues:      [] as any,
         trust_score:       trustScore,
@@ -640,18 +639,6 @@ export async function upsertServers(
             if (error) log.warn(TAG, `Profile upsert failed for ${s.name}`, { error: error.message });
           })
         );
-      }
-
-      if (!runHeavyChecks && serverId) {
-        await enqueueServerProcessingJobs(svc, serverId, {
-          endpoint: s.endpoint ?? null,
-          transport,
-          github_url: s.github_url ?? null,
-          smithery_id: s.smithery_id ?? null,
-          package_info: s.package_info ?? null,
-          description: finalDescription,
-          tool_extraction_source: toolExtractionSource,
-        });
       }
 
       // CVE audit trail

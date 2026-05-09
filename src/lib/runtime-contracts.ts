@@ -17,6 +17,25 @@ async function assertRpcExists(name: string, args: Record<string, unknown>) {
   }
 }
 
+export async function ensureSearchContracts(): Promise<void> {
+  if (Date.now() - lastOkAt < CONTRACT_CHECK_TTL_MS) return;
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    await assertRpcExists('search_servers', {
+      query_text: 'health-check',
+      result_limit: 1,
+      include_stdio: true,
+    });
+    lastOkAt = Date.now();
+  })()
+    .finally(() => {
+      inFlight = null;
+    });
+
+  return inFlight;
+}
+
 export async function ensureRuntimeContracts(): Promise<void> {
   if (Date.now() - lastOkAt < CONTRACT_CHECK_TTL_MS) return;
   if (inFlight) return inFlight;

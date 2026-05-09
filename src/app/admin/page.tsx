@@ -116,13 +116,6 @@ interface SuspendedServer {
   trust_score: number; scan_issues: any; last_scanned_at: string; updated_at: string;
   tool_extraction_source: string; transport: string;
 }
-interface ProcessingJobHealth {
-  job_type: string;
-  status: string;
-  job_count: number;
-  oldest_run_after: string | null;
-  latest_update: string | null;
-}
 interface ReleaseGate {
   name: string;
   state: 'pass' | 'fail' | 'warn';
@@ -159,7 +152,6 @@ export default function AdminPage() {
   const [driftEvents,setDriftEvents]= useState<DriftEvent[]>([]);
   const [uptimeIssues,setUptimeIssues]= useState<UptimeIssue[]>([]);
   const [suspendedServers,setSuspendedServers]= useState<SuspendedServer[]>([]);
-  const [processingJobHealth,setProcessingJobHealth]= useState<ProcessingJobHealth[]>([]);
   // Analytics intelligence data (Migration 022)
   const [topIntents,       setTopIntents]       = useState<any[]>([]);
   const [ecosystemGaps,    setEcosystemGaps]    = useState<any[]>([]);
@@ -251,7 +243,6 @@ export default function AdminPage() {
         if (opsRes.drift_events) setDriftEvents(opsRes.drift_events as DriftEvent[]);
         if (opsRes.uptime_issues) setUptimeIssues(opsRes.uptime_issues as UptimeIssue[]);
         if (opsRes.suspended_servers) setSuspendedServers(opsRes.suspended_servers as SuspendedServer[]);
-        if (opsRes.processing_job_health) setProcessingJobHealth(opsRes.processing_job_health as ProcessingJobHealth[]);
       }
       setLastRefresh(new Date());
     } catch (error: any) {
@@ -321,7 +312,7 @@ export default function AdminPage() {
     }
   }
 
-  async function triggerCron(job: 'uptime_check' | 'schema_drift' | 'reset_daily_calls' | 'process_jobs') {
+  async function triggerCron(job: 'uptime_check' | 'schema_drift' | 'reset_daily_calls') {
     setRunningCron(job);
     setOpsFeedback(null);
     try {
@@ -701,7 +692,7 @@ export default function AdminPage() {
           <Callout title="What verified and no-tool rows mean" tone={kpis?.no_tool_metadata_servers ? 'warn' : 'info'}>
             <div>
               <b>Verified</b> is upstream reputation metadata, not proof that Relay can invoke the server. For an invokable MVP row, the important fields are endpoint or stdio package metadata, non-empty tools, scan pass, and a stable schema hash.
-              <b> No Tool Data</b> means the registry row has no persisted tool names/schemas, so it should be treated as discovery-incomplete and not useful for search_tools or invoke_tool until Smithery detail, probe, sandbox, or README extraction succeeds.
+              <b> No Tool Data</b> means the registry row has no persisted tool names/schemas, so it should be treated as discovery-incomplete until upstream detail or README extraction succeeds.
             </div>
           </Callout>
 
@@ -963,12 +954,11 @@ export default function AdminPage() {
             {[
               { key: 'uptime_check', label: 'uptime check' },
               { key: 'schema_drift', label: 'schema drift' },
-              { key: 'process_jobs', label: 'process jobs' },
               { key: 'reset_daily_calls', label: 'reset daily calls' },
             ].map((job) => (
               <button
                 key={job.key}
-                onClick={() => triggerCron(job.key as 'uptime_check' | 'schema_drift' | 'reset_daily_calls' | 'process_jobs')}
+                onClick={() => triggerCron(job.key as 'uptime_check' | 'schema_drift' | 'reset_daily_calls')}
                 disabled={Boolean(runningCron)}
                 className="btn btn-ghost btn-sm"
                 style={{ fontFamily: 'var(--mono)' }}
@@ -992,30 +982,6 @@ export default function AdminPage() {
               </ResponsiveContainer>
             </div>
           )}
-
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Post-ingest processing queue</h3>
-            {processingJobHealth.length === 0
-              ? <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>No queued processing jobs.</div>
-              : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                  <thead><tr><TH>Type</TH><TH>Status</TH><TH>Count</TH><TH>Oldest ready</TH><TH>Latest update</TH></tr></thead>
-                  <tbody>
-                    {processingJobHealth.map((row) => (
-                      <tr key={`${row.job_type}:${row.status}`}>
-                        <TD mono color={C.blue}>{row.job_type}</TD>
-                        <TD color={row.status === 'failed' ? C.red : row.status === 'queued' ? C.orange : row.status === 'success' ? C.green : C.blue}>{row.status}</TD>
-                        <TD mono>{row.job_count}</TD>
-                        <TD>{row.oldest_run_after ? ago(row.oldest_run_after) : '—'}</TD>
-                        <TD>{row.latest_update ? ago(row.latest_update) : '—'}</TD>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )
-            }
-          </div>
-
           {/* Cron Job Health */}
           <div>
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Background Job Health</h3>
@@ -1347,7 +1313,7 @@ export default function AdminPage() {
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Server Reliability — the ML training signal</h3>
             <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '12px' }}>Historical success rates per server. High invoke_count + high success_rate = strong training examples.</p>
             {serverReliability.length === 0
-              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No reliability data yet. Accumulates as invoke_tool calls are made.</div>
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No reliability data yet. This is optional lab telemetry, not part of the lightweight MVP path.</div>
               : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                   <thead><tr><TH>Server</TH><TH>Invocations</TH><TH>Success %</TH><TH>Avg Latency</TH><TH>Unique Intents</TH><TH>Last Success</TH></tr></thead>

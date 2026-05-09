@@ -4,14 +4,12 @@ import { apiError, zodError } from '@/lib/api';
 import { runUptimeCheck } from '@/lib/cron/uptime';
 import { runSchemaDrift } from '@/lib/cron/schema-drift';
 import { runResetDailyCalls } from '@/lib/cron/reset-calls';
-import { createServiceClient } from '@/lib/supabase/server';
-import { processServerJobs } from '@/lib/processing-jobs';
 import { z } from 'zod';
 
 const ADMIN_UID = process.env.NEXT_PUBLIC_ADMIN_UID ?? '';
 
 const AdminCronRunSchema = z.object({
-  job: z.enum(['uptime_check', 'schema_drift', 'reset_daily_calls', 'process_jobs']),
+  job: z.enum(['uptime_check', 'schema_drift', 'reset_daily_calls']),
 });
 
 export async function POST(req: NextRequest) {
@@ -30,9 +28,7 @@ export async function POST(req: NextRequest) {
       ? await runUptimeCheck()
       : body.job === 'schema_drift'
         ? await runSchemaDrift()
-        : body.job === 'process_jobs'
-          ? await processServerJobs(createServiceClient(), 10)
-          : await runResetDailyCalls();
+        : await runResetDailyCalls();
 
     if ((result as any)?.error) {
       return NextResponse.json(result, { status: 500 });
