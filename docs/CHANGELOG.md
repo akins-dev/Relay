@@ -107,3 +107,19 @@ This file is append-only.
 - **Single Roundtrip RPC:** Collapsed three sequential database lookups into a single `search_servers` execution by pushing `tool_extraction_source` into the returns table and adding an `intent_hash` LATERAL join.
 - **GROUP BY Aggregation:** Replaced application-layer intent aggregation in the uptime cron with an O(servers) SQL `get_all_behavioral_reliability` RPC.
 - **Shared `runSearch` Module:** Extracted the 6-stage search pipeline into `src/lib/search.ts`. The REST (`/api/servers?q=`) and MCP (`/api/mcp-server`) surfaces now share identical cache semantics, schema trimming, and confidence scoring capabilities.
+
+## 2026-05-09
+
+### Prototype Scope Reset
+
+- Reframed Relay's MVP as runtime discovery plus local/remote run manifests.
+- Removed hosted `invoke_tool` from the native MCP server.
+- Removed hosted proxy execution routes under `/api/proxy/*`.
+- Removed `src/lib/proxy-execute.ts`.
+- Removed the post-ingest processing job route and `src/lib/processing-jobs.ts`.
+- Added migration `037_drop_processing_jobs_queue.sql` to retire `server_processing_jobs` and `processing_job_health`.
+- Kept manual/admin ingest, but removed scheduled Vercel cron dependency from the prototype path.
+- Added `docs/PROTOTYPE_IMPLEMENTATION_PLAN.md` as the current MVP source of truth.
+- Added `docs/MIGRATION_LEDGER.md` to track numbered migrations and retired schema objects.
+- Rewrote `docs/DELIVERY_ROADMAP.md` around catalog ingest, search quality, manifests, and CLI invocation.
+- Added ADR-009 and ADR-010 for the local-execution pivot and cron decision.

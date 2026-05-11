@@ -1,7 +1,20 @@
 # Relay Technical Backbone
 
-Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
-Status: Canonical living technical reference
+Last updated: 2026-05-09 (Prototype scope reset)
+Status: Historical technical backbone. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
+
+## 0. Current MVP Override
+
+As of 2026-05-09, Relay's prototype path is:
+
+1. ingest MCP server metadata
+2. search by intent
+3. return tools, schemas, and a Relay run manifest
+4. execute locally through the user's agent host or Relay CLI
+
+Hosted cloud invocation, `/api/proxy/*`, `invoke_tool`, Vault injection, sandbox extraction, CVE queues, and scheduled Vercel cron jobs are no longer part of the MVP runtime.
+
+The rest of this file preserves broader architecture history and deferred production ideas. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
 
 ## 1. Purpose
 
@@ -32,13 +45,13 @@ The problem decomposes into:
 - much of the ecosystem is `stdio`-only, so discovery and invocation are not the same problem
 - public directory data is noisy, duplicative, incomplete, or operationally uneven
 
-Relay's thesis is that the winning system is not another directory page and not merely another gateway. It is an agent-centric capability access layer that:
+Relay's thesis is that the winning system is not another directory page and not merely another gateway. For the prototype, it is an agent-centric runtime discovery layer that:
 
 - lets the agent discover capability by intent at runtime
 - reduces the need for explicit pre-configuration
 - keeps the model-facing interface deliberately small
-- centralizes auth, trust, policy, and execution controls
-- accumulates empirical outcome data so routing improves over time
+- returns actionable run manifests for local or remote execution
+- can later accumulate empirical outcome data so routing improves over time
 
 ## 2.1 Relation To RAG And Orchestration Frameworks
 
@@ -52,20 +65,18 @@ This distinction matters because stronger reasoning and retrieval do not elimina
 
 ## 3. Product Model
 
-Relay is best understood as four coupled systems in service of one product goal: remove the practical MCP cap by moving capability resolution into the runtime loop.
+Relay is currently best understood as three coupled systems in service of one product goal: remove the practical MCP cap by moving capability discovery into the runtime loop.
 
 1. A canonical registry builder.
 2. An agent-facing search layer.
-3. A guarded execution proxy.
-4. An analytics layer that learns which server/tool combinations actually work.
+3. A manifest layer that tells the local agent host how to run the selected server.
 
 The MVP-critical loop is:
 
 1. ingest server metadata into a canonical registry
 2. search by user intent
-3. invoke through one guarded path
-4. record the outcome
-5. improve future ranking
+3. return the server/tool schema and run manifest
+4. execute locally through the user's CLI or agent host
 
 Everything else is secondary to stabilizing that loop.
 
@@ -92,17 +103,17 @@ This works well for bounded environments. It weakens as the number of desirable 
 
 Relay changes the model from "preload a bounded tool universe" to "query a runtime discovery layer when needed".
 
-The current Relay design does this with:
+The current Relay prototype does this with:
 
 - `search_tools(intent)` for runtime capability resolution
-- `invoke_tool(server, tool, args)` for controlled execution
+- `get_server_manifest(server)` for local/remote execution instructions
 
 The point is not that two tools are inherently special. The point is that:
 
 - capability discovery becomes runtime-native
 - the model-facing surface stays small
 - search results can be structured, ranked, and improved over time
-- execution stays behind one policy/auth/security boundary
+- execution stays with the local agent host instead of Relay cloud
 
 ## 3.3 How Relay Helps The Agent Make Better Decisions
 

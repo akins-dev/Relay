@@ -1,11 +1,19 @@
 # Security & Trust Models
 
-Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
+Last updated: 2026-05-09 (Prototype scope reset)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Exact rate-limit defaults and keying rules: [`RATE_LIMITS.md`](RATE_LIMITS.md)
 Ingest & trust scoring deep-dive: [`ingest/README.md`](ingest/README.md)
 
-Every server scanned before listing. Every proxy call inspected.
+This file now tracks legacy security and trust ideas. The current prototype does not run third-party MCP tools through Relay cloud, so the runtime proxy controls below are deferred rather than active MVP behavior.
+
+Current MVP security boundary:
+
+- Relay cloud stores and searches registry metadata.
+- Relay cloud returns run manifests.
+- Credentials stay in the user's local agent host or CLI environment.
+- Local execution happens outside Relay cloud.
+- Manual/admin ingest routes require `Authorization: Bearer $CRON_SECRET`.
 
 **Publish-time (per ingested server):**
 - L1 Static scan — prompt injection, exfiltration patterns, deceptive tool descriptions
@@ -13,7 +21,7 @@ Every server scanned before listing. Every proxy call inspected.
 - L8 Typosquatting — pg_trgm similarity blocks impersonation at publish time
 - S-14 npm CVE scan — package.json checked against npm advisory database
 
-**Runtime proxy (per call):**
+**Deferred runtime proxy ideas:**
 - L4 DLP — 11 credential patterns blocked on requests; response matches surfaced via warning headers and audit logs
 - S-12 Shell injection — 18 OS command patterns (43% of MCP CVEs are this class)
 - S-13 Indirect injection — instruction language in response data
@@ -50,14 +58,14 @@ Every server has a 0–100 trust score returned with every search result.
 | Deployment quality | 15 | Has live endpoint **and** at least one tool schema with `inputSchema` | Computed at ingest |
 | Schema stability | 10 | Days since `schema_hash` last changed (max 90 days) | Computed at ingest |
 
-**Runtime penalties** (applied on every uptime cron cycle):
+**Deferred runtime penalties**:
 
 | Condition | Penalty |
 |---|---|
 | Request failure rate > 0% | Up to −15 pts |
 | DLP trigger rate > 5% | Up to −10 pts |
 
-**Behavioral reliability** replaces the old Smithery `use_count` slot. Every `invoke_tool` call through the proxy atomically increments `invoke_count` and `success_count` in `intent_server_mappings`. A Beta(3,1) Bayesian prior is applied so cold-start servers get ~8 pts ("unproven") rather than 0 ("broken"), and the prior washes out as real data accumulates (~20+ invocations).
+**Behavioral reliability** was designed for proxy outcomes. For the prototype, it should be treated as legacy ranking support unless the CLI intentionally reports local outcomes later.
 
 **Typical score ranges under the new model:**
 
@@ -81,7 +89,7 @@ Every server has a 0–100 trust score returned with every search result.
 | **Ingest** | L1 static scan, S-14 CVE scan | ❌ Only at ingest time |
 | **Cron (6h)** | L3 schema drift | ✅ Detects tool rug-pulls |
 | **Cron (15m)** | Uptime + trust recomputation (using live ISM behavioral data) | ✅ Detects server outages |
-| **Proxy (every call)** | L4 DLP, S-12 shell injection, S-13 indirect injection, L9 sampling, L10 PII, L11 URL, L12 context | ✅ Runtime defense |
+| **Proxy (deferred)** | L4 DLP, S-12 shell injection, S-13 indirect injection, L9 sampling, L10 PII, L11 URL, L12 context | Deferred |
 
 ## Server Status Lifecycle
 
@@ -93,7 +101,7 @@ Every server has a 0–100 trust score returned with every search result.
 | `suspended` | Schema drift cron | ❌ | ❌ |
 | `pending` | Manual publish | ❌ | ❌ |
 
-Only `active` servers are visible to any user (human or AI) and callable through the proxy.
+Only `active` servers are visible to users and agents. Relay cloud does not provide a prototype proxy invocation path.
 
 ## CVE Scan Deduplication
 

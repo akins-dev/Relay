@@ -1,173 +1,181 @@
 # Relay Delivery Roadmap
 
-Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
+Last updated: 2026-05-09
 Status: Canonical sprint-by-sprint delivery plan
 
-This file is the single source of truth for Relay's sprint plan.
-
-Other docs may summarize direction or mention sprint numbers when explaining trade-offs, but they should not carry independent detailed sprint lists. If sprint scope changes, update this file first.
+This roadmap follows the prototype decision recorded in `PROTOTYPE_IMPLEMENTATION_PLAN.md`: Relay cloud discovers and returns run manifests; the user's local agent host or Relay CLI executes.
 
 ## Current Delivery State
 
-- Foundation work through Sprint 2 is complete.
-- The current build already has the core search -> invoke -> learn loop in place.
-- The active delivery path now centers on ingest hardening, runtime safety, stdio reachability, and the later learned-routing fast path.
+Relay has moved away from the previous hosted proxy platform plan.
 
-## MVP Gate (Go / No-Go)
+Current prototype loop:
 
-The MVP is launchable only when all P0 gates are green for two consecutive weekly reviews.
+1. ingest MCP server metadata
+2. search by intent
+3. return relevant tools and schemas
+4. return a local or remote run manifest
+5. execute through local CLI/agent host
+
+The previous `search -> invoke -> learn` cloud loop is no longer the MVP path.
+
+## MVP Gate
+
+The MVP is launchable when these P0 gates are green.
 
 ### P0 Gates
 
-- Discovery trust
-  - endpoint/repo dedup collision rate under 2%
-  - bad-row rate under 1% per ingest source
-  - transport classification coverage above 95% on active rows
-  - weak stdio rows (no extracted tools and no launch manifest) below 10% of stdio inventory
-- Search contract stability
-  - one canonical `search_servers(query_text, result_limit, include_stdio)` runtime contract across all environments
-  - `search_tools` response shape parity between cache-hit and cold-path responses
-  - top-3 relevance above 85% on the fixed intent benchmark set
-- Invocation reliability and safety
-  - invoke success rate above 97% for proxy-eligible tools
-  - p95 invoke latency under 2500 ms for non-streaming calls
-  - 100% of blocked decisions include auditable reason and correlation context
-  - auth-remediation responses are correct in at least 95% of sampled failures
-- Learning loop integrity
-  - `search_events` to `invoke_outcomes` linkage above 95%
-  - 100% typed outcome taxonomy coverage in invoke recording
-  - weekly benchmark evaluation report is generated and reviewed
+- Catalog quality
+  - official ingest succeeds
+  - at least one community source succeeds
+  - active rows have stable names, descriptions, tools or tool hints, transport, source, and provenance
+  - package-backed stdio rows preserve package metadata when available
+- Search quality
+  - one canonical `search_servers(query_text, result_limit, include_stdio)` contract works in all environments
+  - REST and MCP search responses both include `manifest` and `next`
+  - top-3 relevance is acceptable on the fixed prototype benchmark set
+  - knowledge-only MCP intents return `no_tool_needed`
+- Manifest quality
+  - `local_stdio`, `remote_mcp`, and `discovery_only` modes are deterministic
+  - Relay never guesses runnable commands from a plain GitHub URL
+  - env vars are normalized and marked as required/secret where source metadata supports it
+- CLI proof
+  - `relay search` can query Relay
+  - `relay info` can fetch a manifest
+  - `relay invoke` can run at least one package-backed stdio MCP server locally
+  - child processes are cleaned up on timeout or exit
+- Scope discipline
+  - no hosted proxy execution surface
+  - no scheduled Vercel cron dependency
+  - no sandbox/CVE/processing queue on the MVP path
+  - migration ledger is current
 
-### Weekly Review Inputs
+## Completed Prototype Cleanup
 
-- ingest quality dashboard (coverage, collisions, bad rows, stdio provenance)
-- search quality benchmark report and schema contract checks
-- invocation SLO report (success, latency, error taxonomy)
-- security/audit completeness report
-- release gate report endpoint: `GET /api/admin/release-report` (admin session required)
+- Removed scheduled Vercel crons.
+- Kept cron/admin auth on `Authorization: Bearer $CRON_SECRET` only.
+- Removed `invoke_tool` from the native MCP server.
+- Added `get_server_manifest`.
+- Added Relay manifest generation.
+- Simplified REST search around `runSearch`.
+- Removed post-ingest processing job runtime.
+- Added migration `037` to retire the processing queue table/view.
+- Removed hosted proxy route files and proxy execution core.
 
-### Release Rule
+## Sprint 0 - Scope Lock
 
-- Green across all P0 gates for two consecutive runs: Go
-- Any red P0 gate: No-Go until corrected and re-validated
+Goal: stop the repo from pulling the product back into production-platform mode.
 
-### Reporting Access
+Tasks:
 
-- Admin UI: `/admin` (overview, ingest, security, operations, analytics tabs)
-- API release gate report: `GET /api/admin/release-report`
-- Recommended weekly cadence:
-  - run full ingest
-  - refresh `/admin` and capture KPI screenshots
-  - call release-report API and archive the JSON output for the sprint review
+- Align README, agents docs, MCP metadata, roadmap, decision log, changelog, and migration ledger.
+- Remove or rewrite public references to `invoke_tool` and `/api/proxy`.
+- Mark old security/trust/proxy docs as legacy where they remain.
+- Keep old ideas only as explicitly deferred modules.
 
-## Completed Foundation
+Exit criteria:
 
-### Sprint 1 — Core Protocol Correctness
+- A new contributor can read the docs and understand that Relay is discovery + manifest + local CLI for MVP.
+- No active docs promise hosted cloud invocation.
 
-- MCP initialize handshake and JSON-RPC tool execution path
-- resources and prompts proxy routes
-- tools/list pagination handling
-- ingestion and storage for tools, resources, and prompts
-- `stdio` discovery with `proxy_available=false`
-- redirect SSRF guard
-- content-type sanitization
+## Sprint 1 - Catalog Ingest
 
-### Sprint 2 — Discovery And Security Hardening
+Goal: build enough reliable data for useful search.
 
-- native MCP server surface
-- CORS policy and preflight handling
-- stronger IP and SSRF handling
-- bearer-token-first auth across routes
-- ingestion correctness fixes
-- environment validation at boot
+Tasks:
 
-### Migration 032 Workstream (shipped between Sprint 2 and Sprint 3)
+- Treat `catalog` mode as the default prototype path.
+- Keep source fetchers small and predictable.
+- Prefer official/package metadata over README guesses.
+- Preserve existing failure/security fields without letting catalog ingest erase them.
+- Remove async post-ingest queue assumptions from docs and UI.
 
-- ✅ **Behavioral trust model:** replaced Smithery `use_count` with Bayesian-smoothed `intent_server_mappings` reliability. All ingestion sources now have structural parity in trust scoring.
-- ✅ **Dynamic search diversity:** replaced hardcoded `trust_score >= 85` diversity gate with result-set-relative median threshold. Diversity logic always fires, never silently fails.
-- ✅ **Uptime cron:** now batch-fetches ISM data and recomputes trust from real invoke history on every probe cycle.
-- ✅ **Ingest pipeline:** all paths (automated ingest + manual POST submission) pass `invokeCount: 0, successCount: 0`; Bayesian prior handles cold-start.
-- ✅ **Source contract alignment:** route and `runIngest()` now accept exactly the same four sources. Dead sources decommissioned.
-- ✅ **Search RPC schema:** fully synchronized in migration 032. `compute_trust_score_v2()` critical base-10 log bug fixed.
+Exit criteria:
 
-## Upcoming Sprints
+- A manual ingest run produces searchable rows.
+- Ingest output explains added/updated/skipped/rejected rows.
+- Package-backed stdio servers can become `local_stdio` manifests.
 
-### Sprint 3A — Ingest Hardening
+## Sprint 2 - Search Relevance
 
-**Remaining:**
+Goal: make `search_tools` feel useful.
 
-- replace weak GitHub `stdio` sandbox assumptions with a more reliable extraction path
-- add ingest-quality metrics for extraction coverage, schema coverage, duplicate collisions, and bad-row rate
-- add sandbox and backfill parity so all stdio extraction paths derive commands consistently
-- add explicit stdio extraction provenance so ranking can distinguish sandbox-derived, README-derived, and upstream-provided metadata
-- support source-provided launch manifests or publisher-declared execution commands for monorepo and subdirectory stdio servers
-- improve GitHub URL parsing for branch names with slashes and tree/blob ambiguity
-- replace `last_scanned_at` as a schema-stability proxy with a real schema-change signal
-- add ingest observability for sandbox attempts, sandbox success, README fallback, and unresolved stdio rows
-- define stricter retention and ranking rules for weak stdio rows with no extracted tools
-- harden sandbox execution policy further if new runners are introduced beyond `npx`
+Tasks:
 
-**Completed early (migration 032):**
+- Create a fixed benchmark set of common intents.
+- Score top-1 and top-3 results manually at first.
+- Trim result payloads around prototype needs.
+- Keep manifest and tool schema parity between cache-hit and cold-path responses.
+- Add tests for REST/MCP response parity.
 
-- ~~make cron trust recomputation consume the same persisted security findings ingest writes~~ ✅
-- ~~tighten endpoint and repo dedup plus trusted-source overwrite rules~~ ✅
-- ~~clean up migration and documentation drift around source labels, search RPC shape, and local setup~~ ✅
+Exit criteria:
 
-### Sprint 3 — Sampling Security And OAuth
+- Search is good enough for demos and early users.
+- Search failures are contract errors, not silent bad responses.
 
-- `sampling/createMessage` rate limiting and audit logging
-- OAuth token refresh with retry-once flow
-- bearer-only auth hardening
-- type regeneration after the current migration chain
+## Sprint 3 - Manifest Hardening
 
-### Sprint 4 — Performance And Streaming
+Goal: make `get_server_manifest` the bridge between discovery and execution.
 
-- session pooling for repeated MCP handshakes
-- stateless probe mode for compliant servers
-- SSE streaming pass-through and `progress` handling
-- speculative invocation for very high-confidence single matches
-- prompt caching for warm knowledge on top servers
+Tasks:
 
-### Sprint 5 — CLI As Native MCP Server
+- Add focused manifest unit tests.
+- Improve package command normalization.
+- Normalize env var schema from all sources.
+- Make `discovery_only` explanations clearer.
+- Add source/provenance hints so agents understand confidence.
 
-- `@relay/cli`
-- `relay search`, `relay info`, and `relay login`
-- `relay serve` as a native stdio MCP server
-- subprocess lifecycle manager for local stdio execution
-- local DLP and policy enforcement for offline execution
-- async audit sync back into the registry
+Exit criteria:
 
-This sprint closes the biggest current reachability gap: a large share of discovered MCP capability is `stdio` and needs a local runtime bridge.
+- Agents can reliably tell whether a result is locally runnable, remotely connectable, or discovery-only.
 
-### Sprint 6 — Intelligence And Publisher Program
+## Sprint 4 - CLI MVP
 
-- Lever 3B learned classifier replacing the current heuristic gate
-- ~~stronger behavioral trust signals from runtime outcomes~~ ✅ shipped early in migration 032 (Bayesian ISM behavioral reliability replaces `use_count`)
-- hybrid retrieval reranker only if lexical misses justify it
-- verified publisher pipeline
-- TypeScript and Python SDKs
-- schema registry and publisher tooling
+Goal: make local invocation real.
 
-### Sprint 7 — Cloud Stdio Bridge
+Tasks:
 
-- container-based stdio invocation for agents that cannot run the CLI
-- per-request isolation
-- scale-to-zero execution
+- Scaffold Relay CLI.
+- Implement `relay search`.
+- Implement `relay info`.
+- Implement `relay invoke` for package-backed stdio servers.
+- Add subprocess lifecycle cleanup.
+- Validate required env vars locally.
+- Speak MCP over stdio for tool calls.
 
-### Sprint 8+ — Learned Routing Layer
+Exit criteria:
 
-- train a routing model on `search_events`, `invoke_outcomes`, and `intent_server_mappings`
-- route common intents directly to `(server, tool, confidence)` without a search step
-- surface tools adaptively when confidence is strong enough
-- keep `search_tools` as the fallback path for novel, ambiguous, or low-confidence intents
+- One known package-backed server can be discovered and invoked locally end to end.
 
-## Roadmap Logic
+## Sprint 5 - Prototype Review
 
-The roadmap is not a list of disconnected features. It follows one progression:
+Goal: ship a small usable prototype.
 
-1. Make discovery trustworthy.
-2. Make invocation governed and fast.
-3. Make `stdio` capability actually reachable.
-4. Turn outcome data into learned routing.
+Tasks:
 
-That sequence is the product strategy. Everything else is support work around it.
+- Run typecheck and tests.
+- Run manual REST and MCP smoke tests.
+- Run CLI smoke tests.
+- Review docs for stale production-platform claims.
+- Document known limitations.
+
+Exit criteria:
+
+- The prototype demonstrates the core Relay magic without hiding behind future features.
+
+## Deferred Ideas
+
+These ideas remain valuable but are explicitly outside the prototype:
+
+- hosted proxy invocation
+- Vault credential injection
+- OAuth connection management
+- DLP/policy/audit runtime stack
+- sandbox extraction
+- CVE scanning as a gate
+- production trust scoring
+- cloud stdio bridge
+- learned routing from invoke outcomes
+
+They should only return after the prototype proves that discovery + manifests + local invocation are useful.
+

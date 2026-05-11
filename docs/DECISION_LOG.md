@@ -170,3 +170,50 @@ Consequences:
 - `use_count` is retained in the schema and search ordering as a popularity tiebreaker but carries no weight in trust computation.
 - All UI badge thresholds updated: amber at ≥ 65 (was ≥ 70) to reflect the realistic new distribution.
 - The DB-side `compute_trust_score_v2()` mirrors the TypeScript formula; both must stay synchronized. A critical bug was found and fixed: PostgreSQL `LOG(x)` is natural log, not log10. Correct syntax is `LOG(10, x)`.
+
+## ADR-009
+
+Date: 2026-05-09
+Status: accepted
+
+Decision:
+
+Relay's MVP is runtime discovery plus local/remote run manifests, not hosted cloud invocation.
+
+Rationale:
+
+- the product needs a working prototype before production-only hardening
+- hosted execution, proxy security, sandboxing, Vault injection, OAuth, and cron maintenance kept expanding the scope
+- much of the MCP ecosystem is local `stdio`, and executing arbitrary third-party processes in shared cloud infrastructure is not the right MVP boundary
+- a local CLI/agent host can execute with the user's local env and secrets without Relay holding credentials
+
+Consequences:
+
+- native MCP exposes `search_tools` and `get_server_manifest`, not `invoke_tool`
+- Relay cloud returns manifests and schemas; local agent hosts execute
+- `/api/proxy/*` is retired from the prototype runtime
+- CLI subprocess management becomes the next execution slice
+- old proxy/security/trust ideas are deferred unless they directly improve discovery quality
+
+## ADR-010
+
+Date: 2026-05-09
+Status: accepted
+
+Decision:
+
+Scheduled Vercel crons are not part of the prototype runtime. Manual/admin ingest remains available behind `CRON_SECRET`.
+
+Rationale:
+
+- the MVP should not depend on background jobs to become useful
+- scheduled probe, drift, reset, sandbox, and CVE work makes the prototype harder to reason about
+- Vercel cron header auth should not be trusted as a public authorization mechanism
+- explicit ingest runs make data changes easier to inspect during prototype iteration
+
+Consequences:
+
+- `vercel.json` does not define scheduled jobs
+- cron auth requires `Authorization: Bearer $CRON_SECRET`
+- post-ingest processing jobs are retired by migration `037`
+- any future background job must have an MVP consumer, owner, and retention story before it is added
