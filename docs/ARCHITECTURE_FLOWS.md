@@ -1,8 +1,9 @@
 # Relay Architecture Flows
 
-Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
-Status: High-level presentation architecture
+Last updated: 2026-05-11 (Agent-centric Relay Local clarification)
+Status: Historical high-level architecture. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
 
+Canonical MVP reference: [`PROTOTYPE_IMPLEMENTATION_PLAN.md`](PROTOTYPE_IMPLEMENTATION_PLAN.md)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Deep code-grounded system map: [`ARCHITECTURE_SYSTEM_MAP.md`](ARCHITECTURE_SYSTEM_MAP.md)
 Companion scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw)
@@ -12,7 +13,7 @@ This file is intentionally flow-oriented. It is the version of Relay architectur
 
 ## 1. Relay In One Sentence
 
-Relay is a capability access layer for MCP: discover capability by intent, invoke through one governed path, record outcomes, and improve routing over time.
+Relay is an agent-centric capability access layer for MCP: discover capability by intent, return a run manifest, invoke through Relay Local, record outcomes, and improve routing over time.
 
 ## 2. The Core Product Flow
 
@@ -22,8 +23,8 @@ User request
   -> Relay search_tools(intent)
   -> Relay ranks likely server/tool paths
   -> Agent chooses one
-  -> Relay invoke_tool(server, tool, args)
-  -> Guarded execution runs
+  -> Relay Local invoke_tool(server, tool, args) or relay invoke
+  -> Relay Local guarded execution runs
   -> Outcome is recorded
   -> Future ranking improves
 ```
@@ -43,10 +44,10 @@ Canvas version:
 [Ranked capability options]
    |
    v
-[Relay invoke_tool]
+[Relay Local invoke_tool / relay invoke]
    |
    v
-[Guarded execution]
+[Relay Local guarded execution]
    |
    +--> [External MCP server / API]
    |
@@ -152,35 +153,34 @@ Canvas version:
 [Ranked options]
 ```
 
-## 6. Guarded Invocation Flow
+## 6. Relay Local Invocation Flow
 
-Purpose: centralize execution safety, auth, and policy.
+Purpose: centralize execution safety, auth, and policy in Relay Local.
 
 ```text
-invoke_tool
-  -> authenticate caller
-  -> resolve policy
-  -> rate limit
-  -> inject credentials from vault if needed
-  -> run security checks
-  -> execute upstream call
+local MCP invoke_tool or relay invoke
+  -> fetch manifest
+  -> validate tool and arguments
+  -> resolve local env/secrets
+  -> run local security checks
+  -> start stdio process or connect to remote MCP endpoint
   -> return structured result
-  -> audit and analytics write
+  -> report outcome metadata
 ```
 
 Canvas version:
 
 ```text
-[invoke_tool]
+[Relay Local invoke]
    |
    v
-[Auth + identity]
+[Manifest + tool validation]
    |
    v
-[Policy + rate limit]
+[Policy + local checks]
    |
    v
-[Vault injection]
+[Env / secrets]
    |
    v
 [Security checks]
@@ -199,7 +199,7 @@ Purpose: make Relay improve from live usage rather than stay a static registry.
 ```text
 search_tools
   -> search_event recorded
-invoke_tool
+Relay Local invoke_tool / relay invoke
   -> invoke_outcome recorded
 aggregations update
   -> intent_server_mappings
@@ -212,7 +212,7 @@ Canvas version:
 ```text
 [search_tools] ----> [search_events] --------\
                                              +--> [intent/server learning]
-[invoke_tool] ------> [invoke_outcomes] ----/          |
+[Relay Local invoke] -> [invoke_outcomes] ----/        |
                   |                                    v
                   +--> [intent_server_mappings] --> [trust score behavioral slot]
                                                    [better future routing]
@@ -221,25 +221,25 @@ Canvas version:
 
 ## 8. Stdio Reachability Flow
 
-Purpose: handle the large share of MCP capability that is not cloud-invocable.
+Purpose: handle the large share of MCP capability that should run in the agent environment.
 
 ### Current state
 
 ```text
 search finds stdio server
-  -> Relay marks proxy_available=false
-  -> agent gets local-execution guidance
-  -> cloud proxy blocks mistaken stdio invocation safely
+  -> Relay returns local_stdio or discovery_only manifest
+  -> agent gets Relay Local execution guidance
+  -> Cloud MCP does not expose hosted invoke
 ```
 
-### Planned CLI bridge
+### Planned Relay Local runtime
 
 ```text
 Agent host
-  -> Relay CLI as native MCP server
-  -> search_tools goes to Relay cloud
-  -> invoke_tool chooses execution path
-       -> HTTP/SSE goes through cloud proxy
+  -> Relay Local as CLI or local MCP server
+  -> search_tools goes to Relay Cloud
+  -> Relay Local invoke chooses execution path
+       -> remote MCP connects from local runtime
        -> stdio spawns local subprocess
   -> local security and policy apply
   -> audit sync returns to registry
@@ -270,10 +270,10 @@ Relay currently supports three main entry patterns.
 
 ```text
 1. Native MCP server
-   Client -> /api/mcp-server -> search_tools / invoke_tool
+   Client -> /api/mcp-server -> search_tools / get_server_manifest
 
 2. Prompt-driven HTTP usage
-   LLM reads /agents.md -> /api/servers/search + /api/proxy
+   Agent reads /agents.md -> /api/servers/search + Relay Local command guidance
 
 3. REST integration
    Framework -> Relay HTTP APIs directly

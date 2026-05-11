@@ -100,7 +100,7 @@ export default function SecretsPage() {
       }).then(r => r.json());
 
       if (res.success) {
-        setSuccess(`${name} stored. The proxy will inject it automatically.`);
+        setSuccess(`${name} stored. Relay Local can use it as a future secret source.`);
         setShowForm(false);
         resetForm();
         load();
@@ -142,7 +142,7 @@ export default function SecretsPage() {
           <div>
             <h1 className="mb-1 text-2xl font-bold tracking-tight">Stored Credentials</h1>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              Store API keys once. The proxy decrypts and injects them at call time — your agent never sees the raw value.
+              Store API keys for future Relay Local secret resolution. The prototype still prefers local environment variables.
             </p>
           </div>
           <Button size="sm" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }} className="shrink-0 gap-1.5">
@@ -155,8 +155,8 @@ export default function SecretsPage() {
       <div className="mb-6 grid grid-cols-3 gap-2.5">
         {[
           { n: '1', t: 'You store your API key — encrypted in Supabase Vault (AES-256-GCM)' },
-          { n: '2', t: 'Agent calls any tool through the relay proxy' },
-          { n: '3', t: 'Proxy resolves and injects key — agent never touches the value' },
+          { n: '2', t: 'Agent invokes through Relay Local' },
+          { n: '3', t: 'Relay Local resolves the secret source — agent never touches the value' },
         ].map(s => (
           <div key={s.n} className="rounded-xl border border-border bg-muted/30 p-3.5">
             <p className="mb-1 font-mono text-[10px] font-bold text-brand">{s.n}</p>
@@ -219,7 +219,7 @@ export default function SecretsPage() {
                 className="font-mono text-[13px]"
               />
               <p className="text-[11px] text-muted-foreground">
-                Uppercase letters, numbers, underscores only. The proxy matches by this name.
+                Uppercase letters, numbers, underscores only. Relay Local matches by this name.
               </p>
             </div>
 
@@ -298,7 +298,7 @@ export default function SecretsPage() {
           <div>
             <p className="mb-1 font-semibold text-foreground">No secrets stored</p>
             <p className="max-w-xs text-[13px] text-muted-foreground">
-              When a tool returns 401, the proxy response includes the exact name to use and a link back here.
+              When Relay Local needs a missing secret, it should surface the exact name to configure.
             </p>
           </div>
           <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
@@ -340,8 +340,8 @@ export default function SecretsPage() {
       <div className="mt-8 rounded-xl border border-border bg-muted/30 p-4 text-[12px] leading-relaxed text-muted-foreground">
         <strong className="text-foreground">Encryption:</strong> Values are encrypted by Supabase Vault using pgsodium
         (libsodium AES-256-GCM). The encryption key is managed by Supabase KMS — never stored in the database.
-        Even full database access cannot recover values without the KMS key. The proxy decrypts at call time
-        and discards immediately after injecting the Authorization header.
+        Even full database access cannot recover values without the KMS key. Cloud Vault use is deferred until
+        Relay Local has a deliberate secret-fetch and audit flow.
       </div>
     </div>
   );

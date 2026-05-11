@@ -7,12 +7,12 @@
  * Design decisions:
  *   - Fields that are unknown are null, never defaulted to fake values
  *   - Transport is a strict enum, detected from upstream contract not URL guessing
- *   - endpoint is null for stdio servers (they cannot be cloud-proxied)
+ *   - endpoint is null for stdio servers (Relay Local uses package_info/manifest)
  *   - version is null for Smithery/Glama/mcp.directory (they don't version)
  *   - use_count / popularity signals go to the analytics table, NOT here
  *   - Glama and mcp.directory are enrichment sources: they never provide endpoints
  *
- * Field grades (A = critical for search_tools/invoke_tool, F = analytics only):
+ * Field grades (A = critical for search_tools/manifests/Relay Local invoke, F = analytics only):
  *   A: name, display_name, description, transport, endpoint (HTTP), package_info (stdio),
  *      tool_schemas (inputSchema+description), env_var_schema
  *   B: tags, title, verified, github_url (stdio), env_var_schema
@@ -57,7 +57,7 @@ export interface ToolSchema {
   name:         string;
   /** Description — Grade A for search_tools intent matching */
   description?: string;
-  /** JSON Schema for tool arguments — Grade A for invoke_tool validation */
+  /** JSON Schema for tool arguments — Grade A for Relay Local invoke validation */
   inputSchema?: Record<string, unknown>;
 }
 

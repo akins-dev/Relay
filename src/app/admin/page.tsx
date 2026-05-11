@@ -1174,14 +1174,13 @@ export default function AdminPage() {
                   { path: '/api/servers/search', method: 'GET', auth: 'None', desc: 'Full-text + tag + tool search', rate: '60/min' },
                   { path: '/api/servers/stats', method: 'GET', auth: 'None', desc: 'Global registry statistics', rate: '120/min' },
                   { path: '/api/servers/[name]', method: 'GET', auth: 'None', desc: 'Server details by name', rate: '60/min' },
-                  { path: '/api/proxy/[server]/[tool]', method: 'POST', auth: 'Optional API key', desc: 'Proxy MCP tool call through registry', rate: '30/min (200 w/ key)' },
                   { path: '/api/ingest', method: 'POST', auth: 'CRON_SECRET', desc: 'Trigger ingestion pipeline', rate: 'Admin only' },
                   { path: '/api/ingest', method: 'GET', auth: 'CRON_SECRET', desc: 'Get last 10 ingest runs', rate: 'Admin only' },
                   { path: '/api/admin/ingest', method: 'POST', auth: 'Admin session', desc: 'Trigger ingest from dashboard', rate: 'Admin only' },
                   { path: '/api/cron/uptime-check', method: 'GET', auth: 'CRON_SECRET', desc: 'Probe all active server endpoints (every 15m)', rate: 'Cron only' },
                   { path: '/api/cron/schema-drift', method: 'GET', auth: 'CRON_SECRET', desc: 'Detect tool schema changes (every 6h)', rate: 'Cron only' },
                   { path: '/api/cron/reset-daily-calls', method: 'GET', auth: 'CRON_SECRET', desc: 'Reset calls_today counters (daily)', rate: 'Cron only' },
-                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'MCP-over-MCP server endpoint', rate: '60/min' },
+                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'Cloud MCP discovery endpoint', rate: '60/min' },
                   { path: '/api/auth/callback', method: 'GET', auth: 'OAuth flow', desc: 'Auth provider callback', rate: 'N/A' },
                 ].map(ep => (
                   <tr key={ep.path + ep.method}>

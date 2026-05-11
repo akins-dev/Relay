@@ -150,46 +150,40 @@ Expected response includes a JSON breakdown of successful indexing and rejection
 
 Important current behavior:
 
-- Vercel cron calls source-specific catalog routes:
+- Manual or admin-triggered ingest calls source-specific catalog routes:
   - `/api/cron/ingest/official`
   - `/api/cron/ingest/smithery`
   - `/api/cron/ingest/glama`
   - `/api/cron/ingest/mcp-directory`
-- Post-ingest verification runs through `/api/cron/process-jobs`.
-- `catalog` rows can appear in search before deep checks finish. Invoke remains strict: only `active`, `proxy_available` rows with a safe endpoint and known tool can be called.
+- There is no scheduled Vercel cron dependency in the prototype path.
+- The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`.
+- `catalog` rows can appear in search when they have enough metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
 - Search responses include quality labels:
   - `discovery_only`
-  - `proxy_ready`
+  - `manifest_ready`
   - `schema_ready`
   - `verified`
   - `suspended`
-- `stdio` rows are stored even when they are not cloud-invocable.
-- If a `stdio` server has a `smithery_id`, catalog ingest queues sandbox extraction; full ingest tries it inline.
+- `stdio` rows are stored because Relay Local can later run package-backed stdio servers.
 - Relay does not guess an execution command from a plain GitHub repo URL; repo-backed stdio rows fall back to README parsing unless a concrete launcher is known.
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - In `full` mode, if sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
-- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Scores grow automatically as agents invoke servers through the proxy.
+- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Future Relay Local outcome reports can feed this signal.
 
-### Post-ingest processing queue
+### Retired post-ingest processing queue
 
-Migration `036_processing_jobs_and_mvp_ingest.sql` adds `server_processing_jobs`.
+Migration `036_processing_jobs_and_mvp_ingest.sql` added `server_processing_jobs`.
+Migration `037_drop_processing_jobs_queue.sql` retires it for the prototype.
 
-Catalog ingest queues these jobs when useful:
+The queue used to model production-style enrichment jobs:
 
 - `probe` — HTTP/SSE servers with endpoints
 - `sandbox` — stdio servers with enough launch metadata
 - `readme_enrich` — GitHub-backed rows with weak descriptions
 - `cve_scan` — GitHub-backed rows
 
-Run a batch manually:
-
-```bash
-curl -X GET http://localhost:3000/api/cron/process-jobs?limit=10 \
-  -H "Authorization: Bearer your-cron-secret"
-```
-
-The admin Operations tab shows queue health from `processing_job_health`.
+Those are useful later, but they are not required to validate catalog ingest, search, manifests, and Relay Local invocation.
 
 ### Change detection and reprocessing
 

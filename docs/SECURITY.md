@@ -54,7 +54,7 @@ Every server has a 0–100 trust score returned with every search result.
 | Security quality | 25 | CVE scan + static scan (the core value prop) | Computed at ingest |
 | Uptime | 20 | EWMA of 15-min probe results | Uptime cron |
 | Publisher credibility | 15 | `verified` flag from a trusted curator | Upstream source |
-| **Behavioral reliability** | **15** | Bayesian-smoothed success rate × log-volume from Relay proxy invocations | `intent_server_mappings` |
+| **Behavioral reliability** | **15** | Bayesian-smoothed success rate × log-volume from Relay invocation outcomes | `intent_server_mappings` |
 | Deployment quality | 15 | Has live endpoint **and** at least one tool schema with `inputSchema` | Computed at ingest |
 | Schema stability | 10 | Days since `schema_hash` last changed (max 90 days) | Computed at ingest |
 
@@ -65,7 +65,7 @@ Every server has a 0–100 trust score returned with every search result.
 | Request failure rate > 0% | Up to −15 pts |
 | DLP trigger rate > 5% | Up to −10 pts |
 
-**Behavioral reliability** was designed for proxy outcomes. For the prototype, it should be treated as legacy ranking support unless the CLI intentionally reports local outcomes later.
+**Behavioral reliability** was designed for hosted proxy outcomes. For the prototype, it should be treated as legacy ranking support unless Relay Local intentionally reports local outcomes later.
 
 **Typical score ranges under the new model:**
 

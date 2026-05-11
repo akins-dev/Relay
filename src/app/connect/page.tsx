@@ -43,11 +43,21 @@ async def search_${BRAND.name}(intent: str):
         )
         return response.json()
 
-async def invoke_${BRAND.name}(server: str, tool: str, args: dict):
+async def manifest_${BRAND.name}(server: str):
+    # Cloud returns the run manifest. Relay Local performs invocation.
+    # CLI-capable agents can run: relay invoke <server> <tool> --json '{...}'
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"${SITE_URL}/api/proxy/{server}/{tool}",
-            json=args
+            "${SITE_URL}/api/mcp-server",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_server_manifest",
+                    "arguments": {"server": server}
+                }
+            }
         )
         return response.json()`,
   },
@@ -58,12 +68,13 @@ async def invoke_${BRAND.name}(server: str, tool: str, args: dict):
     code: `# 1. Discover tools by intent
 curl "${SITE_URL}/api/servers/search?q=send+transactional+email"
 
-# 2. Invoke through the trust layer
-curl -X POST "${SITE_URL}/api/proxy/sendgrid-mail/send_email" \\
-  -H "Content-Type: application/json" \\
-  -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
+# 2. Inspect the manifest
+relay info sendgrid-mail
 
-# 3. Fetch the agent skill file
+# 3. Invoke through Relay Local
+relay invoke sendgrid-mail send_email --json '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
+
+# 4. Fetch the agent skill file
 curl ${SITE_URL}${BRAND.agentMdRoute}`,
   },
   windsurf: {
@@ -147,10 +158,10 @@ agent = Agent(role="researcher", tools=adapter.tools)`,
 } as const;
 
 const STEPS = [
-  { num: '01', title: 'Connect once',       desc: `Add a single hosted MCP endpoint to your agent runtime. ${BRAND.name} Cloud becomes the search and invoke surface for remote servers.`,                                    icon: Cloud },
+  { num: '01', title: 'Connect once',       desc: `Add one ${BRAND.name} entry to your agent runtime. Cloud handles discovery; Relay Local handles invocation when the host can run it.`,                                    icon: Cloud },
   { num: '02', title: 'Search by intent',   desc: 'Your agent asks for a capability such as "create a Linear issue" instead of relying on a prewired list of integrations.',                                            icon: Bot },
-  { num: '03', title: 'Read the schema',    desc: `${BRAND.name} returns matching remote servers with trust metadata and full tool schemas so the agent knows what to pass.`,                                                 icon: Workflow },
-  { num: '04', title: 'Invoke safely',      desc: 'Calls route through the proxy for policy checks, credential injection, response scanning, and audit logging.',                                                        icon: LockKeyhole },
+  { num: '03', title: 'Read the manifest',  desc: `${BRAND.name} returns matching servers with trust metadata, tool schemas, and run manifests so the agent knows what Relay Local can do.`,                                                 icon: Workflow },
+  { num: '04', title: 'Invoke safely',      desc: 'Relay Local performs invocation with local env/secrets, runtime checks, response bounds, and future audit reporting.',                                                        icon: LockKeyhole },
 ] as const;
 
 export default function ConnectPage() {
@@ -316,9 +327,9 @@ export default function ConnectPage() {
             </div>
             <pre>{`1. Agent needs a capability
 2. search_tools("send transactional email")
-3. ${BRAND.name} returns matching remote tools + schemas
-4. invoke_tool({ server, tool, args })
-5. ${BRAND.name} handles policy, credentials, proxying, and audit`}</pre>
+3. ${BRAND.name} returns tools + run manifests
+4. Relay Local invokes via CLI or local MCP invoke_tool
+5. ${BRAND.name} handles policy, credentials, runtime checks, and audit`}</pre>
           </div>
 
           <AnimatedSection className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
@@ -329,12 +340,12 @@ export default function ConnectPage() {
               <div className="font-display text-lg font-medium text-white">Security on every call</div>
             </div>
             <p className="text-sm leading-7 text-brand-steel">
-              Every remote server is scanned before listing. Every proxy call blocks unsafe request
-              patterns, injects credentials outside agent arguments, surfaces response warnings, and
-              writes an audit trail.
+              Relay Cloud handles discovery, manifests, provenance, and policy metadata. Relay Local is
+              the invocation boundary where request checks, credential resolution, response bounds, and
+              audit reporting attach.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {['Request DLP', 'Proxy audit', 'Credential isolation'].map(tag => (
+              {['Local checks', 'Audit metadata', 'Credential isolation'].map(tag => (
                 <span key={tag} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-brand-steel">
                   {tag}
                 </span>
@@ -352,13 +363,13 @@ export default function ConnectPage() {
             as="h2"
             className="heading-display text-[2rem] sm:text-[3rem] font-medium text-white"
           >
-            {`${BRAND.name} Cloud now.\n${BRAND.name} CLI later.`}
+            {`${BRAND.name} Cloud control plane.\n${BRAND.name} Local runtime.`}
           </AnimatedHeading>
           <AnimatedParagraph className="mt-5 max-w-2xl mx-auto text-base leading-8 text-brand-steel" delay={0.15}>
-            The hosted remote layer launches first because it solves runtime discovery and secure
-            invocation immediately. The local CLI will extend that same discovery model to{' '}
+            The cloud layer solves agent discovery and manifests. Relay Local adds the shared CLI and MCP
+            runtime that invokes downstream{' '}
             <code className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[12px] text-white">stdio</code>{' '}
-            servers later.
+            and remote MCP servers through one Relay boundary.
           </AnimatedParagraph>
 
           <motion.div
@@ -371,7 +382,7 @@ export default function ConnectPage() {
               Read the skill file
             </a>
             <Link href="/registry" className="btn btn-primary btn-lg gap-2">
-              Explore remote servers <ArrowRight className="h-4 w-4" />
+              Explore servers <ArrowRight className="h-4 w-4" />
             </Link>
           </motion.div>
         </div>

@@ -15,7 +15,7 @@ This directory is the project's technical source of truth.
 - `DELIVERY_ROADMAP.md`
   The canonical sprint-by-sprint delivery plan. Detailed sprint scope should live here, not in architecture narratives.
 - `PROTOTYPE_IMPLEMENTATION_PLAN.md`
-  The canonical current MVP scope: runtime discovery, search, manifests, and local CLI execution.
+  The canonical current MVP scope: Relay Cloud control plane, Relay Local runtime, search, manifests, CLI, and local MCP server mode.
 - `MIGRATION_LEDGER.md`
   The canonical ledger for numbered Supabase migrations and retired schema objects.
 - `RATE_LIMITS.md`

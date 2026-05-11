@@ -51,29 +51,27 @@ const CODE = {
           }
         }
       ],
-      "invoke": {
-        "rest": "POST /api/proxy/sendgrid-mail/send_email"
+      "manifest": {
+        "run_mode": "local_stdio",
+        "next": "relay invoke sendgrid-mail send_email"
       }
     }
   ]
 }`,
 
-  invokeExample: `POST /api/proxy/sendgrid-mail/send_email
-Content-Type: application/json
-
-{
+  invokeExample: `relay invoke sendgrid-mail send_email --json '{
   "to": "user@example.com",
   "subject": "Your order is confirmed",
   "body": "Thank you for your purchase!"
-}`,
+}'`,
 
-  agentSecrets: `# 1. Store your API key once (never in a file)
-# Store once in ${BRAND.name} Vault at ${SITE_URL}/dashboard/secrets
+  agentSecrets: `# MVP: keep credentials in the local agent environment
+export SENDGRID_API_KEY="..."
 
-# 2. Agent calls ${BRAND.name} proxy
-# 3. Proxy resolves key from ${BRAND.name} Vault
-# 4. Injects into upstream call
-# 5. Agent gets response — never saw the key`,
+# Agent calls Relay Local
+relay invoke sendgrid-mail send_email --json '{"to":"user@example.com"}'
+
+# Later: Relay Vault can provide the secret to Relay Local at invoke time`,
 
   mcpServerSearch: `// Agent calls search_tools
 {
@@ -87,7 +85,7 @@ Content-Type: application/json
 
 // ${BRAND.name} returns results with full inputSchema`,
 
-  mcpServerInvoke: `// Agent calls invoke_tool
+  mcpServerInvoke: `// Local Relay MCP: agent calls invoke_tool
 {
   "jsonrpc": "2.0",
   "method": "tools/call",
@@ -113,37 +111,37 @@ const SEARCH_INDEX = [
   {
     section: `what-is-${BRAND.name}`,
     label: `What is ${BRAND.name}?`,
-    text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single endpoint queries verified servers full tool schemas invokes tools security proxy runtime intent context window network http transports stdio cli free open source MIT license`,
+    text: `${BRAND.name} missing layer ai agents remote mcp servers configure deployment discover tools quality connect autonomously single relay runtime queries verified servers full tool schemas manifests local invoke security runtime intent context window network http transports stdio cli free open source MIT license`,
   },
   {
     section: "how-it-works",
     label: "How it works",
-    text: `${BRAND.name} agent task send email create pr charge card capability queries ${BRAND.name} intent search servers inputSchema arguments invokes proxy blocks sensitive policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp`,
+    text: `${BRAND.name} agent task send email create pr charge card capability queries ${BRAND.name} intent search servers inputSchema arguments invokes through Relay Local policy scans responses audit trail security layers static injection npm cve scanning schema pinning typosquatting detection dlp shell injection pii scanning url owasp`,
   },
   {
     section: "quickstart",
     label: "Quickstart",
-    text: "quickstart system prompt agents.md add native mcp server claude desktop cursor antigravity config json restart ide search_tools invoke_tool skill file curl agents.md live stats teaches agent trust scores how to search read inputschemasad",
+    text: "quickstart system prompt agents.md add cloud mcp discovery local relay mcp server claude desktop cursor antigravity config json restart ide search_tools get_server_manifest relay serve invoke_tool skill file curl agents.md live stats teaches agent trust scores how to search read inputschemas",
   },
   {
     section: "credentials",
     label: "Credentials & security",
-    text: "credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest ${BRAND.name} proxy dlp request response blocked aes-256-gcm vault encrypted plaintext secret name authorization header",
+    text: `credentials security api key oauth token weather wikipedia exchange rates free stripe github gmail require credential problem config file git committed ai assistants exfiltrated prompt injection cve-2026-21852 harvest ${BRAND.name} Relay Local dlp request response blocked local env vault later encrypted plaintext secret name authorization header`,
   },
   {
     section: "mcp-server",
     label: "Native MCP server",
-    text: "native mcp server standard mcp server connect one hosted mcp connection two tools search_tools invoke_tool transports streamablehttp post primary sse get older clients stdio not supported hosted service cli bridge planned",
+    text: "native mcp server standard mcp server connect one cloud mcp discovery connection two tools search_tools get_server_manifest transports streamablehttp post primary sse get older clients relay local mcp server relay serve planned",
   },
   {
     section: "rest-api",
     label: "REST API reference",
-    text: "rest api reference get agents.md skill file markdown live stats servers search intent lexical retrieval reranking inputSchema browse filters sort verified source tag page server detail scan history cve issues tools post proxy serverName toolName invocation security audit mcp-server streamablehttp sse analytics latency dlp events",
+    text: "rest api reference get agents.md skill file markdown live stats servers search intent lexical retrieval reranking inputSchema manifest browse filters sort verified source tag page server detail scan history cve issues tools mcp-server streamablehttp sse analytics latency events",
   },
   {
     section: "trust-scores",
     label: "Trust scores",
-    text: "trust scores 0 100 behavioral reliability bayesian prior verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime 30 days cron 15 minutes schema stability days since last change invoke history relay proxy outcomes 85 100 verified proven runtime reliability 65 84 clean scan invoke history production suitable below 65 cold start or active issues",
+    text: "trust scores 0 100 behavioral reliability bayesian prior verified publisher github oidc dns challenge prove identity scan history static scan no shell injection no cves npm uptime schema stability days since last change invoke history relay local outcomes 85 100 verified proven runtime reliability 65 84 clean scan invoke history production suitable below 65 cold start or active issues",
   },
   {
     section: "categories",
@@ -153,7 +151,7 @@ const SEARCH_INDEX = [
   {
     section: "faq",
     label: "FAQ",
-    text: "faq frequently asked questions free no credit card freemium transparent limits publisher analytics enterprise private registries register search proxy publish mcp server api keys rate limits credentials api key vault aes-256-gcm proxy inject authorization header 401 variable name dashboard smithery arcade composio gateway oauth credential management discovery trust secure invocation scans scores agentsecrets cli local bridge stdio not yet network reachable http transports 15-layer security stack l1 prompt injection l3 hash tool schemas l4 credentials requests s-12 os command injection s-13 instruction-like language response owasp",
+    text: "faq frequently asked questions free no credit card freemium transparent limits publisher analytics enterprise private registries register search manifest publish mcp server api keys rate limits credentials api key vault later local env authorization header 401 variable name dashboard smithery arcade composio gateway oauth credential management discovery trust secure invocation scans scores agentsecrets cli local runtime stdio network reachable http transports security stack l1 prompt injection l3 hash tool schemas l4 credentials requests s-12 os command injection s-13 instruction-like language response owasp",
   },
   {
     section: "known-limitations",
@@ -409,12 +407,12 @@ export default function DocsPage() {
             </P>
             <P>
               {BRAND.name} solves this with a single endpoint. Your agent queries it by describing what it needs,
-              gets back verified servers with full tool schemas, and invokes tools through a security proxy —
+              gets back verified servers with full tool schemas and run manifests, then invokes through Relay Local —
               at runtime by intent — never pre-loaded, never eating your context window.
             </P>
             <P>
-              Today, {BRAND.name} focuses on network-reachable MCP servers with HTTP transports. Local
-              <InlineCode>stdio</InlineCode> servers appear in search results for discovery, and {BRAND.name} CLI (coming soon) will invoke them as a native MCP server in your agent host.
+              Today, {BRAND.name} Cloud focuses on discovery and manifests. Relay Local is the planned runtime
+              for both remote MCP endpoints and local <InlineCode>stdio</InlineCode> servers in the agent host.
             </P>
             <Callout>
               <p className="font-serif text-[15px] italic leading-relaxed text-white/80">
@@ -422,7 +420,7 @@ export default function DocsPage() {
               </p>
             </Callout>
             <P>
-              <strong className="text-white">Free to use.</strong> The core registry, intent search, and proxy are available
+              <strong className="text-white">Free to use.</strong> The core registry, intent search, and manifests are available
               without a paid plan. No credit card. Transparent limits. No lock-in.
             </P>
             <P>
@@ -438,10 +436,10 @@ export default function DocsPage() {
             <P>Every agent interaction follows this flow:</P>
             {[
               ['1', 'Agent has a task', 'Needs to send an email, create a PR, charge a card — any capability.'],
-              ['2', `Queries ${BRAND.name} by intent`, `GET /api/servers/search?q=send transactional email — returns verified servers with full inputSchema per tool.`],
-              ['3', 'Reads the inputSchema', 'No guessing. The agent knows exactly what arguments each tool requires before calling.'],
-              ['4', 'Invokes through the proxy', 'POST /api/proxy/sendgrid-mail/send_email — every call blocks sensitive request patterns, applies policy, scans responses, and writes an audit trail.'],
-              ['5', 'Gets a response', 'The upstream result is returned with trust and warning metadata. If response scans trigger, the agent gets the result plus warning headers for review.'],
+              ['2', `Queries ${BRAND.name} by intent`, `search_tools or GET /api/servers/search?q=send transactional email — returns ranked servers with inputSchema and a run manifest.`],
+              ['3', 'Reads the manifest and schema', 'No guessing. The agent knows the selected tool, required arguments, env vars, and whether Relay Local can run it.'],
+              ['4', 'Invokes through Relay Local', `relay invoke or local MCP invoke_tool starts/connects to the downstream MCP server and applies local runtime checks.`],
+              ['5', 'Gets a normalized response', 'Relay Local returns the upstream result, bounded and ready for later request/response scanning, audit, and outcome reporting.'],
             ].map(([num, title, desc]) => (
               <div key={num} className="mb-3 flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-4">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-signal/20 border border-brand-signal/30 font-mono text-[11px] font-bold text-brand-signal">{num}</span>
@@ -451,13 +449,12 @@ export default function DocsPage() {
                 </div>
               </div>
             ))}
-            <H3>Security on every server and every call</H3>
+            <H3>Security boundary</H3>
             <P>
-              Every server ingested from official registry, Smithery, or Glama is scanned across
-              15 layers before listing: static injection analysis, npm CVE scanning, schema pinning,
-              typosquatting detection, and more. Every proxy call adds DLP, shell injection detection,
-              PII scanning, URL elicitation safety, and context isolation. Current OWASP MCP Top 10
-              coverage: ~70%.
+              Relay Cloud is the control plane for catalog quality, search, manifests, provenance, and policy.
+              Relay Local is the runtime boundary for invocation. That split keeps arbitrary third-party
+              MCP processes out of Relay Cloud while preserving one Relay path for future DLP, policy,
+              Vault, audit, and outcome learning.
             </P>
           </Section>
 
@@ -465,11 +462,22 @@ export default function DocsPage() {
             <H3>Option 1 — System prompt (works everywhere)</H3>
             <CodeBlock code={CODE.systemPrompt} label="Add to your system prompt or AGENTS.md" />
 
-            <H3>Option 2 — Native MCP server (Claude Desktop, Cursor, Antigravity, etc.)</H3>
+            <H3>Option 2 — Relay Cloud MCP discovery</H3>
             <CodeBlock code={CODE.mcpConfig} label="claude_desktop_config.json / .cursor/mcp.json / mcp_config.json" />
-            <P>Restart your IDE. Your agent now has two tools: <InlineCode>search_tools</InlineCode> and <InlineCode>invoke_tool</InlineCode>.</P>
+            <P>Restart your IDE. Your agent now has two Cloud tools: <InlineCode>search_tools</InlineCode> and <InlineCode>get_server_manifest</InlineCode>. Local invocation is handled by Relay Local.</P>
 
-            <H3>Option 3 — Fetch the agent skill file</H3>
+            <H3>Option 3 — Relay Local MCP runtime</H3>
+            <CodeBlock code={`{
+  "mcpServers": {
+    "${BRAND.slug}": {
+      "command": "${BRAND.slug}",
+      "args": ["serve"]
+    }
+  }
+}`} label="Local MCP config for agent hosts that can run commands" />
+            <P>Relay Local is the planned agent runtime. It exposes Relay tools locally and invokes downstream MCP servers without manually connecting each server.</P>
+
+            <H3>Option 4 — Fetch the agent skill file</H3>
             <CodeBlock code={`curl ${SITE_URL}${BRAND.agentMdRoute}`} label="Your agent fetches this once — understands everything" />
             <P>
               The skill file is served dynamically with live stats. It teaches any agent how to search,
@@ -492,53 +500,42 @@ export default function DocsPage() {
             </P>
             <H3>What {BRAND.name} does about it</H3>
             <P>
-              The {BRAND.name} proxy runs DLP on every request and response — 11 credential patterns. If a
-              credential pattern appears in a tool argument (the agent accidentally including an API key),
-              the call is blocked before it reaches the upstream server. If a credential appears in a
-              response, it is flagged in warning headers and audit logs for review.
+              The MVP keeps credentials in the local agent environment. Relay manifests declare required
+              env vars so Relay Local can fail clearly before invocation. Request/response scanning, local
+              policy, and audit reporting attach to Relay Local as the runtime matures.
             </P>
-            <H3>{BRAND.name} Vault — the complete solution</H3>
+            <H3>{BRAND.name} Vault — later</H3>
             <P>
-              Store credentials once in the {BRAND.name} Vault. They are encrypted with AES-256-GCM via Supabase
-              pgsodium. The proxy decrypts at call time and injects as an Authorization header. The raw
-              value is never stored in plaintext, never returned through the API, and never visible after
-              you save it — only the secret name is shown.
+              Vault remains a planned capability. The safest sequence is local env first, then local encrypted
+              storage, then optional Cloud Vault for users who want cross-device secret sync.
             </P>
             <CodeBlock code={CODE.agentSecrets} label={`${BRAND.name} Vault flow`} />
-            <P>
-              Manage secrets:{' '}
-              <a href={`${SITE_URL}/dashboard/secrets`} className="text-brand-signal underline underline-offset-2 hover:text-white transition-colors">
-                {SITE_URL}/dashboard/secrets
-              </a>
-              {' '}— store once, then let the proxy inject automatically.
-            </P>
             <Callout>
               <p className="text-[14px] leading-relaxed text-brand-steel">
-                <strong className="text-white">Protecting yourself from sensitive operations:</strong> {BRAND.name}&apos;s proxy already blocks shell
-                injection (18 patterns), credential DLP (11 patterns), and indirect prompt injection (12 patterns)
-                on every call. For additional control — limiting which tools an agent can call, blocking specific
-                domains, setting per-user rate limits — see the user controls section in your dashboard after
-                signing in.
+                <strong className="text-white">Protecting sensitive operations:</strong> Relay Local is the
+                right place for argument validation, DLP checks, subprocess limits, response bounds, and audit
+                reporting because it is where invocation actually happens.
               </p>
             </Callout>
           </Section>
 
           <Section id="mcp-server" title="Native MCP server">
             <P>
-              {BRAND.name} exposes itself as a standard MCP server. Instead of making custom HTTP calls,
-              your agent connects once and gets two native MCP tools.
+              {BRAND.name} exposes Cloud discovery as a standard MCP server. Relay Local will expose the
+              invocation runtime as a local MCP server started with <InlineCode>{BRAND.slug} serve</InlineCode>.
             </P>
             <P>
-              <strong className="text-white">Transports supported:</strong> StreamableHTTP (POST — primary) and SSE (GET — for
-              older clients). stdio is not yet supported through the web service — {BRAND.name} CLI (coming soon) will run as a native MCP server in your agent host, spawning stdio servers on demand like <InlineCode>npx</InlineCode> downloads and runs packages without a permanent install.
+              <strong className="text-white">Cloud transports supported:</strong> StreamableHTTP (POST — primary)
+              and SSE (GET — for older clients). Cloud MCP is discovery-only in the prototype. Local Relay MCP
+              is the planned invocation path for MCP-native agents.
             </P>
             <H3>search_tools</H3>
             <CodeBlock code={CODE.mcpServerSearch} label="Find servers by natural language intent" />
-            <H3>invoke_tool</H3>
-            <CodeBlock code={CODE.mcpServerInvoke} label="Invoke any tool through the security proxy" />
+            <H3>local invoke_tool</H3>
+            <CodeBlock code={CODE.mcpServerInvoke} label="Local Relay MCP invocation" />
             <P>
-              Every invoke_tool call runs through the same remote trust and proxy layer as the REST API.
-              Request blocking, response scanning, trust metadata, and audit logging are all applied.
+              <InlineCode>invoke_tool</InlineCode> belongs in Relay Local, not Relay Cloud. That keeps invocation
+              agent-centric while avoiding hosted execution of arbitrary third-party packages.
             </P>
           </Section>
 
@@ -550,9 +547,9 @@ export default function DocsPage() {
                 { method: 'GET',  path: '/api/servers/search?q={intent}',         desc: 'Intent search — lexical retrieval plus reranking, returns servers with full inputSchema' },
                 { method: 'GET',  path: '/api/servers?sort=trust&source=official&page=2&page_size=24', desc: 'Browse with filters: sort, verified, source, tag, page, page_size' },
                 { method: 'GET',  path: '/api/servers/:name',                     desc: 'Server detail — scan history, CVE issues, tools' },
-                { method: 'POST', path: '/api/proxy/:serverName/:toolName',       desc: 'Remote invocation proxy — request blocking, response scanning, audit' },
-                { method: 'POST', path: '/api/mcp-server',                        desc: 'Native MCP server (StreamableHTTP) — search_tools + invoke_tool' },
-                { method: 'GET',  path: '/api/mcp-server',                        desc: 'Native MCP server (SSE — for older clients)' },
+                { method: 'POST', path: '/api/mcp-server',                        desc: 'Cloud MCP discovery — search_tools + get_server_manifest' },
+                { method: 'GET',  path: '/api/mcp-server',                        desc: 'Cloud MCP discovery SSE endpoint for older clients' },
+                { method: 'CLI',  path: 'relay invoke <server> <tool>',           desc: 'Relay Local invocation adapter for CLI-capable agents' },
                 { method: 'GET',  path: '/api/servers/:name/analytics',           desc: '30-day call volume, latency, DLP events, tool breakdown' },
               ].map((row, i) => (
                 <div key={row.path} className={cn('flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-4', i > 0 && 'border-t border-white/5')}>
@@ -567,14 +564,14 @@ export default function DocsPage() {
             </div>
             <H3>Search example</H3>
             <CodeBlock code={CODE.searchExample} label="GET /api/servers/search?q=send+transactional+email" />
-            <H3>Invoke example</H3>
-            <CodeBlock code={CODE.invokeExample} label="POST /api/proxy/sendgrid-mail/send_email" />
-            <P>Response headers on every proxy call:</P>
+            <H3>Relay Local invoke example</H3>
+            <CodeBlock code={CODE.invokeExample} label="relay invoke sendgrid-mail send_email" />
+            <P>Relay Local should report structured invocation metadata:</P>
             <div className="mb-6 flex flex-col gap-2">
               {[
-                ['X-Registry-Trust-Score', 'Server trust score at call time (0–100)'],
-                ['X-Registry-Latency',     'Upstream latency in ms'],
-                ['X-Registry-DLP-Warning', 'Present if DLP rules triggered on response'],
+                ['server', 'Selected server name and manifest version'],
+                ['latency_ms', 'End-to-end invocation latency'],
+                ['outcome', 'success, failure, blocked, or timeout'],
               ].map(([header, desc]) => (
                 <div key={header} className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-3">
                   <code className="shrink-0 font-mono text-[12px] font-medium text-brand-signal">{header}</code>
@@ -616,7 +613,9 @@ export default function DocsPage() {
 
           <Section id="categories" title="MCP categories">
             <P>
-              {BRAND.name} indexes thousands of servers across 12 categories. Today it focuses on servers with HTTP endpoints that can be invoked through the proxy. Local stdio servers appear in search results for discovery, with invocation via {BRAND.name} CLI coming soon. About 70% of invokable servers require credentials.
+              {BRAND.name} indexes servers across 12 categories and returns manifests that tell Relay Local
+              whether a result is runnable as local stdio, connectable as remote MCP, or discovery-only.
+              About 70% of useful real-world servers require credentials.
             </P>
             <div className="grid gap-3 sm:grid-cols-2">
               {CATEGORIES.map(cat => (
@@ -639,14 +638,14 @@ export default function DocsPage() {
           <Section id="faq" title="FAQ">
             <div className="flex flex-col gap-6">
               {[
-                [`Is ${BRAND.name} really free?`, `Yes. The core registry, intent search, and proxy are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features (publisher analytics, enterprise private registries) in future — but the core product remains accessible.`],
-                ['Do I need to register to use it?', 'No. Search and proxy are open. Registration is only needed to publish your own MCP server or create API keys for higher rate limits.'],
-                [`How do credentials work if my MCP needs an API key?`, `API keys are stored in the ${BRAND.name} Vault (AES-256-GCM encrypted). When you call a tool through the proxy, the key is decrypted and injected as an Authorization header. The raw key never appears in tool arguments, agent context, or request logs. If a server needs a key you have not stored yet, the proxy returns a 401 with the exact variable name to use and a link to the dashboard.`],
-                [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery — CLI-first, requires human browser authentication. ${BRAND.name} is designed for agents to use autonomously at runtime. It also scans every server before listing and exposes a native MCP server so agents need zero configuration beyond one URL.`],
-                [`Can I use ${BRAND.name} with Antigravity?`, `Yes. Antigravity added MCP support in early 2026. Use the standard MCP config: { "mcpServers": { "${BRAND.name}": { "url": "${SITE_URL}/api/mcp-server" } } }`],
-                [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused on credential management and OAuth. They are strong on auth infrastructure, while ${BRAND.name} focuses on discovery, trust, and secure invocation of remote MCP servers. ${BRAND.name} scans and scores the servers it lists, and injects stored credentials through its centralized Vault and proxy on every call.`],
-                [`Does ${BRAND.name} support stdio or local MCP servers today?`, `Not yet directly. stdio servers appear in search results (with proxy_available: false) so agents know they exist, but cannot be invoked through the web proxy. ${BRAND.name} CLI (coming soon) will run as a native MCP server in your agent host — it spawns stdio servers as local subprocesses on demand, like npx downloads and runs without a permanent install. The CLI uses the same centralized Vault for credential injection.`],
-                [`What does the 15-layer security stack actually do?`, `See the Security section above. Briefly: L1 scans tool descriptions for prompt injection at publish time. L3 hashes all tool schemas and auto-suspends servers that mutate them. L4 blocks credentials in requests and surfaces response warnings. S-12 blocks OS command injection in tool arguments. S-13 scans for instruction-like language in response data. Full details at /api/mcp.`],
+                [`Is ${BRAND.name} really free?`, `Yes. The core registry, intent search, and manifests are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features in future, but the core discovery layer remains accessible.`],
+                ['Do I need to register to use it?', 'No for public discovery. Registration is useful for publishing, API keys, higher limits, and later account-level policy, Vault, and audit features.'],
+                [`How do credentials work if my MCP needs an API key?`, `For the prototype, credentials should stay in the local agent environment. Relay manifests describe required env vars, and Relay Local validates them before invoking. Vault can be added later as an optional secret source for Relay Local.`],
+                [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery. ${BRAND.name} is designed for agents to use autonomously at runtime: search by intent, fetch a manifest, then invoke through Relay Local without manually configuring every downstream MCP server.`],
+                [`Can I use ${BRAND.name} with Antigravity?`, `If the agent host supports remote MCP, use the Cloud MCP config for discovery: { "mcpServers": { "${BRAND.name}": { "url": "${SITE_URL}/api/mcp-server" } } }. If it supports local stdio MCP, Relay Local should be configured with command "${BRAND.slug}" and args ["serve"].`],
+                [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused heavily on credential management and OAuth. ${BRAND.name} focuses on agent-centric MCP discovery and a Relay Local runtime that can later attach policy, Vault, audit, and outcome learning at invocation time.`],
+                [`Does ${BRAND.name} support stdio or local MCP servers today?`, `The current cloud app returns discovery results and manifests. Relay Local is the next runtime slice: it will run as CLI commands and as a local MCP server that can spawn package-backed stdio servers on demand.`],
+                [`What does the security stack actually do?`, `For the prototype, security is split by responsibility. Relay Cloud handles catalog quality, provenance, and manifests. Relay Local is where argument validation, subprocess limits, response bounds, DLP, policy, audit, and outcome reporting belong.`],
               ].map(([q, a], i) => (
                 <div key={q as string} className={cn('pb-6', i !== 7 && 'border-b border-white/5')}>
                   <div className="mb-2 font-display text-[15px] font-semibold text-white">{q as string}</div>

@@ -16,8 +16,8 @@ export function HeroOrbital() {
     { text: "Waiting for intent...", activeCards: [] },
     { text: `I need a weather API. Searching ${BRAND.name} registry...`, activeCards: ['discovery'] },
     { text: "Found 'weather-mcp' (Trust Score: 92). Verifying policy...", activeCards: ['discovery', 'policy'] },
-    { text: "Invoking 'get_weather' through secure proxy...", activeCards: ['discovery', 'policy', 'proxy'] },
-    { text: "Proxy passed. Execution complete. Weather is 68°F and sunny.", activeCards: ['discovery', 'policy', 'proxy', 'execution'] }
+    { text: "Invoking 'get_weather' through Relay Local...", activeCards: ['discovery', 'policy', 'proxy'] },
+    { text: "Runtime checks passed. Weather is 68°F and sunny.", activeCards: ['discovery', 'policy', 'proxy', 'execution'] }
   ];
 
   const startSimulation = () => {
@@ -222,11 +222,11 @@ export function HeroOrbital() {
               <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
                 <Webhook className={cn("w-4 h-4", isCardActive('proxy') ? "text-orange-400" : "text-gray-500")} />
               </div>
-              <span className="text-[13px] font-semibold text-white">Secure Proxy</span>
+              <span className="text-[13px] font-semibold text-white">Relay Local</span>
             </div>
             <div className="text-[11px] text-brand-steel space-y-1.5 font-mono">
               <div className="flex items-center justify-between"><span>DLP Scan</span> <span className={cn(isCardActive('proxy') && "text-green-400")}>Pass</span></div>
-              <div className="flex items-center justify-between"><span>Credentials</span> <span className={cn(isCardActive('proxy') && "text-orange-400")}>Injected</span></div>
+              <div className="flex items-center justify-between"><span>Env</span> <span className={cn(isCardActive('proxy') && "text-orange-400")}>Resolved</span></div>
             </div>
           </div>
         </div>

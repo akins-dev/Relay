@@ -10,9 +10,11 @@ As of 2026-05-09, Relay's prototype path is:
 1. ingest MCP server metadata
 2. search by intent
 3. return tools, schemas, and a Relay run manifest
-4. execute locally through the user's agent host or Relay CLI
+4. execute through Relay Local, exposed to agents as CLI commands or a local MCP server
 
-Hosted cloud invocation, `/api/proxy/*`, `invoke_tool`, Vault injection, sandbox extraction, CVE queues, and scheduled Vercel cron jobs are no longer part of the MVP runtime.
+Hosted cloud invocation, `/api/proxy/*`, Cloud MCP `invoke_tool`, Vault injection, sandbox extraction, CVE queues, and scheduled Vercel cron jobs are no longer part of the MVP runtime.
+
+Local Relay MCP may expose `invoke_tool` later because that execution happens inside Relay Local, not Relay Cloud.
 
 The rest of this file preserves broader architecture history and deferred production ideas. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
 
@@ -69,14 +71,14 @@ Relay is currently best understood as three coupled systems in service of one pr
 
 1. A canonical registry builder.
 2. An agent-facing search layer.
-3. A manifest layer that tells the local agent host how to run the selected server.
+3. A manifest layer that tells Relay Local how to run the selected server.
 
 The MVP-critical loop is:
 
 1. ingest server metadata into a canonical registry
-2. search by user intent
+2. search by agent intent
 3. return the server/tool schema and run manifest
-4. execute locally through the user's CLI or agent host
+4. execute locally through Relay Local's CLI or MCP adapter
 
 Everything else is secondary to stabilizing that loop.
 
@@ -347,7 +349,7 @@ Decommissioned sources (removed from `runIngest()`):
 - `POST /api/ingest`
 - `POST /api/admin/ingest`
 - `GET /api/servers/search`
-- `POST /api/proxy/{server}/{tool}`
+- Relay Local `relay invoke {server} {tool}` (planned runtime surface)
 - `POST|GET /api/mcp-server`
 
 ### 7.3 Core Database Responsibilities
@@ -383,7 +385,7 @@ Important fields:
 | `resources` | MCP resources | added in migration 014 |
 | `prompts` | MCP prompts | added in migration 014 |
 | `transport` | `stdio`, `sse`, `streamable_http`, or `unknown` | transport classification is still partly heuristic |
-| `proxy_available` | whether Relay cloud proxy can invoke it | intentionally separate from transport |
+| `proxy_available` | legacy hosted-proxy eligibility flag | superseded by manifest `run_mode` for the prototype |
 | `protocol_version` | MCP protocol version seen during probe | null when not probed |
 | `mcp_compliant` | whether handshake/probe succeeded | best-effort flag |
 | `source` | upstream provenance | used in weighting and overwrite protection |
@@ -794,15 +796,15 @@ These fields should be treated as best-effort only:
 
 ## 11. Search And Runtime Coupling
 
-Even though ingest is the current MVP focus, ingest design must serve the search and invoke loops.
+Even though ingest is the current MVP focus, ingest design must serve the search, manifest, and Relay Local invoke loops.
 
 Important current state:
 
-- MCP `search_tools` now passes `search_event_id`, `intent`, and derived `intentHash` into `executeProxyCall()`
-- `executeProxyCall()` records `invoke_outcomes`
-- `record_intent_outcome(...)` updates `intent_server_mappings`
+- Cloud MCP `search_tools` records search intent metadata.
+- Relay Local should report invocation outcome metadata once implemented.
+- `record_intent_outcome(...)` / `intent_server_mappings` remain the future learning path.
 
-This means the search -> invoke learning loop is present in the current code, even though older docs in the repo still describe it as missing.
+This means the search -> local invoke -> outcome learning loop remains the intended architecture, but the prototype no longer relies on hosted proxy execution.
 
 ## 12. Story Constraint And Roadmap Alignment
 

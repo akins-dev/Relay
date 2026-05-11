@@ -347,7 +347,7 @@ export async function upsertServers(
 
       // FAULT-02 fix: always sync resolvedTools from toolSchemas — not just when upstream was empty.
       // If probe/sandbox returns different/richer tool names than what upstream declared,
-      // the DB must store the live-probed names so invoke_tool's tools.includes() check works.
+      // the DB must store the live-probed names so Relay Local can validate tool existence.
       // C3 fix: write to resolvedTools (local copy), never mutate the original s.tools.
       if (toolSchemas.length > 0) {
         resolvedTools = toolSchemas.map(t => t.name);

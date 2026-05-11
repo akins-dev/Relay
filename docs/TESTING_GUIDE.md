@@ -186,7 +186,7 @@ curl -s http://localhost:3000/api/mcp-server \
 Expected:
 
 - `search_tools`
-- `invoke_tool`
+- `get_server_manifest`
 
 ### C. Search
 
@@ -223,7 +223,7 @@ Expected:
 - no RPC/signature crash
 - usable results
 
-### E. Invoke without credentials
+### E. Manifest lookup
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -233,11 +233,9 @@ curl -s http://localhost:3000/api/mcp-server \
     "id":4,
     "method":"tools/call",
     "params":{
-      "name":"invoke_tool",
+      "name":"get_server_manifest",
       "arguments":{
-        "server":"sendgrid-mail",
-        "tool":"send_email",
-        "args":{"to":"user@example.com"}
+        "server":"sendgrid-mail"
       }
     }
   }'
@@ -245,41 +243,24 @@ curl -s http://localhost:3000/api/mcp-server \
 
 Expected:
 
-- structured auth/setup guidance
+- manifest with `run_mode`
+- env requirements if available
+- tool schemas or tool names
 
-### F. Invoke with credentials
+### F. Relay Local invocation
 
-Use a valid Relay API key and pass `search_event_id` + `intent` from the search step:
+Cloud MCP does not expose `invoke_tool` in the prototype. Local invocation belongs to Relay Local:
 
 ```bash
-curl -s http://localhost:3000/api/mcp-server \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer sk_mcp_your_key_here' \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":5,
-    "method":"tools/call",
-    "params":{
-      "name":"invoke_tool",
-      "arguments":{
-        "server":"sendgrid-mail",
-        "tool":"send_email",
-        "search_event_id":"<paste from search>",
-        "intent":"send a transactional email with html body",
-        "args":{
-          "to":"user@example.com",
-          "subject":"Test",
-          "body":"Hello"
-        }
-      }
-    }
-  }'
+relay info sendgrid-mail
+relay invoke sendgrid-mail send_email --json '{"to":"user@example.com","subject":"Test","body":"Hello"}'
 ```
 
 Expected:
 
-- success, or
-- structured upstream credential/setup guidance
+- clear manifest output from `relay info`
+- success or structured env/setup guidance from `relay invoke`
+- child processes cleaned up on timeout or exit
 
 ## 8. When to test with all sources
 
@@ -305,7 +286,8 @@ Use this exact order:
 7. run manual uptime check (validates trust recomputation with behavioral ISM data)
 8. run manual schema drift
 9. test `search_tools`
-10. test `invoke_tool`
-11. only then run `source="all"` if you want scale validation
+10. test `get_server_manifest`
+11. test Relay Local `relay info` / `relay invoke` once implemented
+12. only then run `source="all"` if you want scale validation
 
 That is the fastest path to confidence without paying the full cost of a live full-registry ingest on every iteration.
