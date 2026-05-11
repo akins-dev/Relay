@@ -132,25 +132,35 @@ Exit criteria:
 
 - Agents can reliably tell whether a result is locally runnable, remotely connectable, or discovery-only.
 
-## Sprint 4 - Relay Local MVP
+## Sprint 4 - Relay Local MVP — IMPLEMENTED
 
 Goal: make local invocation real through one runtime with CLI and MCP agent adapters.
 
-Tasks:
+Status: Implemented 2026-05-11 as `cli/` package (`@relay/cli`).
 
-- Scaffold Relay Local runtime shared by CLI and MCP server mode.
-- Implement `relay search`.
-- Implement `relay info`.
-- Implement `relay invoke` for package-backed stdio servers.
-- Implement `relay serve` as a local stdio MCP server.
-- Expose local MCP tools: `search_tools`, `get_server_manifest`, and local-only `invoke_tool`.
-- Add subprocess lifecycle cleanup.
-- Validate required env vars locally.
-- Speak MCP over stdio for tool calls.
+Completed:
 
-Exit criteria:
+- Scaffolded Relay Local as a standalone Node.js package in `cli/`.
+- Implemented `relay search` — calls Relay Cloud REST API, formats results with manifests.
+- Implemented `relay info` — fetches server manifest via Cloud MCP.
+- Implemented `relay invoke` — shared `invokeTool()` runtime, supports `local_stdio` and `remote_mcp`.
+- Implemented `relay serve` — local stdio MCP server with `search_tools`, `get_server_manifest`, `invoke_tool`.
+- Implemented `relay bootstrap` — outputs compact agent instruction blocks for CLI agents and MCP config snippets.
+- Added subprocess lifecycle cleanup (SIGTERM → SIGKILL, parent exit cleanup, timeout handling).
+- Added required env var validation before subprocess spawn.
+- MCP-over-stdio client speaks JSON-RPC to child MCP server processes.
+- Shared `invokeTool()` function called by both CLI `relay invoke` and local MCP `invoke_tool`.
 
-- One known package-backed server can be discovered and invoked locally end to end from both `relay invoke` and local MCP `invoke_tool`.
+Build verified:
+
+- `npx tsc` compiles with zero errors.
+- `relay --help` shows all commands.
+- `relay bootstrap` outputs CLI prompt, MCP config, and env docs.
+- `relay serve` passes MCP smoke test (initialize → tools/list → ping).
+
+Remaining for exit criteria:
+
+- End-to-end invocation of a package-backed server needs live Relay Cloud or local dev server.
 
 ## Sprint 5 - Prototype Review
 

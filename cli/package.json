@@ -1,0 +1,42 @@
+{
+  "name": "@relay/cli",
+  "version": "0.1.0",
+  "description": "Runtime tool discovery for AI agents. One command to search, discover, and invoke any MCP server.",
+  "type": "module",
+  "bin": {
+    "relay": "./bin/relay.mjs"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "node --test dist/**/*.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akins-dev/relay"
+  },
+  "keywords": [
+    "mcp",
+    "relay",
+    "ai-agents",
+    "tool-discovery",
+    "model-context-protocol"
+  ]
+}

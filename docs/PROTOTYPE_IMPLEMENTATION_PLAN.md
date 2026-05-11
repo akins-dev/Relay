@@ -444,49 +444,65 @@ Acceptance:
 - Relay never guesses a command from a plain GitHub URL.
 - Runnable manifests are deterministic.
 
-### Phase 4 - Relay Local MVP
+### Phase 4 - Relay Local MVP — IMPLEMENTED
 
 Goal: make the magic real locally through one runtime with two agent-facing adapters.
 
-This is the planned next execution slice after the scope cleanup: `relay search`, `relay info`, `relay invoke`, and `relay serve`.
+Status: Implemented 2026-05-11 as `cli/` package (`@relay/cli`). Zero framework dependencies — pure Node.js with `commander` for CLI parsing.
 
 CLI adapter:
 
 - `relay search "send transactional email"`
 - `relay info <server>`
-- `relay invoke <server> <tool>`
+- `relay invoke <server> <tool> --json '{}'`
+- `relay bootstrap` — outputs compact agent instruction block (~80 tokens for CLI agents)
+- `relay bootstrap --mcp` — outputs MCP config JSON snippet
 
 Local MCP adapter:
 
-- `search_tools`
-- `get_server_manifest`
-- `invoke_tool`
+- `relay serve` starts a local stdio MCP server
+- `search_tools` — search Relay Cloud, return results with next action
+- `get_server_manifest` — return full manifest
+- `invoke_tool` — execute via shared `invokeTool()` runtime
 
-Minimum behavior:
+Agent bootstrap (how agents know to call Relay):
 
-- Fetch Relay search/manifest data.
-- Share one runtime implementation between CLI and local MCP.
-- Resolve env vars from the local environment.
-- Spawn package-backed stdio servers locally.
-- Speak MCP over stdio.
-- Call the requested tool with JSON args.
-- Kill the subprocess on timeout or parent exit.
-- Print structured errors when env vars or schemas are missing.
+- MCP-native: `instructions` field in initialize response (~650 chars), zero extra config
+- CLI-capable: `relay bootstrap` outputs compact system prompt injection (~80 tokens)
+- Both teach one pattern: "before taking action in an external service, search first"
 
-Do not add yet:
+Architecture:
 
-- cloud sandbox
-- Vault injection
-- remote process control
-- audit sync
-- DLP/policy stack
-- generalized GitHub clone execution
+```
+cli/
+  src/
+    cli.ts                    # Commander entry
+    commands/{search,info,invoke,serve,bootstrap}.ts
+    runtime/
+      relay-client.ts         # HTTP client for Relay Cloud
+      mcp-stdio-client.ts     # MCP-over-stdio for child servers
+      subprocess.ts           # Spawn, timeout, kill lifecycle
+      invoke-tool.ts          # THE shared invokeTool() function
+    serve/
+      mcp-server.ts           # Local stdio MCP server
+      tools.ts                # Tool definitions + handlers
+    util/{config,output,errors}.ts
+```
 
-Acceptance:
+Build verified:
 
-- A local package-backed stdio MCP server can be discovered and invoked from both `relay invoke` and local MCP `invoke_tool`.
-- Missing secrets produce a clear local error.
-- Relay Local cleans up child processes reliably.
+- `npx tsc` — zero errors
+- `relay --help` — all commands listed
+- `relay bootstrap` / `relay bootstrap --mcp` — correct output
+- `relay serve` — passes MCP smoke test (initialize, tools/list, ping)
+
+Acceptance (updated):
+
+- ✅ CLI adapter and MCP adapter share one `invokeTool()` runtime function.
+- ✅ Local MCP exposes `search_tools`, `get_server_manifest`, `invoke_tool`.
+- ✅ Missing env vars produce clear structured errors.
+- ✅ Subprocess cleanup: SIGTERM → 3s → SIGKILL, parent exit kills all children.
+- ⏳ End-to-end invocation of a package-backed server (needs live Relay Cloud).
 
 ### Phase 5 - Prototype Review
 
