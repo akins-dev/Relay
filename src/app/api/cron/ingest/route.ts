@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isCronAuthorized } from '@/lib/cron/cron-auth';
 import { runIngest } from '@/lib/cron/ingest';
 
+export const maxDuration = 300; // 5 minutes max on Vercel Pro
+
 const SOURCES = ['official', 'smithery', 'glama', 'mcp_directory'] as const;
 type CronIngestSource = typeof SOURCES[number];
 

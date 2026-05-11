@@ -18,7 +18,7 @@ import {
   isSafeUrl, detectTransport, parseReadmeSchemas,
   parseReadmeDescription, agoStr,
 } from './helpers';
-import { computeTrustScore, scanNpmDependencies } from '@/lib/security';
+import { computeTrustScore } from '@/lib/security';
 import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
 import { log } from '@/lib/logger';
 
@@ -125,6 +125,8 @@ export async function upsertServers(
   const sourceStart = Date.now();
   // Collected profile upsert promises — awaited after the main loop (M4 fix).
   const profileUpserts: Promise<any>[] = [];
+  // MVP: Track extraction sources for the final summary
+  const extractionSources: Record<string, number> = {};
 
   // Resolve system author_id
   const { data: systemProfile } = await svc
@@ -134,6 +136,13 @@ export async function upsertServers(
   if (!systemAuthorId) {
     log.warn(TAG, 'No system profile found — new servers will lack author_id');
   }
+
+  log.info(TAG, `\n  ┌─────────────────────────────────────────────┐`);
+  log.info(TAG, `  │  Processing ${servers.length} servers (mode=${mode})`);
+  log.info(TAG, `  │  CVE scanning: DISABLED (MVP)`);
+  log.info(TAG, `  │  MCP probe:    ${runHeavyChecks ? 'ENABLED' : 'DISABLED'}`);
+  log.info(TAG, `  │  Sandbox:      ${runHeavyChecks && process.env.SANDBOX_URL ? 'ENABLED' : 'DISABLED'}`);
+  log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 
   // Batch pre-fetch existing servers (eliminates N+1 lookups)
   // NOTE: transport is included so the enrichment-path deriveAuthType call at line ~451
@@ -164,8 +173,6 @@ export async function upsertServers(
   }
 
   log.info(TAG, `Pre-fetched ${existingByName.size} existing. Processing ${servers.length} incoming.`);
-
-  const scannedRepos = new Map<string, any[]>();
 
   for (let idx = 0; idx < servers.length; idx++) {
     const s = servers[idx];
@@ -243,6 +250,7 @@ export async function upsertServers(
       }
 
       // ── TIER 3: Full pipeline ─────────────────────────────────────────────
+      const serverStart = Date.now();
 
       let toolSchemas = normalizeToolSchemas(s.tool_schemas ?? []);
       let mcpResources: any[] = [];
@@ -263,11 +271,21 @@ export async function upsertServers(
 
       // Only probe HTTP servers that are not from enrichment-only sources
       if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
+        log.progress(TAG, idx, servers.length, s.name, `probing ${s.endpoint.slice(0, 60)}...`);
         result.extraction_metrics!.probe_attempts++;
+        const probeStart = Date.now();
         const primitives = await fetchMCPPrimitives(s.endpoint, s.github_url ?? undefined);
+        const probeMs = Date.now() - probeStart;
+
         if (primitives.toolSchemas.length > 0) {
           result.extraction_metrics!.probe_success++;
+          log.progress(TAG, idx, servers.length, s.name,
+            `probe ✓ ${primitives.toolSchemas.length} tools, ${primitives.resources.length} resources, ${primitives.prompts.length} prompts | ${primitives.transport} | proto=${primitives.protocolVersion ?? 'unknown'} | ${probeMs}ms`);
+        } else {
+          log.progress(TAG, idx, servers.length, s.name,
+            `probe ✗ no tools extracted | mcp=${primitives.mcpCompliant} | transport=${primitives.transport} | ${probeMs}ms`);
         }
+
         if (primitives.toolSchemas.length > 0 || toolSchemas.length === 0) {
           toolSchemas = normalizeToolSchemas(primitives.toolSchemas);
         }
@@ -287,9 +305,11 @@ export async function upsertServers(
         if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id || s.package_info)) {
           const sandboxCommand = buildSandboxCommand(s);
           if (sandboxCommand) {
+            log.progress(TAG, idx, servers.length, s.name, `sandbox → ${sandboxCommand.command} ${sandboxCommand.args.slice(0, 3).join(' ')}`);
             result.extraction_metrics!.sandbox_attempts++;
             let sandboxSucceeded = false;
             try {
+              const sandboxStart = Date.now();
               const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
                 method: 'POST',
                 headers: {
@@ -300,8 +320,11 @@ export async function upsertServers(
                 // Hard cap: sandbox may cold-start on Render plus spend up to 180s
                 // connecting while npx/uvx downloads the package on a cold container.
                 // Without this, a hung sandbox blocks the entire ingest run indefinitely.
+                // Keep-alives now prevent Render from dropping this connection early!
                 signal: AbortSignal.timeout(Number(process.env.SANDBOX_EXTRACT_TIMEOUT_MS || 240_000)),
               });
+              const sandboxMs = Date.now() - sandboxStart;
+
               if (req.ok) {
                 const sandboxResult = await req.json();
                 if (sandboxResult.success && sandboxResult.data) {
@@ -313,14 +336,24 @@ export async function upsertServers(
                   protocolVersion = '2024-11-05';
                   toolExtractionSource = toolSchemas.length > 0 ? 'sandbox' : toolExtractionSource;
                   sandboxSucceeded = true;
+                  log.progress(TAG, idx, servers.length, s.name,
+                    `sandbox ✓ ${toolSchemas.length} tools, ${mcpResources.length} resources, ${mcpPrompts.length} prompts | ${sandboxMs}ms`);
+                } else {
+                  log.progress(TAG, idx, servers.length, s.name,
+                    `sandbox ✗ returned success=${sandboxResult.success} | ${sandboxMs}ms`);
                 }
+              } else {
+                log.progress(TAG, idx, servers.length, s.name,
+                  `sandbox ✗ HTTP ${req.status} | ${sandboxMs}ms`);
               }
             } catch (err) {
               // Sandbox timed out or network error — do NOT carry forward any partial
               // toolSchemas that may have been set. Reset to empty so README fallback
               // gets a clean slate rather than stale pre-sandbox data.
               toolSchemas = [];
-              log.warn(TAG, `Sandbox failed for ${s.name}`, err instanceof Error ? err : undefined);
+              const errMsg = err instanceof Error ? err.message : String(err);
+              log.progress(TAG, idx, servers.length, s.name,
+                `sandbox ✗ ${errMsg.includes('abort') || errMsg.includes('timeout') ? 'TIMEOUT' : 'ERROR'}: ${errMsg.slice(0, 120)}`);
             }
             // If sandbox ran but returned no tools, clear any upstream placeholder schemas
             // so README parsing gets a fair shot rather than being blocked by empty shells.
@@ -330,6 +363,7 @@ export async function upsertServers(
 
         // README fallback — only if sandbox produced nothing
         if (toolSchemas.length === 0 && s.github_url) {
+          log.progress(TAG, idx, servers.length, s.name, 'README fallback...');
           toolSchemas = normalizeToolSchemas(await parseReadmeSchemas(s.github_url));
           if (toolSchemas.length > 0) {
             toolExtractionSource = 'readme_parsed';
@@ -364,26 +398,10 @@ export async function upsertServers(
         ].join('|'))
         .digest('hex');
 
-      // CVE scan (deduplicated by repo)
-      const repoKey = s.github_url?.replace(/\.git$/, '').toLowerCase();
-      let cveIssues: any[] = [];
-      if (runHeavyChecks && repoKey) {
-        if (scannedRepos.has(repoKey)) {
-          cveIssues = scannedRepos.get(repoKey)!;
-        } else {
-          cveIssues = await scanNpmDependencies(s.github_url!);
-          scannedRepos.set(repoKey, cveIssues);
-        }
-      }
-
-      const hasCriticalCve = cveIssues.some(i => i.severity === 'critical');
-      if (hasCriticalCve) {
-        log.warn(TAG, `Rejected ${s.name} — critical CVE`, {
-          cve: cveIssues.find(i => i.severity === 'critical')?.cve,
-        });
-        result.rejected++;
-        continue;
-      }
+      // MVP: CVE scanning DISABLED — saves ~2-5s per server with a GitHub repo.
+      // Re-enable when moving to production trust scoring.
+      const cveIssues: any[] = [];
+      const hasCriticalCve = false;
 
       // Description enrichment
       let descriptionQuality = s.description_quality ?? 'upstream';
@@ -457,8 +475,8 @@ export async function upsertServers(
         github_url:        s.github_url ?? null,
         homepage_url:      s.homepage_url ?? null,
         icon_url:          s.icon_url ?? null,
-        // L3 fix: store null, not the string 'unknown' — let the DB NOT NULL default handle it.
-        license:           s.license ?? null,
+        // DB has NOT NULL constraint on license — default to 'unknown' when upstream doesn't provide one.
+        license:           s.license || 'unknown',
         tags:              s.tags.length > 0 ? s.tags : ['general'],
         tools:             resolvedTools,
         tool_schemas:      toolSchemas as any,
@@ -653,6 +671,13 @@ export async function upsertServers(
         });
       }
 
+      // Log per-server outcome
+      const serverElapsed = ((Date.now() - serverStart) / 1000).toFixed(1);
+      const toolCount = toolSchemas.length || resolvedTools.length;
+      extractionSources[toolExtractionSource] = (extractionSources[toolExtractionSource] ?? 0) + 1;
+      log.progress(TAG, idx, servers.length, s.name,
+        `${existing ? 'UPDATE' : 'ADD'} → ${toolCount} tools (${toolExtractionSource}) ${serverElapsed}s`);
+
     } catch (err) {
       log.error(TAG, `Exception processing ${s.name ?? '?'}`, err);
       result.errors.push(`${s.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`);
@@ -667,11 +692,28 @@ export async function upsertServers(
 
   const elapsed = ((Date.now() - sourceStart) / 1000).toFixed(1);
   const skipDetail = Object.entries(skipReasons).map(([k, v]) => `${k}:${v}`).join(' ');
-  log.info(TAG, `Done in ${elapsed}s`, {
-    added: result.added, updated: result.updated,
-    skipped: result.skipped, rejected: result.rejected,
-    errors: result.errors.length, skipBreakdown: skipDetail || 'none',
-  });
+
+  // ── Final Summary ─────────────────────────────────────────────────────────
+  log.info(TAG, `\n  ┌─────────────────────────────────────────────┐`);
+  log.info(TAG, `  │  Pipeline Complete — ${elapsed}s`);
+  log.info(TAG, `  ├─────────────────────────────────────────────┤`);
+  log.info(TAG, `  │  Added:    ${String(result.added).padStart(5)}`);
+  log.info(TAG, `  │  Updated:  ${String(result.updated).padStart(5)}`);
+  log.info(TAG, `  │  Skipped:  ${String(result.skipped).padStart(5)}  (${skipDetail || 'none'})`);
+  log.info(TAG, `  │  Rejected: ${String(result.rejected).padStart(5)}`);
+  log.info(TAG, `  │  Errors:   ${String(result.errors.length).padStart(5)}`);
+  log.info(TAG, `  ├─────────────────────────────────────────────┤`);
+  log.info(TAG, `  │  Extraction Sources:`);
+  for (const [source, count] of Object.entries(extractionSources).sort((a, b) => b[1] - a[1])) {
+    const pct = servers.length > 0 ? ((count / servers.length) * 100).toFixed(1) : '0.0';
+    log.info(TAG, `  │    ${source.padEnd(20)} ${String(count).padStart(5)}  (${pct}%)`);
+  }
+  if (result.extraction_metrics) {
+    log.info(TAG, `  ├─────────────────────────────────────────────┤`);
+    log.info(TAG, `  │  Probe:    ${result.extraction_metrics.probe_attempts} attempted → ${result.extraction_metrics.probe_success} success`);
+    log.info(TAG, `  │  Sandbox:  ${result.extraction_metrics.sandbox_attempts} attempted → ${result.extraction_metrics.sandbox_success} success`);
+  }
+  log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 
   return result;
 }

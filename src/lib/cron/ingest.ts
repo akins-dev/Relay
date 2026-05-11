@@ -87,8 +87,13 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
   }
 
   try {
+    const sourcesToRun = toRun.map(s => s.label).join(', ');
+    log.section(`INGEST RUN — mode=${mode}`);
+    log.info('ingest:cron', `Sources: ${sourcesToRun}`);
+    log.info('ingest:cron', `Started: ${startedAt}\n`);
+
     for (const src of toRun) {
-      log.section(`SOURCE: ${src.label}`);
+      log.section(`SOURCE: ${src.label} (${src.tier})`);
 
       const t0 = Date.now();
       let servers: any[];
@@ -101,7 +106,8 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
         continue;
       }
 
-      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${((Date.now() - t0) / 1000).toFixed(1)}s. Upserting...`);
+      const fetchElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${fetchElapsed}s → upserting...`);
 
       try {
         results[src.key] = await upsertServers(servers, svc, { mode });
@@ -112,7 +118,8 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
       }
 
       const r = results[src.key];
-      log.info(`ingest:${src.key}`, `Complete`, {
+      const totalElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info(`ingest:${src.key}`, `Complete in ${totalElapsed}s`, {
         added: r.added, updated: r.updated, skipped: r.skipped, rejected: r.rejected,
       });
     }

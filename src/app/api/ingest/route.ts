@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient }     from '@/lib/supabase/server';
 import { runIngest }               from '@/lib/cron/ingest';
 
+export const maxDuration = 300; // 5 minutes max on Vercel Pro
+
 const IngestSchema = z.object({
   source: z.enum(['all', 'official', 'smithery', 'glama', 'mcp_directory']).default('all'),
   mode:   z.enum(['catalog', 'full']).default('full'),

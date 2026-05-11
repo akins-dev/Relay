@@ -173,10 +173,33 @@ Tasks:
 - Run CLI and local MCP smoke tests.
 - Review docs for stale production-platform claims.
 - Document known limitations.
+- Build intent benchmark (20-40 intents) and measure Precision@1/3 on current FTS search.
+- Create user-facing README for @relay/cli with API key and configuration docs.
 
 Exit criteria:
 
 - The prototype demonstrates the core Relay magic without hiding behind future features.
+- Search Precision@1 is measured and documented.
+
+## Sprint 6 - Hybrid Semantic Search
+
+Goal: upgrade search from pure lexical (FTS + trigram) to hybrid (FTS + pgvector) for conversational intent matching.
+
+Current gap: FTS cannot match "notify my team about the deployment" to Slack/Discord/email servers because it matches words, not meaning.
+
+Tasks:
+
+- Enable pgvector extension in Supabase.
+- Add embedding column to servers table (vector(1536) or vector(384)).
+- Generate embeddings at ingest time (name + description + tool names + tool descriptions).
+- Embed user intent at search time (one API call per cache miss).
+- Create search_servers_hybrid() SQL function combining FTS + vector with Reciprocal Rank Fusion.
+- Re-run intent benchmark and compare Precision@1/3 against FTS baseline.
+
+Exit criteria:
+
+- Precision@1 improves by at least 15% over FTS baseline on the intent benchmark.
+- Conversational intents ("check if my site is up", "notify my team") return correct servers.
 
 ## Deferred Ideas
 

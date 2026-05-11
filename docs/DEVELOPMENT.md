@@ -126,11 +126,16 @@ Ingest has two modes:
 Production cron uses `catalog` mode and then processes queued verification jobs in small batches. This keeps source ingestion consumable even when individual servers are slow, unreachable, rate limited, or require sandbox extraction.
 
 ```bash
+cd path-to-repo
+set -a
+source .env
+set +a
+
 # Fast catalog ingest (recommended for MVP)
 curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer your-cron-secret" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"source": "official", "mode": "catalog"}'
+  -d '{"source": "all", "mode": "catalog"}'
 
 # Or trigger individual sources:
 # "official"      — MCP official registry
@@ -141,7 +146,7 @@ curl -X POST http://localhost:3000/api/ingest \
 
 # Deep inline ingest, useful for local debugging but not recommended as the scheduled MVP path
 curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer your-cron-secret" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"source": "official", "mode": "full"}'
 ```

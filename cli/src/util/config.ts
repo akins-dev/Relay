@@ -1,21 +1,12 @@
 /**
  * config.ts — Environment-driven configuration for Relay Local.
  *
- * RELAY_API_URL
- *   Base URL for Relay Cloud. Defaults to https://relay.dev (production).
- *   Most users never change this — it's baked in like npm's registry URL.
- *   Only override if self-hosting a Relay Cloud instance.
+ * Only two env vars matter for the CLI itself:
+ *   RELAY_API_URL  — base URL for Relay Cloud (default: https://relay.dev)
+ *   RELAY_API_KEY  — optional API key for higher rate limits
  *
- *   For MCP mode: set via the `env` field in the agent host's MCP config.
- *   For CLI mode: inherited from the shell environment.
- *
- * RELAY_API_KEY
- *   Optional. Anonymous access works. Key exists only for future rate
- *   limiting under heavy traffic — irrelevant for the prototype.
- *
- * Downstream server credentials (GITHUB_TOKEN, SENDGRID_API_KEY, etc.)
- * are NOT configured here. They live in the user's environment and are
- * passed through to child processes automatically.
+ * Downstream MCP server credentials (GITHUB_TOKEN, SENDGRID_API_KEY, etc.)
+ * are resolved from the user's environment by the subprocess — not by Relay.
  */
 
 export interface RelayConfig {
@@ -28,7 +19,7 @@ let _config: RelayConfig | null = null;
 export function getConfig(): RelayConfig {
   if (_config) return _config;
 
-  let apiBase = process.env.RELAY_API_URL ?? 'https://relay.dev';
+  let apiBase = process.env.RELAY_API_URL ?? 'https://relay.vercel.app';
   // Normalize: remove trailing slash
   apiBase = apiBase.replace(/\/+$/, '');
   // Add protocol if missing
