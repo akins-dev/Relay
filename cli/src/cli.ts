@@ -38,4 +38,4 @@ registerInvokeCommand(program);
 registerServeCommand(program);
 registerBootstrapCommand(program);
 
-program.parse();
+program.parse(process.argv);
