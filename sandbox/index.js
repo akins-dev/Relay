@@ -48,6 +48,14 @@ app.post('/extract', async (req, res) => {
 
   console.log(`[extract] Spawning: ${command} ${args ? args.join(' ') : ''}`);
 
+  // Trick Render's 60s proxy timeout by sending headers immediately
+  // and writing a keep-alive space every 10 seconds.
+  res.setHeader('Content-Type', 'application/json');
+  res.flushHeaders();
+  const keepAlive = setInterval(() => {
+    res.write(' ');
+  }, 10000);
+
   // Only pass safe OS variables to prevent leaking SANDBOX_AUTH_TOKEN
   const SAFE_ENV_KEYS = new Set(['PATH', 'NODE_ENV', 'PYTHONPATH', 'USER', 'HOME', 'LANG', 'LC_ALL']);
   const safeEnv = {};
@@ -122,7 +130,8 @@ app.post('/extract', async (req, res) => {
 
     console.log(`[extract] Success: ${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`);
 
-    return res.json({
+    clearInterval(keepAlive);
+    return res.end(JSON.stringify({
       success: true,
       data: {
         tools,
@@ -135,7 +144,7 @@ app.post('/extract', async (req, res) => {
         connectTimeoutMs,
         listTimeoutMs
       }
-    });
+    }));
 
   } catch (error) {
     console.error(`[extract] Error:`, error);
@@ -158,10 +167,12 @@ app.post('/extract', async (req, res) => {
     } catch (_) {}
     try { await client.close(); } catch (_) {}
 
-    return res.status(500).json({
+    clearInterval(keepAlive);
+    res.statusCode = 500;
+    return res.end(JSON.stringify({
       success: false,
       error: error.message || "Failed to extract primitives from stdio server"
-    });
+    }));
   }
 });
 

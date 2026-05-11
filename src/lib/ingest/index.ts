@@ -35,6 +35,7 @@ export type {
   EnvVarSpec,
   PackageInfo,
   ToolExtractionSource,
+  IngestMode,
   IngestFetcher,
 } from './types';
 

@@ -1,6 +1,6 @@
 # ⬡ Relay
 
-**The agent-centric capability access layer for MCP servers.**
+**A lightweight runtime discovery layer for MCP servers.**
 
 Canonical technical reference: [`docs/README.md`](docs/README.md)
 Architecture flows: [`docs/ARCHITECTURE_FLOWS.md`](docs/ARCHITECTURE_FLOWS.md)
@@ -30,19 +30,19 @@ The core scaling problem in MCP is not raw server count. It is the amount of cap
 
 Even with strong progress in **RAG** and orchestration frameworks like **LangChain** and **LangGraph**, the infrastructure problem remains: agents still need a clean, secure, and scalable way to discover, rank, authorize, and invoke tools at runtime across a fragmented ecosystem without pre-loading everything.
 
-## The Vision: Relay
+## The Solution: Relay
 
 **Relay removes the practical MCP configuration ceiling.**
 
 Relay is a secure capability access layer that lets agents:
 
 - discover relevant MCP tools by natural-language intent at runtime
-- invoke them through one controlled and guarded path
-- keep the model-facing surface small with just `search_tools` and `invoke_tool`
-- benefit from centralized security, trust scoring, policy enforcement, and credential injection
-- record search and invoke outcomes so future routing improves from real usage
+- get a local run manifest for the right server/tool
+- keep the model-facing surface small with `search_tools` and `get_server_manifest`
+- avoid context bloat from preloading every possible MCP server
+- run tools locally through your agent host or Relay CLI instead of routing execution through Relay
 
-Instead of forcing humans to preload and maintain dozens of servers, Relay moves capability resolution into the runtime loop and records outcomes so future routing improves from real usage.
+Instead of forcing humans to preload and maintain dozens of servers, Relay opens the tool landscape at runtime and lets the local agent do the work.
 ---
 
 ## Connect your agent
@@ -59,20 +59,19 @@ Instead of forcing humans to preload and maintain dozens of servers, Relay moves
 }
 ```
 
-Your agent gets two tools: `search_tools(intent)` and `invoke_tool(server, tool, args)`.
+Your agent gets two tools: `search_tools(intent)` and `get_server_manifest(server)`.
 
 ### Option 2 — System prompt / agents.md
 
 ```
 You have access to Relay.
-If your framework supports MCP, connect to https://relay.vercel.app/api/mcp-server and use search_tools plus invoke_tool.
+If your framework supports MCP, connect to https://relay.vercel.app/api/mcp-server and use search_tools plus get_server_manifest.
 Otherwise read https://relay.vercel.app/agents.md once before your first tool call and use the REST fallback below.
 Before taking any action that affects an external system, search first.
 For knowledge-only questions, answer directly without searching.
 Never put credentials, API keys, or tokens in tool arguments.
 Search:  GET https://relay.vercel.app/api/servers/search?q={intent}
-Invoke:  POST https://relay.vercel.app/api/proxy/{serverName}/{toolName}
-Prefer servers with trust_score >= 65 for production use.
+Run:     relay invoke {serverName} {toolName}
 Use the returned inputSchema exactly. Do not guess arguments.
 ```
 
@@ -82,24 +81,15 @@ Use the returned inputSchema exactly. Do not guess arguments.
 # Discover by intent — returns full inputSchema per tool
 curl "https://relay.vercel.app/api/servers/search?q=send+transactional+email"
 
-# Invoke through the secure proxy
-curl -X POST "https://relay.vercel.app/api/proxy/sendgrid-mail/send_email" \
-  -H "Content-Type: application/json" \
-  -d '{"to": "user@example.com", "subject": "Hello", "body": "..."}'
+# Run locally with the returned manifest
+relay invoke sendgrid-mail send_email
 ```
 
 ---
 
-## Credentials — Relay Vault
+## Credentials
 
-Most MCP servers require API keys. Store them once in the Relay Vault. The proxy decrypts and injects at call time — your agent never sees the raw value. You can view the secret name but not the value after saving.
-
-**One-time setup per service:**
-
-1. Get your API key from the service dashboard
-2. Go to `https://relay.vercel.app/dashboard/secrets`
-3. Enter the server name, the suggested variable name (shown in any 401 response), and your key
-4. Done — every future call through Relay injects it automatically
+Relay returns the environment variables a server expects. For the MVP, credentials stay with your local agent host or CLI environment; Relay does not need to hold or inject secrets.
 
 ---
 
@@ -128,7 +118,6 @@ GET  /api/servers/search?q={intent}&limit=5   Semantic search — full inputSche
 GET  /api/servers?sort=trust&verified=true&page=2&page_size=24
                                               Browse with filters + pagination
 GET  /api/servers/:name                       Server detail, scan history, CVE issues
-POST /api/proxy/:serverName/:toolName         Guarded proxy — every call inspected
 POST /api/mcp-server                          Native MCP server (StreamableHTTP)
 GET  /api/mcp-server                          Native MCP server (SSE — for older clients)
 POST /api/ingest                              Trigger ingest (CRON_SECRET required)

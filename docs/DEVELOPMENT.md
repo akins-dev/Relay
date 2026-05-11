@@ -118,34 +118,77 @@ If a repository is ingested without a configured Sandbox, Relay will safely fall
 
 ## Ingest
 
-Ingest normalizes upstream registries into canonical `servers` rows, probes remote MCP endpoints when possible, falls back to sandbox/README extraction for `stdio` rows, runs CVE checks, computes trust, and upserts into Supabase.
+Ingest has two modes:
+
+- `catalog` — fast MVP path. Fetches upstream registries, normalizes/dedupes rows, stores source metadata, derives auth, writes preliminary trust, and queues expensive post-ingest work.
+- `full` — legacy/deep path. Runs the heavier probe/sandbox/README/CVE work inline.
+
+Production cron uses `catalog` mode and then processes queued verification jobs in small batches. This keeps source ingestion consumable even when individual servers are slow, unreachable, rate limited, or require sandbox extraction.
 
 ```bash
-# Ingest all sources at once (recommended)
+cd path-to-repo
+set -a
+source .env
+set +a
+
+# Fast catalog ingest (recommended for MVP)
 curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer your-cron-secret" \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"source": "all"}'
+  -d '{"source": "all", "mode": "catalog"}'
 
 # Or trigger individual sources:
-# "official"      — MCP official registry (~87 servers, highest trust, no key needed)
+# "official"      — MCP official registry
 # "smithery"      — Smithery registry (SMITHERY_API_KEY required)
 # "glama"         — Glama directory (enrichment source, requires existing rows with github_url)
 # "mcp_directory" — mcp.directory (enrichment source, requires existing rows with github_url)
   -d '{"source": "official"}'
+
+# Deep inline ingest, useful for local debugging but not recommended as the scheduled MVP path
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "official", "mode": "full"}'
 ```
 
 Expected response includes a JSON breakdown of successful indexing and rejections per source.
 
 Important current behavior:
 
-- `stdio` rows are stored even when they are not cloud-invocable.
-- If a `stdio` server has a `smithery_id`, ingest derives a concrete sandbox command and tries extraction.
+- Manual or admin-triggered ingest calls source-specific catalog routes:
+  - `/api/cron/ingest/official`
+  - `/api/cron/ingest/smithery`
+  - `/api/cron/ingest/glama`
+  - `/api/cron/ingest/mcp-directory`
+- There is no scheduled Vercel cron dependency in the prototype path.
+- The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`.
+- `catalog` rows can appear in search when they have enough metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
+- Search responses include quality labels:
+  - `discovery_only`
+  - `manifest_ready`
+  - `schema_ready`
+  - `verified`
+  - `suspended`
+- `stdio` rows are stored because Relay Local can later run package-backed stdio servers.
 - Relay does not guess an execution command from a plain GitHub repo URL; repo-backed stdio rows fall back to README parsing unless a concrete launcher is known.
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
-- If sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
+- In `full` mode, if sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
 - If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
-- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Scores grow automatically as agents invoke servers through the proxy.
+- **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Future Relay Local outcome reports can feed this signal.
+
+### Retired post-ingest processing queue
+
+Migration `036_processing_jobs_and_mvp_ingest.sql` added `server_processing_jobs`.
+Migration `037_drop_processing_jobs_queue.sql` retires it for the prototype.
+
+The queue used to model production-style enrichment jobs:
+
+- `probe` — HTTP/SSE servers with endpoints
+- `sandbox` — stdio servers with enough launch metadata
+- `readme_enrich` — GitHub-backed rows with weak descriptions
+- `cve_scan` — GitHub-backed rows
+
+Those are useful later, but they are not required to validate catalog ingest, search, manifests, and Relay Local invocation.
 
 ### Change detection and reprocessing
 

@@ -5,8 +5,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient }     from '@/lib/supabase/server';
 import { runIngest }               from '@/lib/cron/ingest';
 
+export const maxDuration = 300; // 5 minutes max on Vercel Pro
+
 const IngestSchema = z.object({
   source: z.enum(['all', 'official', 'smithery', 'glama', 'mcp_directory']).default('all'),
+  mode:   z.enum(['catalog', 'full']).default('full'),
 });
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -23,7 +26,7 @@ export async function POST(req: NextRequest) {
   try { body = IngestSchema.parse(await req.json().catch(() => ({}))); }
   catch (e) { return zodError(e); }
 
-  const result = await runIngest(body.source as any);
+  const result = await runIngest(body.source as any, { mode: body.mode });
   return jsonResponse(result, result.error ? 500 : 200);
 }
 

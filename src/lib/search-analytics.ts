@@ -259,11 +259,11 @@ export interface InvokeOutcomeParams {
 }
 
 /**
- * Record an invoke_tool result and update the intent_server_mappings table.
+ * Record a Relay invocation result and update the intent_server_mappings table.
  * This is the core feedback loop — every success/failure updates the ranking
  * signal for future searches with the same intent.
  *
- * Always fire-and-forget. Never blocks the proxy response.
+ * Always fire-and-forget. Never blocks the runtime response.
  */
 export async function recordInvokeOutcome(params: InvokeOutcomeParams): Promise<void> {
   try {

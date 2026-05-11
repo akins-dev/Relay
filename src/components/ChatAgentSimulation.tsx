@@ -169,7 +169,7 @@ export function ChatAgentSimulation() {
                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
                <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
              </div>
-             <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b] uppercase">{BRAND.name} · runtime proxy</span>
+             <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b] uppercase">{BRAND.name} · local runtime</span>
           </div>
           <div className="flex items-center gap-2">
              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4ade80]" />

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     vault_id:    vaultId,
     secret_name: body.secret_name,
     server_name: body.server_name ?? null,
-    message:     `Secret stored. The proxy will automatically inject ${body.secret_name} when calling ${body.server_name ?? 'any server'}.`,
+    message:     `Secret stored. Relay Local can use ${body.secret_name} as a future secret source for ${body.server_name ?? 'any server'}.`,
   });
 }
 

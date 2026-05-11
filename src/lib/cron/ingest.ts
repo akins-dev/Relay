@@ -35,6 +35,11 @@ import { log } from '@/lib/logger';
 
 type SourceKey   = 'official' | 'smithery' | 'glama' | 'mcp_directory';
 type SourceInput = 'all' | SourceKey;
+type IngestMode  = 'catalog' | 'full';
+
+interface RunIngestOptions {
+  mode?: IngestMode;
+}
 
 interface SourceConfig {
   key:     SourceKey;
@@ -52,11 +57,12 @@ const SOURCES: SourceConfig[] = [
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-export async function runIngest(source: SourceInput = 'all') {
+export async function runIngest(source: SourceInput = 'all', options: RunIngestOptions = {}) {
   const svc = createServiceClient();
   const ingestRuns = svc.from('ingest_runs') as any;
   const startedAt = new Date().toISOString();
   const results: Record<string, any> = {};
+  const mode = options.mode ?? 'full';
 
   // Determine which sources to run
   const toRun = source === 'all'
@@ -81,8 +87,13 @@ export async function runIngest(source: SourceInput = 'all') {
   }
 
   try {
+    const sourcesToRun = toRun.map(s => s.label).join(', ');
+    log.section(`INGEST RUN — mode=${mode}`);
+    log.info('ingest:cron', `Sources: ${sourcesToRun}`);
+    log.info('ingest:cron', `Started: ${startedAt}\n`);
+
     for (const src of toRun) {
-      log.section(`SOURCE: ${src.label}`);
+      log.section(`SOURCE: ${src.label} (${src.tier})`);
 
       const t0 = Date.now();
       let servers: any[];
@@ -95,10 +106,11 @@ export async function runIngest(source: SourceInput = 'all') {
         continue;
       }
 
-      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${((Date.now() - t0) / 1000).toFixed(1)}s. Upserting...`);
+      const fetchElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${fetchElapsed}s → upserting...`);
 
       try {
-        results[src.key] = await upsertServers(servers, svc);
+        results[src.key] = await upsertServers(servers, svc, { mode });
         results[src.key].fetched = servers.length;
       } catch (err) {
         log.error(`ingest:${src.key}`, 'Upsert failed', err);
@@ -106,7 +118,8 @@ export async function runIngest(source: SourceInput = 'all') {
       }
 
       const r = results[src.key];
-      log.info(`ingest:${src.key}`, `Complete`, {
+      const totalElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      log.info(`ingest:${src.key}`, `Complete in ${totalElapsed}s`, {
         added: r.added, updated: r.updated, skipped: r.skipped, rejected: r.rejected,
       });
     }
@@ -132,6 +145,7 @@ export async function runIngest(source: SourceInput = 'all') {
       run: {
         id:          run?.id ?? null,
         source,
+        mode,
         started_at:  startedAt,
         finished_at: finishedAt,
         duration_ms: new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
@@ -157,6 +171,7 @@ export async function runIngest(source: SourceInput = 'all') {
       run: {
         id:          run?.id ?? null,
         source,
+        mode,
         started_at:  startedAt,
         finished_at: finishedAt,
       },

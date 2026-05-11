@@ -194,7 +194,7 @@ export function computeTrustScore(params: {
   const credibilityPts = params.verified ? 15 : 0;
 
   // ── Behavioral reliability — 15 pts ────────────────────────────────────────
-  // Source: intent_server_mappings — populated on every proxy invoke_tool call.
+  // Source: intent_server_mappings — populated by Relay Local outcome reports.
   // Works for ALL servers regardless of ingestion source.
   //
   // Bayesian prior Beta(3,1): adjusted_rate = (success_count + 3) / (invoke_count + 4)
@@ -529,7 +529,7 @@ const COMBINED_INDIRECT = new RegExp(
 
 /**
  * S-13: Scan tool response data for indirect prompt injection.
- * Applied to response bodies in the proxy layer.
+ * Applied to response bodies at the Relay Local/runtime boundary.
  * Returns array of issue labels. Empty = clean.
  */
 export function indirectInjectionScan(rawText: string): string[] {

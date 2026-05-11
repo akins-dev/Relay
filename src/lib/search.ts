@@ -24,6 +24,8 @@ import {
   MAX_TOOLS_PER_RESULT,
   type CachedServer,
 } from '@/lib/search-analytics';
+import { deriveServerQualityStatus, deriveServerTrustState, type ServerQualityStatus, type ServerTrustState } from '@/lib/server-quality';
+import { buildRelayManifest } from '@/lib/relay-manifest';
 
 export interface SearchResult {
   name:                   string;
@@ -44,6 +46,10 @@ export interface SearchResult {
   transport:              string | null;
   usage:                  string;
   is_new:                 boolean;
+  quality_status:         ServerQualityStatus;
+  trust_state:            ServerTrustState;
+  manifest:               ReturnType<typeof buildRelayManifest>;
+  next:                   string;
 }
 
 export interface RunSearchOptions {
@@ -88,7 +94,8 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
       .select(`
         id, name, display_name, description, tools, tool_schemas,
         trust_score, latency_ms, uptime_pct, source, verified, scan_status,
-        tool_extraction_source, proxy_available, transport, endpoint
+        tool_extraction_source, proxy_available, transport, endpoint,
+        package_info, env_var_schema
       `)
       .in('name', serverNames)
       .eq('status', 'active');
@@ -97,7 +104,7 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
       .sort((a: any, b: any) => (cachedOrder.get(a.name) ?? 9999) - (cachedOrder.get(b.name) ?? 9999))
       .slice(0, limit);
 
-    return {
+      return {
       results:         formatResults(ordered, cachedBoostByName, intent, surface, 'cache'),
       intentHash,
       cacheHit:        true,
@@ -118,7 +125,11 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
     });
   const searchLatencyMs = Date.now() - searchStart;
 
-  if (searchError || !results?.length) {
+  if (searchError) {
+    throw new Error(`search_servers RPC failed: ${searchError.message ?? 'unknown error'}`);
+  }
+
+  if (!results?.length) {
     return { results: [], intentHash, cacheHit: false, searchLatencyMs };
   }
 
@@ -172,10 +183,14 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
       transport:       s.transport ?? null,
       usage: proxyAvailable === false
         ? isStdio
-          ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
-          : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
-        : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
+          ? `${BRAND.cli} can launch this stdio server locally when its manifest includes package_info.`
+          : `Use ${BRAND.cli} or your MCP host to connect from the returned manifest.`
+        : `${BRAND.slug} invoke ${s.name} <tool_name>`,
       is_new: s.is_new ?? false,
+      quality_status: deriveServerQualityStatus(s),
+      trust_state: deriveServerTrustState(s),
+      manifest: buildRelayManifest(s),
+      next: `${BRAND.slug} invoke ${s.name} <tool_name>`,
     } satisfies SearchResult;
   });
 
@@ -245,10 +260,14 @@ function formatResults(
       transport:       s.transport ?? null,
       usage: proxyAvailable === false
         ? isStdio
-          ? `This is a local stdio process. Use: npx -y @${BRAND.slug}/cli invoke ${s.name} <tool_name>`
-          : `This server is discoverable but not currently proxyable. Check its transport metadata before invoking.`
-        : `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
+          ? `${BRAND.cli} can launch this stdio server locally when its manifest includes package_info.`
+          : `Use ${BRAND.cli} or your MCP host to connect from the returned manifest.`
+        : `${BRAND.slug} invoke ${s.name} <tool_name>`,
       is_new: s.is_new ?? false,
+      quality_status: deriveServerQualityStatus(s),
+      trust_state: deriveServerTrustState(s),
+      manifest: buildRelayManifest(s),
+      next: `${BRAND.slug} invoke ${s.name} <tool_name>`,
     };
   });
 }

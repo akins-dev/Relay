@@ -435,8 +435,9 @@ function DashboardContent() {
               <div>
                 <h3 className="mb-2 text-xl font-bold text-foreground">Stored Credentials</h3>
                 <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground/90">
-                  Store provider API keys once. The proxy encrypts them via AES-256-GCM. 
-                  When an agent calls a tool requiring auth, the proxy decrypts and injects the credentials at call time — <strong className="text-white">your agent never sees the raw value</strong>.
+                  Store provider API keys as a future Relay Local secret source. The prototype prefers local
+                  environment variables first; Cloud Vault should return only through a deliberate Relay Local
+                  secret-fetch and audit flow.
                 </p>
               </div>
             </div>
@@ -444,8 +445,8 @@ function DashboardContent() {
             <div className="mb-8 grid gap-4 sm:grid-cols-3">
               {[
                 { n: '1', t: 'Store keys securely here in Vault' },
-                { n: '2', t: 'Agents access tools via Proxy' },
-                { n: '3', t: 'Proxy injects keys seamlessly' },
+                { n: '2', t: 'Agents invoke through Relay Local' },
+                { n: '3', t: 'Relay Local resolves secret sources' },
               ].map(s => (
                 <div key={s.n} className="rounded-xl bg-black/20 p-5 ring-1 ring-white/5 backdrop-blur-sm transition-colors hover:bg-black/30 text-center sm:text-left">
                   <div className="mx-auto mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-brand/20 font-mono text-sm font-bold text-brand ring-1 ring-brand/40 sm:mx-0">

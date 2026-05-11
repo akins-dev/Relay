@@ -14,6 +14,10 @@ This directory is the project's technical source of truth.
   A single-canvas Excalidraw scene for the full system workflow, importable into Excalidraw or Obsidian.
 - `DELIVERY_ROADMAP.md`
   The canonical sprint-by-sprint delivery plan. Detailed sprint scope should live here, not in architecture narratives.
+- `PROTOTYPE_IMPLEMENTATION_PLAN.md`
+  The canonical current MVP scope: Relay Cloud control plane, Relay Local runtime, search, manifests, CLI, and local MCP server mode.
+- `MIGRATION_LEDGER.md`
+  The canonical ledger for numbered Supabase migrations and retired schema objects.
 - `RATE_LIMITS.md`
   The canonical reference for exact enforced rate limits, keying, and configuration behavior.
 - `SECURITY.md`
@@ -37,18 +41,19 @@ When implementation changes touch any of the areas below, these docs should be u
 
 - ingest sources, normalization, extraction, deduplication, trust scoring, or schema handling
 - database schema, RPCs, analytics tables, or retention rules
-- runtime proxy behavior, auth injection, policy enforcement, or security scanning
+- runtime behavior, local invocation manifests, auth handling, policy enforcement, or security scanning
 - infrastructure dependencies, free-tier assumptions, migration strategy, or backup/export paths
 - roadmap, MVP scope, or major product/design decisions
 - enforced rate limits, rate-limit configuration, or route-level throttling behavior
+- database migrations or retired schema objects
 
 ## How To Use This Set
 
-1. Start with `TECHNICAL_BACKBONE.md` to understand the current system.
-2. Read `ARCHITECTURE_SYSTEM_MAP.md` for the end-to-end control, data, and maintenance flows.
-3. Open `diagrams/relay-system-overview.excalidraw` if you need the visual canvas immediately.
-4. Read `DECISION_LOG.md` to understand why the system looks this way.
-5. Read `CHANGELOG.md` to track how the architecture and plan evolved over time.
+1. Start with `PROTOTYPE_IMPLEMENTATION_PLAN.md` to understand the current MVP scope.
+2. Read `DELIVERY_ROADMAP.md` for the active delivery sequence.
+3. Use `MIGRATION_LEDGER.md` before adding or reversing database schema.
+4. Read `TECHNICAL_BACKBONE.md` for the broader technical history.
+5. Read `DECISION_LOG.md` and `CHANGELOG.md` to understand why the system changed.
 
 ## Conflict Resolution
 

@@ -72,7 +72,7 @@ flowchart TD
 
     subgraph CONSUMERS["Downstream Consumers"]
         SEARCH["GET /api/servers/search\nsearch_servers() RPC\nORDER BY: is_canonical DESC,\n  text_rank DESC, trust_score DESC,\n  use_count DESC\n→ canonical servers always rank first"]
-        INVOKE["executeProxyCall()\nReads: endpoint, tools,\n  auth_type, proxy_available,\n  transport, trust_score\n→ credential injection\n→ MCP handshake (SSE)\n→ upstream call + security scans"]
+        INVOKE["Relay Local runtime\nReads: manifest, tools,\n  env requirements,\n  transport, trust signals\n→ env/secret resolution\n→ MCP handshake\n→ upstream call + security scans"]
     end
 
     DB --> SEARCH & INVOKE
@@ -83,7 +83,7 @@ flowchart TD
 ## Data Structures
 
 Every upstream source normalizes into a single `IngestServer` contract before the pipeline runs.
-Field grades indicate importance to `search_tools` / `invoke_tool` reliability.
+Field grades indicate importance to `search_tools`, manifests, and future Relay Local `invoke_tool` reliability.
 
 ### `IngestServer`
 
@@ -118,7 +118,7 @@ Field grades indicate importance to `search_tools` / `invoke_tool` reliability.
 interface ToolSchema {
   name:         string;            // Must match [a-zA-Z0-9_-]+ per MCP spec
   description?: string;           // Grade A: search_tools intent matching
-  inputSchema?: Record<string, unknown>; // Grade A: invoke_tool validation
+  inputSchema?: Record<string, unknown>; // Grade A: Relay Local invoke validation
 }
 ```
 

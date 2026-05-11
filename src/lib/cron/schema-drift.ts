@@ -2,7 +2,6 @@ import { isSafeUrl }          from '@/lib/utils';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createHash }          from 'crypto';
 import { probeMCPServer }      from '@/lib/mcp-probe';
-import { indirectInjectionScan, shellInjectionScan } from '@/lib/security';
 import { log } from '@/lib/logger';
 
 export async function runSchemaDrift() {
@@ -20,11 +19,33 @@ export async function runSchemaDrift() {
     log.warn('cron:schema-drift', 'Could not create cron_job_runs entry', err);
   }
 
-  const { data: servers } = await svc
-    .from('servers')
-    .select('id, name, endpoint, tools, schema_hash, version, github_url, transport')
-    .eq('status', 'active')
-    .not('schema_hash', 'is', null);
+  const pageSize = 500;
+  let lastName = '';
+  const servers: any[] = [];
+
+  while (true) {
+    let query = svc
+      .from('servers')
+      .select('id, name, endpoint, tools, schema_hash, version, github_url, transport')
+      .eq('status', 'active')
+      .not('schema_hash', 'is', null)
+      .order('name', { ascending: true })
+      .limit(pageSize);
+
+    if (lastName) query = query.gt('name', lastName);
+
+    const { data, error } = await query;
+    if (error) {
+      results.errors++;
+      log.error('cron:schema-drift', 'Failed to fetch server page', error);
+      break;
+    }
+
+    const rows = data ?? [];
+    servers.push(...rows);
+    if (rows.length < pageSize) break;
+    lastName = rows[rows.length - 1].name;
+  }
 
   for (const server of servers ?? []) {
     results.checked++;
@@ -63,36 +84,25 @@ export async function runSchemaDrift() {
       if (currentHash !== server.schema_hash) {
         results.drifted++;
 
-        // Re-run injection scan on the new tool descriptions — ATK-1 mitigation.
-        // A server could register clean, get approved, then swap in malicious descriptions.
-        const allDescriptions = probe.tools.map((t: any) => `${t.name}: ${t.description ?? ''}`).join('\n');
-        const injectionIssues = [
-          ...indirectInjectionScan(allDescriptions),
-          ...shellInjectionScan(allDescriptions),
-        ];
-        const hasInjection = injectionIssues.length > 0;
+        // MVP: Injection scanning DISABLED — schema drift still detected but
+        // we only log the drift itself without running injection heuristics.
+        const suspendReason = `Schema changed after approval. Old hash: ${server.schema_hash?.slice(0, 8)} New: ${currentHash.slice(0, 8)}. Old tools: [${server.tools.join(', ')}] New tools: [${currentTools.join(', ')}]`;
 
-        const suspendReason = hasInjection
-          ? `Schema drift with injection detected. Issues: ${injectionIssues.slice(0, 3).join(', ')}`
-          : `Schema changed after approval. Old hash: ${server.schema_hash?.slice(0, 8)} New: ${currentHash.slice(0, 8)}. Old tools: [${server.tools.join(', ')}] New tools: [${currentTools.join(', ')}]`;
-
-        // Suspend immediately — schema mutated post-approval (rug-pull or injection)
+        // Suspend immediately — schema mutated post-approval
         await svc.from('servers').update({
           status:      'suspended',
           scan_status: 'failed',
-          scan_issues: [{ severity: 'critical', type: hasInjection ? 'injection_on_drift' : 'schema_drift', description: suspendReason }] as any,
+          scan_issues: [{ severity: 'critical', type: 'schema_drift', description: suspendReason }] as any,
         }).eq('id', server.id);
 
         await svc.from('scan_results').insert({
           server_id: server.id, scan_type: 'drift', passed: false, score: 0,
           issues: [{
             severity: 'critical',
-            type: hasInjection ? 'injection_on_drift' : 'schema_drift',
+            type: 'schema_drift',
             description: suspendReason,
           }] as any,
-          details: hasInjection
-            ? `Injection patterns found after schema drift. Server suspended pending re-review.`
-            : 'Schema drift detected. Server suspended pending re-review.',
+          details: 'Schema drift detected. Server suspended pending re-review.',
         });
         results.suspended++;
       } else {

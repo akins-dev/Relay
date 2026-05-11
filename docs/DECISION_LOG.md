@@ -159,7 +159,7 @@ The "real-world usage" trust score slot (15 pts) is driven by Bayesian-smoothed 
 Rationale:
 
 - `use_count` is sourced exclusively from Smithery's listing API. Every server from any other ingestion path (official registry, Glama, mcp.directory, direct submission) automatically receives 0 in this slot. That is a 15-point structural disadvantage that has no relationship to server quality.
-- The actual question the slot should answer is: "When agents invoke this server through Relay, does it succeed?" That data lives in `intent_server_mappings` and is populated by every `invoke_tool` call regardless of which registry listed the server.
+- The actual question the slot should answer is: "When agents invoke this server through Relay, does it succeed?" That data lives in `intent_server_mappings` and should be populated by Relay invocation outcome reports regardless of which registry listed the server.
 - A Beta(3,1) Bayesian prior (`adjusted_rate = (success_count + 3) / (invoke_count + 4)`) ensures cold-start servers receive a "plausibly good, unproven" floor (~8 pts, ~0.75 rate) rather than 0. The prior washes out at ~20+ invocations as real data dominates.
 
 Consequences:
@@ -170,3 +170,78 @@ Consequences:
 - `use_count` is retained in the schema and search ordering as a popularity tiebreaker but carries no weight in trust computation.
 - All UI badge thresholds updated: amber at ≥ 65 (was ≥ 70) to reflect the realistic new distribution.
 - The DB-side `compute_trust_score_v2()` mirrors the TypeScript formula; both must stay synchronized. A critical bug was found and fixed: PostgreSQL `LOG(x)` is natural log, not log10. Correct syntax is `LOG(10, x)`.
+
+## ADR-009
+
+Date: 2026-05-09
+Status: accepted
+
+Decision:
+
+Relay's MVP is runtime discovery plus Relay Local execution, not hosted cloud invocation.
+
+Rationale:
+
+- the product needs a working prototype before production-only hardening
+- hosted execution, proxy security, sandboxing, Vault injection, OAuth, and cron maintenance kept expanding the scope
+- much of the MCP ecosystem is local `stdio`, and executing arbitrary third-party processes in shared cloud infrastructure is not the right MVP boundary
+- a local Relay runtime can execute with the user's local env and secrets without Relay Cloud hosting untrusted third-party processes
+- CLI-capable agents and MCP-native agents need different entry points, but they should share one runtime implementation
+
+Consequences:
+
+- native MCP exposes `search_tools` and `get_server_manifest`, not `invoke_tool`
+- Relay Cloud returns manifests and schemas
+- Relay Local executes through either CLI commands or local MCP server mode
+- local Relay MCP may expose `invoke_tool` because execution happens in Relay Local, not Relay Cloud
+- `/api/proxy/*` is retired from the prototype runtime
+- CLI/local MCP subprocess management becomes the next execution slice
+- old proxy/security/trust ideas are deferred unless they directly improve discovery quality
+
+## ADR-010
+
+Date: 2026-05-09
+Status: accepted
+
+Decision:
+
+Scheduled Vercel crons are not part of the prototype runtime. Manual/admin ingest remains available behind `CRON_SECRET`.
+
+Rationale:
+
+- the MVP should not depend on background jobs to become useful
+- scheduled probe, drift, reset, sandbox, and CVE work makes the prototype harder to reason about
+- Vercel cron header auth should not be trusted as a public authorization mechanism
+- explicit ingest runs make data changes easier to inspect during prototype iteration
+
+Consequences:
+
+- `vercel.json` does not define scheduled jobs
+- cron auth requires `Authorization: Bearer $CRON_SECRET`
+- post-ingest processing jobs are retired by migration `037`
+- any future background job must have an MVP consumer, owner, and retention story before it is added
+
+## ADR-011
+
+Date: 2026-05-11
+Status: accepted
+
+Decision:
+
+Relay Local has one runtime with two agent-facing adapters: CLI commands and local MCP server mode.
+
+Rationale:
+
+- Relay is agent-centric; humans configure and debug it, but agents are the primary runtime consumers.
+- MCP-native agents expect tools from an MCP server.
+- CLI-capable agents, coding agents, scripts, and CI expect commands they can invoke.
+- Building separate CLI and MCP execution stacks would duplicate security, manifest, process, policy, and audit logic.
+- A single runtime lets Relay support different agent environments while preserving one invocation boundary.
+
+Consequences:
+
+- `relay invoke(...)` and local MCP `invoke_tool(...)` must call the same internal runtime function.
+- `relay search` and local MCP `search_tools` must share search/manifest formatting semantics.
+- `relay info` and local MCP `get_server_manifest` must return the same manifest contract.
+- Cloud MCP remains discovery-only for the prototype and does not expose `invoke_tool`.
+- Users configure Relay once per agent environment; they should not manually connect every downstream MCP server.

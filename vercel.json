@@ -26,11 +26,5 @@
         { "key": "Cache-Control",               "value": "public, max-age=300" }
       ]
     }
-  ],
-  "crons": [
-    { "path": "/api/cron/schema-drift",      "schedule": "0 */6 * * *" },
-    { "path": "/api/cron/uptime-check",      "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/reset-daily-calls", "schedule": "0 0 * * *" },
-    { "path": "/api/ingest",                 "schedule": "0 2 * * *" }
   ]
 }

@@ -263,16 +263,16 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
               className="mt-4 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel"
               delay={0.15}
             >
-              The agent stays focused on business intent. {BRAND.name} natively handles the search
-              surface, the trust checks, the secret injection, and the audit trail.
+              The agent stays focused on business intent. {BRAND.name} handles discovery, manifests,
+              local runtime checks, and the path for future policy, secrets, and audit.
             </AnimatedParagraph>
           </div>
           <div className="mt-6 lg:mt-0 lg:w-1/2 relative z-10">
             <pre className="whitespace-pre-wrap font-mono text-[12px] sm:text-[13px] leading-7 sm:leading-8 text-brand-steel bg-[#030712] p-4 sm:p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-[inset_0_2px_20px_rgba(0,0,0,0.5)] overflow-x-auto">
               <span className="text-brand-white">1.</span> search_tools(&quot;create issue&quot;){'\n'}
-              <span className="text-brand-white">2.</span> Registry returns matching schemas{'\n'}
-              <span className="text-brand-white">3.</span> invoke_tool{`({ server, tool, args })`}{'\n'}
-              <span className="text-brand-white">4.</span> Policy, auth, and DLP proxy runs{'\n'}
+              <span className="text-brand-white">2.</span> Relay returns schemas + manifest{'\n'}
+              <span className="text-brand-white">3.</span> Relay Local invoke_tool{`({ server, tool, args })`}{'\n'}
+              <span className="text-brand-white">4.</span> Policy, env, and runtime checks run{'\n'}
               <span className="text-brand-white">5.</span> Result returned to agent safely
             </pre>
           </div>

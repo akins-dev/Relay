@@ -2,8 +2,8 @@
 
 Subtitle: solving the practical MCP configuration ceiling
 
-Last updated: 2026-05-01
-Status: external positioning draft
+Last updated: 2026-05-11
+Status: external positioning draft; update against `PROTOTYPE_IMPLEMENTATION_PLAN.md` before publishing
 
 ## Abstract
 
@@ -11,12 +11,13 @@ MCP standardized how agents connect to tools. It did not solve how agents discov
 
 Relay targets this gap.
 
-Relay is not another directory. It is a runtime layer that lets agents search capability by intent, invoke through one governed path, and improve future routing from real outcomes.
+Relay is not another directory. It is a runtime discovery layer that lets agents search capability by intent, receive a run manifest, invoke through Relay Local, and improve future routing from real outcomes.
 
-The model-facing surface stays deliberately small:
+The agent-facing surface stays deliberately small:
 
 * `search_tools`
-* `invoke_tool`
+* `get_server_manifest`
+* local Relay `invoke_tool` or `relay invoke`
 
 Everything difficult happens behind that surface.
 

@@ -91,6 +91,15 @@ export default function ServerDetailPage() {
 
   const resources: any[] = useMemo(() => (server as any)?.resources ?? [], [server]);
   const prompts:   any[] = useMemo(() => (server as any)?.prompts   ?? [], [server]);
+  const toolSchemas: any[] = useMemo(() => {
+    const raw = (server as any)?.tool_schemas;
+    return Array.isArray(raw) ? raw.filter((tool: any) => tool?.name) : [];
+  }, [server]);
+  const toolSchemaByName = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const tool of toolSchemas) map.set(tool.name, tool);
+    return map;
+  }, [toolSchemas]);
   
   const pagedTools = useMemo(() => paginateItems(server?.tools ?? [], listPages.tools, 12), [server?.tools, listPages.tools]);
   const pagedResources = useMemo(() => paginateItems(resources, listPages.resources, 8), [resources, listPages.resources]);
@@ -132,40 +141,37 @@ export default function ServerDetailPage() {
         ? 'var(--green)'
         : 'var(--text-3)';
   const nonProxyTitle = isStdio
-    ? `⬡ stdio Server — ${BRAND.cli} Coming Soon`
+    ? `⬡ stdio Server — Relay Local`
     : 'Transport Not Verified';
   const nonProxyDescription = isStdio
-    ? `This server runs as a local subprocess (stdio transport). It cannot be called through the web proxy. ${BRAND.cli} will bridge stdio servers locally when it launches. For now, check the GitHub repo for installation instructions.`
-    : 'This server is listed in the catalog, but Relay has not verified a proxyable remote transport for it yet. Check the upstream metadata or GitHub instructions before attempting invocation.';
-  const nonProxyBadge = isStdio ? '⬡ stdio · CLI coming soon' : '⚠ transport unverified';
-  const proxyLabel = proxyAvailable ? '✓ available' : isStdio ? '✗ CLI only' : '✗ unavailable';
+    ? `This server runs as a local subprocess (stdio transport). Relay Local is the planned runtime bridge for stdio servers. For now, use the manifest and upstream package metadata to inspect how it should run.`
+    : 'This server is listed in the catalog, but Relay does not yet have a deterministic runnable manifest for it. Check the upstream metadata or GitHub instructions before attempting invocation.';
+  const nonProxyBadge = isStdio ? '⬡ stdio · Relay Local' : '⚠ discovery only';
+  const proxyLabel = proxyAvailable ? 'manifest ready' : isStdio ? 'Relay Local' : 'discovery only';
 
   const promptSnippet = localOnly
-    ? `# ${BRAND.cli} (coming soon)
-# This server is currently not invocable through Relay Cloud Proxy.
+    ? `# Relay Local manifest
 # Transport: ${transportLabel}
-# ${isStdio ? `When ${BRAND.cli} launches, you will be able to run:` : 'Check the upstream registry page or GitHub repo for installation and transport details.'}
-${isStdio ? `#   ${BRAND.slug} run ${server.name}` : ''}
+# ${isStdio ? `Relay Local will run this through a package-backed stdio manifest when available.` : 'Relay cannot safely infer a runnable command from current metadata.'}
+# Inspect:
+#   ${BRAND.slug} info ${server.name}
 #
-# For now, this server is discoverable but not invocable
-# through the web proxy. ${server.github_url ? `Use the GitHub repo for setup: ${server.github_url}` : 'Use the upstream source metadata for setup.'}`
+${server.github_url ? `# Upstream setup: ${server.github_url}` : '# Use the upstream source metadata for setup.'}`
     : `## MCP Tools — ${server.display_name}
 
-POST /api/proxy/${server.name}/{toolName}
+${BRAND.slug} invoke ${server.name} {toolName}
 Available tools: ${server.tools.join(', ')}
 
-# Auto-discover via registry:
-GET /.well-known/mcp.json`;
+# Inspect full manifest:
+${BRAND.slug} info ${server.name}`;
 
   const curlSnippet = localOnly
-    ? `# ${BRAND.cli} is not yet available.
-# This server is not invocable through Relay Cloud Proxy today.
+    ? `# Discovery-only or local stdio manifest.
 # Transport: ${transportLabel}
+# Inspect:
+${BRAND.slug} info ${server.name}
 ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL available.'}`
-    : `curl -X POST ${SITE_URL}/api/proxy/${server.name}/${server.tools[0] ?? 'tool_name'} \\
-  -H "Authorization: Bearer sk_mcp_..." \\
-  -H "Content-Type: application/json" \\
-  -d '{"param": "value"}'`;
+    : `${BRAND.slug} invoke ${server.name} ${server.tools[0] ?? 'tool_name'} --json '{"param":"value"}'`;
 
   return (
     <div className="page" style={{ maxWidth: '960px' }}>
@@ -275,7 +281,7 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               </div>
             )}
 
-            {/* Non-proxy callout */}
+            {/* Manifest/runtime callout */}
             {localOnly && (
               <div style={{ padding: '18px 20px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12' }}>
                 <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--yellow)', marginBottom: '8px' }}>{nonProxyTitle}</div>
@@ -292,14 +298,19 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
 
             <div className="card" style={{ padding: '22px' }}>
               <div style={{ fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Tools ({server.tools.length})</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {previewTools.map(t => (
-                  <span key={t} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 12px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>
-                    fn {t}()
-                  </span>
+                  <div key={t} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>fn {t}()</div>
+                    {toolSchemaByName.get(t)?.description && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '3px', lineHeight: 1.45 }}>
+                        {toolSchemaByName.get(t).description}
+                      </div>
+                    )}
+                  </div>
                 ))}
                 {server.tools.length === 0 && (
-                  <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet — tools are listed after a live probe</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>No tools discovered yet. This entry is discovery-incomplete until ingest can fetch Smithery detail, live probe it, or extract tools in the sandbox.</span>
                 )}
               </div>
               {server.tools.length > previewTools.length && (
@@ -339,11 +350,11 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
                 ['MCP',       mcpCompliant ? '✓ compliant' : localOnly ? '— not probed' : '✗ not compliant'],
                 ['Resources', String(resources.length)],
                 ['Prompts',   String(prompts.length)],
-                ['Proxy',     proxyLabel],
+                ['Runtime',   proxyLabel],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
                   <span style={{ color: 'var(--text-3)' }}>{l}</span>
-                  <span style={{ color: l === 'MCP' && !mcpCompliant && !localOnly ? 'var(--red)' : l === 'MCP' && mcpCompliant ? 'var(--green)' : l === 'Proxy' && !proxyAvailable ? 'var(--yellow)' : 'var(--text)' }}>{v}</span>
+                  <span style={{ color: l === 'MCP' && !mcpCompliant && !localOnly ? 'var(--red)' : l === 'MCP' && mcpCompliant ? 'var(--green)' : l === 'Runtime' && !proxyAvailable ? 'var(--yellow)' : 'var(--text)' }}>{v}</span>
                 </div>
               ))}
             </div>
@@ -364,29 +375,51 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
           {localOnly && (
             <div style={{ padding: '12px 16px', borderRadius: '8px', background: '#1a1500', border: '1px solid #713f12', fontSize: '13px', color: 'var(--yellow)', marginBottom: '8px' }}>
               {isStdio
-                ? `⬡ stdio server — ${BRAND.cli} (coming soon) will enable local invocation of these tools`
-                : '⚠ transport not verified — these tools are listed for discovery, not proxy invocation'}
+                ? `⬡ stdio server — Relay Local will enable local invocation of these tools`
+                : '⚠ transport not verified — these tools are listed for discovery, not invocation'}
             </div>
           )}
           {server.tools.length === 0 && (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>No tools discovered yet</div>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)', fontSize: '14px' }}>
+              No tools discovered yet. This server should not be considered callable until tool metadata is present.
+            </div>
           )}
-          {pagedTools.items.map(tool => (
-            <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
-                <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
+          {pagedTools.items.map(tool => {
+            const schema = toolSchemaByName.get(tool);
+            const inputSchema = schema?.inputSchema ?? schema?.input_schema ?? schema?.input_schema_json;
+            return (
+            <div key={tool} className="card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--green)' }}>fn </span>{tool}()
+                  </div>
+                  {schema?.description && (
+                    <div style={{ fontSize: '13px', color: 'var(--text-2)', marginTop: '5px', lineHeight: 1.5 }}>
+                      {schema.description}
+                    </div>
+                  )}
+                </div>
+                {proxyAvailable || isStdio ? (
+                  <button onClick={() => copy(`${BRAND.slug} invoke ${server.name} ${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px', flexShrink: 0 }}>
+                    {copied === tool ? '✓ copied' : 'copy command'}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)', flexShrink: 0 }}>
+                    {isStdio ? '⬡ stdio only' : '⚠ discovery only'}
+                  </span>
+                )}
               </div>
-              {proxyAvailable ? (
-                <button onClick={() => copy(`POST /api/proxy/${server.name}/${tool}`, tool)} className="btn btn-ghost btn-sm" style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>
-                  {copied === tool ? '✓ copied' : 'copy endpoint'}
-                </button>
-              ) : (
-                <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--yellow)' }}>
-                  {isStdio ? '⬡ stdio only' : '⚠ not proxyable'}
-                </span>
+              {inputSchema && (
+                <details>
+                  <summary style={{ cursor: 'pointer', color: 'var(--blue)', fontFamily: 'var(--mono)', fontSize: '12px' }}>input schema</summary>
+                  <pre style={{ marginTop: '8px', padding: '12px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-2)', fontSize: '11px', lineHeight: 1.5, overflow: 'auto', maxHeight: '260px', whiteSpace: 'pre-wrap' }}>
+                    {JSON.stringify(inputSchema, null, 2)}
+                  </pre>
+                </details>
               )}
             </div>
-          ))}
+          );})}
           <PaginationControls
             className="mt-4"
             page={pagedTools.page}
@@ -508,17 +541,17 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
 
             <div className="card" style={{ padding: '22px' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '14px' }}>
-              {localOnly ? (isStdio ? 'CLI Reference' : 'Transport Reference') : 'Endpoint Reference'}
+              {localOnly ? (isStdio ? 'Relay Local Reference' : 'Transport Reference') : 'Relay Local Reference'}
             </div>
             {localOnly ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ padding: '14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: '12px', color: 'var(--yellow)', marginBottom: '8px', fontWeight: 600 }}>
-                    {isStdio ? `⬡ ${BRAND.cli} is not yet available` : '⚠ Cloud proxy unavailable'}
+                    {isStdio ? '⬡ Relay Local stdio runtime' : '⚠ Discovery-only manifest'}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5 }}>
                     {isStdio
-                      ? <>When it launches, you&apos;ll be able to run: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} run {server.name}</code></>
+                      ? <>Inspect this server with: <code style={{ fontFamily: 'var(--mono)' }}>{BRAND.slug} info {server.name}</code></>
                       : 'Relay does not currently have verified transport metadata for this server. Check the upstream registry page or GitHub repo before invoking it.'}
                   </div>
                 </div>
@@ -532,11 +565,11 @@ ${server.github_url ? `# GitHub: ${server.github_url}` : '# No GitHub URL availa
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {pagedTools.items.map(t => (
                   <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700 }}>POST</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}>/api/proxy/{server.name}/{t}</span>
+                    <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700 }}>CLI</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}>{BRAND.slug} invoke {server.name} {t}</span>
                   </div>
                 ))}
-                {resources.length > 0 && <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Also: GET /api/proxy/{server.name}/resources | POST /api/proxy/{server.name}/prompts/&lt;name&gt;</div>}
+                {resources.length > 0 && <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Resources and prompts are manifest metadata for Relay Local and downstream MCP clients.</div>}
               </div>
             )}
           </div>
@@ -730,15 +763,15 @@ const SECURITY_LAYERS = [
   { id: 'L1',  title: 'Static Scan',          desc: 'Prompt injection, exfiltration, deceptive language, suspicious tool names',  phase: 'publish' },
   { id: 'L2',  title: 'WASM Sandbox',         desc: 'Sandboxed pre-listing execution — runtime-only payloads, deferred attacks',   phase: 'publish', roadmap: true },
   { id: 'L3',  title: 'Schema Pinning',       desc: 'SHA-256 tool hash at publish. Auto-suspend on any mutation.',                 phase: 'publish' },
-  { id: 'L4',  title: 'Proxy DLP',            desc: 'Credential patterns blocked in requests; response matches surfaced as warnings and audit events', phase: 'runtime' },
+  { id: 'L4',  title: 'Runtime DLP',          desc: 'Credential patterns blocked in requests; response matches surfaced as warnings and audit events', phase: 'runtime' },
   { id: 'L5',  title: 'Trust Score',          desc: 'Composite 0–100: scan + uptime + stability + community',                     phase: 'runtime' },
   { id: 'L6',  title: 'Database RLS',         desc: 'Supabase Row Level Security on all tables',                                  phase: 'infra'   },
   { id: 'L7',  title: 'OAuth Flow Security',  desc: 'Validated redirects, state checks, encrypted token storage, and route-level rate limits', phase: 'infra'   },
   { id: 'L8',  title: 'Typosquatting',        desc: 'pg_trgm similarity check blocks impersonation names at publish',              phase: 'publish' },
   { id: 'L9',  title: 'Sampling Inspect',     desc: 'Injection patterns in MCP server-initiated sampling requests',                phase: 'runtime' },
-  { id: 'L10', title: 'PII Detection',        desc: 'Email, phone, SSN, card numbers scanned in proxy responses with warning metadata', phase: 'runtime' },
+  { id: 'L10', title: 'PII Detection',        desc: 'Email, phone, SSN, card numbers scanned in runtime responses with warning metadata', phase: 'runtime' },
   { id: 'L11', title: 'URL Elicitation',      desc: 'javascript:, data:, file://, localhost, AWS metadata SSRF blocked',          phase: 'runtime' },
-  { id: 'L12', title: 'Context Isolation',    desc: 'Session tokens and auth values detected in proxy responses',                  phase: 'runtime' },
+  { id: 'L12', title: 'Context Isolation',    desc: 'Session tokens and auth values detected in runtime responses',                phase: 'runtime' },
   { id: 'S12', title: 'Shell Injection',      desc: '18 OS command patterns blocked in tool arguments',                           phase: 'runtime' },
   { id: 'S13', title: 'Indirect Injection',   desc: 'Instruction-like language in tool response data',                            phase: 'runtime' },
   { id: 'S14', title: 'CVE Scan',             desc: 'npm package.json checked against npm advisory database',                     phase: 'publish' },
@@ -746,7 +779,7 @@ const SECURITY_LAYERS = [
 
 const PHASE_LABEL: Record<string, string> = {
   publish: 'Publish-time',
-  runtime: 'Runtime proxy',
+  runtime: 'Relay Local runtime',
   infra:   'Infrastructure',
 };
 const PHASE_COLOR: Record<string, string> = {

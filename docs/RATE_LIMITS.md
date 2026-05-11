@@ -26,8 +26,8 @@ These contexts exist in `public.rate_limit_config`, are seeded by migration `023
 |---|---:|---|---|
 | `search` | 60/min | IP | anonymous `GET /api/servers/search`, anonymous MCP `search_tools` |
 | `browse` | 120/min | IP | `GET /api/servers` |
-| `proxy` | 30/min | IP | anonymous `POST /api/proxy/:server/:tool`, anonymous MCP `invoke_tool` |
-| `proxyAuth` | 200/min | user | authenticated proxy calls, authenticated MCP `search_tools`, authenticated MCP `invoke_tool`, REST search with API key |
+| `proxy` | 30/min | IP | legacy hosted proxy context; not on the prototype invocation path |
+| `proxyAuth` | 200/min | user | authenticated high-limit context currently reused by MCP `search_tools`, manifest lookup, and REST search with API key |
 | `auth` | 10/min | IP | `POST /api/auth/login`, `POST /api/auth/register` |
 | `publish` | 10/min | user | `POST /api/servers` |
 
@@ -57,7 +57,7 @@ The following contexts are seeded in `rate_limit_config`, but are not currently 
 ### Anonymous callers
 
 - Search and browse use IP-based buckets.
-- REST proxy invocation uses IP-based buckets.
+- Hosted REST proxy invocation is retired from the prototype path.
 - MCP falls back to a fingerprint bucket when IP is unavailable.
 
 ### Authenticated callers
@@ -78,6 +78,6 @@ The following contexts are seeded in `rate_limit_config`, but are not currently 
 - core search route: `src/app/api/servers/search/route.ts`
 - browse and publish routes: `src/app/api/servers/route.ts`
 - native MCP server: `src/app/api/mcp-server/route.ts`
-- proxy invoke route: `src/app/api/proxy/[serverName]/[toolName]/route.ts`
+- Relay Local invocation will need its own local/runtime rate and policy model when implemented.
 
 If limits change, update both the code and this file in the same workstream.

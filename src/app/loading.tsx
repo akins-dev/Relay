@@ -35,7 +35,7 @@ export default function Loading() {
              <animate attributeName="opacity" values="0; 0; 1; 1; 1; 0" keyTimes="0; 0.54; 0.55; 0.75; 0.8; 1" dur="2.5s" repeatCount="indefinite" />
           </circle>
 
-          {/* Security Scan Pulse at Proxy */}
+          {/* Security Scan Pulse at Runtime */}
           <circle cx="60" cy="16" r="5" fill="transparent" stroke="#10B981" strokeWidth="1" opacity="0">
              <animate attributeName="r" values="5; 5; 14; 5; 5" keyTimes="0; 0.2; 0.35; 0.351; 1" dur="2.5s" repeatCount="indefinite" />
              <animate attributeName="opacity" values="0; 0.8; 0; 0; 0" keyTimes="0; 0.2; 0.35; 0.351; 1" dur="2.5s" repeatCount="indefinite" />

@@ -1,13 +1,14 @@
 # Relay Architecture System Map
 
-Last updated: 2026-05-05 (Migration 032: Behavioral Trust & Dynamic Diversity)
-Status: Deep code-grounded architecture overview
+Last updated: 2026-05-11 (Agent-centric Relay Local clarification)
+Status: Historical deep architecture overview. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
 
+Canonical MVP reference: [`PROTOTYPE_IMPLEMENTATION_PLAN.md`](PROTOTYPE_IMPLEMENTATION_PLAN.md)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Presentation-oriented flow view: [`ARCHITECTURE_FLOWS.md`](ARCHITECTURE_FLOWS.md)
 Companion Excalidraw starter scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw) (importable into Excalidraw and usable as the base canvas in Obsidian)
 
-This file is the single deep architecture walkthrough for Relay as it exists in code. It is designed to support review, diagramming, and visual modeling work. It connects the actual request paths, control paths, data paths, background jobs, and storage contracts.
+This file preserves the broader hosted-proxy architecture history. It is designed to support review, diagramming, and visual modeling work. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
 
 ## 1. Scope
 
@@ -17,7 +18,7 @@ This map covers the system end to end:
 - identity resolution: session auth, API keys, service-role execution
 - rate limiting and cache layers
 - runtime search and ranked tool discovery
-- guarded invocation and upstream MCP execution
+- guarded invocation and upstream MCP execution from the retired hosted proxy model
 - secrets and OAuth credential flows
 - policy and confirmation gates
 - security scanning at publish time, invoke time, and drift time
@@ -35,7 +36,7 @@ Clients / agents / admins / cron
   -> rate limits + cache
   -> one of:
        A. runtime search
-       B. guarded invocation
+       B. Relay Local invocation (prototype) or guarded hosted invocation (legacy)
        C. ingest / maintenance job
   -> Supabase-backed state changes
   -> analytics / audit / trust updates
@@ -54,26 +55,26 @@ What it does:
 
 - exposes Relay itself as a standard MCP server
 - supports `initialize`, `tools/list`, `tools/call`, `ping`
-- exposes only two model-facing tools:
+- Cloud MCP exposes only two model-facing tools in the prototype:
   - `search_tools`
-  - `invoke_tool`
+  - `get_server_manifest`
 
 Transport behavior:
 
 - POST handles Streamable HTTP MCP calls
 - GET exposes SSE compatibility for older clients
 
-### 3.2 REST search and invoke
+### 3.2 REST search and retired hosted invoke
 
 Primary code:
 
 - `src/app/api/servers/search/route.ts`
-- `src/app/api/proxy/[serverName]/[toolName]/route.ts`
+- `src/app/api/proxy/[serverName]/[toolName]/route.ts` (retired)
 
 What it does:
 
 - search by natural-language intent over the registry
-- invoke a concrete tool on a concrete server through the guarded proxy
+- return manifests for Relay Local invocation
 
 ### 3.3 Prompt-driven HTTP usage
 
@@ -301,50 +302,46 @@ Search is not just retrieval. It is also a control-surface shaper:
 
 Search diversity (migration 032): a soft 8% penalty is applied to servers from over-represented categories that score below the result-set median. The threshold is always relative to the current query result set — no hardcoded global cutoff.
 
-## 7. Guarded Invocation Flow
+## 7. Relay Local Invocation Flow
 
 Primary code:
 
 - `src/app/api/mcp-server/route.ts`
-- `src/app/api/proxy/[serverName]/[toolName]/route.ts`
-- `src/lib/proxy-execute.ts`
+- Relay Local runtime modules (planned)
+- `src/app/api/proxy/[serverName]/[toolName]/route.ts` (retired)
+- `src/lib/proxy-execute.ts` (retired)
 
 ### 7.1 Invocation pipeline
 
 Flow:
 
 1. caller chooses `server + tool + args`
-2. route resolves caller identity
-3. route applies rate limit
-4. route delegates to `executeProxyCall(...)`
-5. proxy execution performs:
-   - auth-required gate
-   - body-size guard
-   - server lookup
-   - stdio block / CLI handoff
+2. Relay Local fetches the current manifest
+3. Relay Local validates arguments and required env/secrets
+4. Relay Local chooses stdio subprocess or remote MCP connection
+5. runtime execution performs:
+   - manifest-required gate
+   - bounded body/response handling
    - tool existence check
-   - confirmation-token verification
    - policy lookup
    - request DLP
-   - sampling-injection detection
    - shell-injection detection
-   - URL-elicitation checks
-   - endpoint SSRF validation
-   - credential injection
-   - MCP initialize handshake for SSE / unknown transport
+   - endpoint validation for remote MCP
+   - local env / secret resolution
+   - MCP initialize handshake
    - upstream `tools/call`
    - response security scans
-   - metering / analytics / audit scheduling
-   - structured auth / confirmation responses if needed
-6. final response is returned to REST or MCP caller
+   - outcome / audit scheduling
+   - structured setup guidance if needed
+6. final response is returned to the agent
 
-### 7.2 Why all invocation paths converge here
+### 7.2 Why all invocation paths must converge in Relay Local
 
-`executeProxyCall(...)` is the core runtime chokepoint. It centralizes:
+Relay Local should be the core runtime chokepoint. It centralizes:
 
 - auth enforcement
 - policy enforcement
-- vault-based credential injection
+- env / secret resolution
 - security scanning
 - metering
 - analytics

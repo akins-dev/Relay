@@ -41,7 +41,9 @@ The score is a weighted sum of six independent signals, plus runtime penalties.
 
 ### The Solution: Bayesian-Smoothed Runtime Evidence
 
-Every time an agent calls `invoke_tool` through the Relay proxy, `recordInvokeOutcome()` in `search-analytics.ts` performs an atomic upsert on `intent_server_mappings`:
+This model originally consumed hosted proxy `invoke_tool` outcomes. In the current prototype, hosted proxy invocation is retired. The same Bayesian reliability model can become useful again when Relay Local intentionally reports invocation outcomes.
+
+When Relay Local outcome reporting is enabled, `recordInvokeOutcome()` in `search-analytics.ts` can perform an atomic upsert on `intent_server_mappings`:
 
 ```
 invoke_count  += 1
@@ -89,7 +91,7 @@ After first uptime probe (up):
   └── Uptime EWMA begins converging upward
   → No change to other slots
 
-After 30 days stable + 20 successful proxy invocations:
+After 30 days stable + 20 successful Relay invocation outcomes:
   └── Stability: +10 pts (max)
   └── Behavioral: ~15 pts (cap reached quickly)
   → Verified, proven server: ~88–95 pts
@@ -171,7 +173,7 @@ END DESC
 
 The behavioral reliability signal requires:
 - ✅ No new tables — reads from existing `intent_server_mappings`
-- ✅ No new cron jobs — `recordInvokeOutcome()` is called on every proxy request
+- ✅ No new cron jobs — Relay Local can report outcomes directly when implemented
 - ✅ No new columns — `invoke_count` and `success_count` already exist in ISM
 - ✅ A new covering index: `idx_ism_server_reliability` (migration 032)
 - ✅ A new DB helper function: `get_server_behavioral_reliability()`

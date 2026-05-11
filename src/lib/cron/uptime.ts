@@ -19,11 +19,30 @@ export async function runUptimeCheck() {
     log.warn('cron:uptime', 'Could not create cron_job_runs entry', err);
   }
 
-  const { data: servers, error } = await svc
-    .from('servers')
-    .select('id, name, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at, auth_type')
-    .eq('status', 'active')
-    .not('endpoint', 'is', null);
+  const pageSize = 500;
+  let from = 0;
+  let servers: any[] = [];
+  let error: any = null;
+
+  while (true) {
+    const page = await svc
+      .from('servers')
+      .select('id, name, endpoint, uptime_pct, trust_score, verified, stars, latency_ms, scan_issues, last_scanned_at, auth_type')
+      .eq('status', 'active')
+      .not('endpoint', 'is', null)
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (page.error) {
+      error = page.error;
+      break;
+    }
+
+    const rows = page.data ?? [];
+    servers = servers.concat(rows);
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
 
   // S14: Fetch behavioral reliability in one SQL-aggregated RPC call.
   // Before: .from('intent_server_mappings').in('server_name', names)
@@ -32,7 +51,7 @@ export async function runUptimeCheck() {
   // After: get_all_behavioral_reliability(p_server_names)
   //   → SQL GROUP BY server_name, returns ONE pre-aggregated row per server.
   //   → O(N servers) network transfer. Aggregation done in Postgres.
-  const serverNames = (servers ?? []).map((s: any) => s.name);
+  const serverNames = servers.map((s: any) => s.name);
   const ismMap = new Map<string, { invoke_count: number; success_count: number }>();
   if (serverNames.length > 0) {
     const { data: ismRows } = await (svc as any)
@@ -58,8 +77,8 @@ export async function runUptimeCheck() {
 
   // Process in batches of 20 to avoid overwhelming Vercel's timeout
   const batch = 20;
-  for (let i = 0; i < (servers ?? []).length; i += batch) {
-    const chunk = (servers ?? []).slice(i, i + batch);
+  for (let i = 0; i < servers.length; i += batch) {
+    const chunk = servers.slice(i, i + batch);
 
     await Promise.all(chunk.map(async (server: any) => {
       results.checked++;

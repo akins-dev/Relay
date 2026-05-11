@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { paginateItems } from '@/lib/pagination';
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 // ── Inline editable rate limit row ───────────────────────────────────────────
 function RateLimitRow({ row, saving, onSave }: {
@@ -98,6 +99,9 @@ interface CronJobRun {
   id: string; job_name: string; started_at: string; finished_at: string;
   status: string; result: any; error: string | null; duration_seconds: number;
 }
+interface CronHistoryRun extends CronJobRun {
+  created_at?: string;
+}
 interface DriftEvent {
   name: string; display_name: string; source: string; status: string;
   trust_score: number; drifted_at: string; issues: any; details: string;
@@ -106,6 +110,11 @@ interface UptimeIssue {
   name: string; display_name: string; source: string; endpoint: string;
   transport: string; uptime_pct: number; latency_ms: number;
   trust_score: number; mcp_compliant: boolean; last_scanned_at: string;
+}
+interface SuspendedServer {
+  id: string; name: string; display_name: string; source: string; status: string;
+  trust_score: number; scan_issues: any; last_scanned_at: string; updated_at: string;
+  tool_extraction_source: string; transport: string;
 }
 interface ReleaseGate {
   name: string;
@@ -139,8 +148,10 @@ export default function AdminPage() {
   const [topServers, setTopServers] = useState<TopServer[]>([]);
   const [ingestRuns, setIngestRuns] = useState<IngestRun[]>([]);
   const [cronJobs,   setCronJobs]   = useState<CronJobRun[]>([]);
+  const [cronHistory,setCronHistory]= useState<CronHistoryRun[]>([]);
   const [driftEvents,setDriftEvents]= useState<DriftEvent[]>([]);
   const [uptimeIssues,setUptimeIssues]= useState<UptimeIssue[]>([]);
+  const [suspendedServers,setSuspendedServers]= useState<SuspendedServer[]>([]);
   // Analytics intelligence data (Migration 022)
   const [topIntents,       setTopIntents]       = useState<any[]>([]);
   const [ecosystemGaps,    setEcosystemGaps]    = useState<any[]>([]);
@@ -153,6 +164,8 @@ export default function AdminPage() {
   const [loading,    setLoading]    = useState(true);
   const [lastRefresh,setLastRefresh]= useState<Date>(new Date());
   const [ingestFeedback, setIngestFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [opsFeedback, setOpsFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [runningCron, setRunningCron] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [tablePageSize, setTablePageSize] = useState(8);
   const [tablePages, setTablePages] = useState({
@@ -160,6 +173,7 @@ export default function AdminPage() {
     threats: 1,
     topServers: 1,
     suspIPs: 1,
+    cronHistory: 1,
   });
 
   const [mounted, setMounted] = useState(false);
@@ -218,10 +232,18 @@ export default function AdminPage() {
       if (sqRes?.data)     setSearchQuality(sqRes.data as any);
       if (srRes?.data)     setServerReliability(srRes.data as any);
       if (rlRes?.data)     setRateLimits(rlRes.data as any);
-      const releaseRes = await fetch('/api/admin/release-report')
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+      const [releaseRes, opsRes] = await Promise.all([
+        fetch('/api/admin/release-report').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/admin/operations').then((r) => (r.ok ? r.json() : null)),
+      ])
+        .catch(() => [null, null]);
       if (releaseRes) setReleaseReport(releaseRes as ReleaseReport);
+      if (opsRes) {
+        if (opsRes.cron_history) setCronHistory(opsRes.cron_history as CronHistoryRun[]);
+        if (opsRes.drift_events) setDriftEvents(opsRes.drift_events as DriftEvent[]);
+        if (opsRes.uptime_issues) setUptimeIssues(opsRes.uptime_issues as UptimeIssue[]);
+        if (opsRes.suspended_servers) setSuspendedServers(opsRes.suspended_servers as SuspendedServer[]);
+      }
       setLastRefresh(new Date());
     } catch (error: any) {
       setAdminError(error.message ?? 'Could not load admin dashboard');
@@ -290,6 +312,32 @@ export default function AdminPage() {
     }
   }
 
+  async function triggerCron(job: 'uptime_check' | 'schema_drift' | 'reset_daily_calls') {
+    setRunningCron(job);
+    setOpsFeedback(null);
+    try {
+      const res = await fetch('/api/admin/cron/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? `Failed to run ${job}`);
+      setOpsFeedback({
+        tone: 'success',
+        message: `${job} completed: ${JSON.stringify(json.result ?? {}).slice(0, 180)}`,
+      });
+      await load();
+    } catch (error: any) {
+      setOpsFeedback({
+        tone: 'error',
+        message: error.message ?? `Failed to run ${job}`,
+      });
+    } finally {
+      setRunningCron(null);
+    }
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const fmt  = (n: number) => n?.toLocaleString() ?? '—';
   const pct  = (n: number) => `${(n ?? 0).toFixed(1)}%`;
@@ -303,6 +351,11 @@ export default function AdminPage() {
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return s;
     return d.toLocaleString();
+  };
+  const stringifyJson = (value: any, max = 1200) => {
+    if (!value) return '—';
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    return text.length > max ? `${text.slice(0, max)}\n... truncated` : text;
   };
 
   const C = {
@@ -426,6 +479,25 @@ export default function AdminPage() {
     () => paginateItems(suspIPs, tablePages.suspIPs, tablePageSize),
     [suspIPs, tablePages.suspIPs, tablePageSize]
   );
+  const pagedCronHistory = useMemo(
+    () => paginateItems(cronHistory, tablePages.cronHistory, tablePageSize),
+    [cronHistory, tablePages.cronHistory, tablePageSize]
+  );
+
+  const sourceQualityChart = useMemo(() => ingest.map((row) => ({
+    source: row.source,
+    active: row.active_servers,
+    noTools: row.no_tool_metadata,
+    rejected: row.rejected_servers,
+  })), [ingest]);
+
+  const cronChart = useMemo(() => cronHistory.slice(0, 30).reverse().map((run) => ({
+    label: `${run.job_name.replace('_', ' ')} ${new Date(run.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+    duration: run.duration_seconds ?? (
+      run.finished_at ? Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000) : 0
+    ),
+    errors: run.status === 'error' ? 1 : 0,
+  })), [cronHistory]);
 
   function setTablePage<K extends keyof typeof tablePages>(key: K, page: number) {
     setTablePages((current) => ({ ...current, [key]: page }));
@@ -504,7 +576,7 @@ export default function AdminPage() {
               value={String(tablePageSize)}
               onChange={(e) => {
                 setTablePageSize(Number(e.target.value));
-                setTablePages({ ingestRuns: 1, threats: 1, topServers: 1, suspIPs: 1 });
+                setTablePages({ ingestRuns: 1, threats: 1, topServers: 1, suspIPs: 1, cronHistory: 1 });
               }}
             >
               {ADMIN_PAGE_SIZES.map((size) => (
@@ -608,7 +680,7 @@ export default function AdminPage() {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Trigger ingest:</span>
-            {['all','official','smithery','glama','github','partner'].map(src => (
+            {['all','official','smithery','glama','mcp_directory'].map(src => (
               <button key={src} onClick={() => triggerIngest(src)}
                 disabled={ingesting} className="btn btn-ghost btn-sm"
                 style={{ fontFamily: 'var(--mono)' }}>
@@ -616,6 +688,29 @@ export default function AdminPage() {
               </button>
             ))}
           </div>
+
+          <Callout title="What verified and no-tool rows mean" tone={kpis?.no_tool_metadata_servers ? 'warn' : 'info'}>
+            <div>
+              <b>Verified</b> is upstream reputation metadata, not proof that Relay can invoke the server. For an invokable MVP row, the important fields are endpoint or stdio package metadata, non-empty tools, scan pass, and a stable schema hash.
+              <b> No Tool Data</b> means the registry row has no persisted tool names/schemas, so it should be treated as discovery-incomplete until upstream detail or README extraction succeeds.
+            </div>
+          </Callout>
+
+          {sourceQualityChart.length > 0 && (
+            <div style={{ padding: '18px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Source quality mix</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={sourceQualityChart} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
+                  <XAxis dataKey="source" tick={{ fontSize: 11, fill: 'var(--text-3)', fontFamily: 'var(--mono)' }} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)', fontFamily: 'var(--mono)' }} />
+                  <Tooltip contentStyle={{ background: '#0d0d0d', border: '1px solid #1f1f1f', borderRadius: '8px', fontSize: '12px' }} />
+                  <Bar dataKey="active" fill="#16a34a" name="Active" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="noTools" fill="#d97706" name="No tool metadata" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="rejected" fill="#dc2626" name="Rejected" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           <div>
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Source quality</h3>
@@ -834,7 +929,59 @@ export default function AdminPage() {
       {/* ── OPERATIONS ────────────────────────────────────────────────────── */}
       {tab === 'operations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {opsFeedback && (
+            <div style={{
+              padding: '12px 14px',
+              background: opsFeedback.tone === 'success' ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${opsFeedback.tone === 'success' ? '#86efac' : '#fecaca'}`,
+              borderRadius: '10px',
+              fontSize: '13px',
+              color: opsFeedback.tone === 'success' ? C.green : C.red,
+            }}>
+              {opsFeedback.message}
+            </div>
+          )}
 
+          <Callout title="Operations model">
+            <div>
+              <b>Schema drift</b> re-probes active servers and hashes live tools plus version, endpoint, and GitHub URL. If that differs from the approved baseline, the server is suspended because its callable surface changed after approval.
+              <b> Reset daily calls</b> only resets the denormalized <code>calls_today</code> counter on servers; historical metering events remain available for charts and analysis.
+            </div>
+          </Callout>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-2)', marginRight: '4px' }}>Run job now:</span>
+            {[
+              { key: 'uptime_check', label: 'uptime check' },
+              { key: 'schema_drift', label: 'schema drift' },
+              { key: 'reset_daily_calls', label: 'reset daily calls' },
+            ].map((job) => (
+              <button
+                key={job.key}
+                onClick={() => triggerCron(job.key as 'uptime_check' | 'schema_drift' | 'reset_daily_calls')}
+                disabled={Boolean(runningCron)}
+                className="btn btn-ghost btn-sm"
+                style={{ fontFamily: 'var(--mono)' }}
+              >
+                {runningCron === job.key ? 'running...' : job.label}
+              </button>
+            ))}
+          </div>
+
+          {cronChart.length > 0 && (
+            <div style={{ padding: '18px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Cron duration history</h3>
+              <ResponsiveContainer width="100%" height={190}>
+                <AreaChart data={cronChart} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+                  <XAxis dataKey="label" hide />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)', fontFamily: 'var(--mono)' }} />
+                  <Tooltip contentStyle={{ background: '#0d0d0d', border: '1px solid #1f1f1f', borderRadius: '8px', fontSize: '12px' }} />
+                  <Area type="monotone" dataKey="duration" stroke="#2563eb" fill="#2563eb" fillOpacity={0.12} strokeWidth={1.5} name="Duration seconds" dot={false} />
+                  <Area type="stepAfter" dataKey="errors" stroke="#dc2626" fill="#dc2626" fillOpacity={0.08} strokeWidth={1.2} name="Error runs" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           {/* Cron Job Health */}
           <div>
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Background Job Health</h3>
@@ -856,11 +1003,66 @@ export default function AdminPage() {
                       {job.status === 'success' ? '✓ success' : job.status === 'error' ? '✗ error' : job.status === 'running' ? '⟳ running' : job.status}
                     </TD>
                     <TD mono>{job.duration_seconds ? `${job.duration_seconds}s` : '—'}</TD>
-                    <TD>{job.error ? <span style={{ color: C.red }}>{job.error}</span> : job.result ? JSON.stringify(job.result).slice(0, 80) : '—'}</TD>
+                    <TD>
+                      <details>
+                        <summary style={{ cursor: 'pointer', color: job.error ? C.red : C.blue }}>
+                          {job.error ? 'error details' : job.result ? 'view result' : '—'}
+                        </summary>
+                        <pre style={{ whiteSpace: 'pre-wrap', maxWidth: '520px', maxHeight: '220px', overflow: 'auto', marginTop: '8px', fontSize: '11px', lineHeight: 1.5, color: 'var(--text-2)' }}>
+                          {job.error ?? stringifyJson(job.result)}
+                        </pre>
+                      </details>
+                    </TD>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Cron run history</h3>
+            {cronHistory.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>No cron history yet. Run a job above or wait for scheduled cron.</div>
+              : (
+                <>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    <thead><tr>
+                      <TH>Job</TH><TH>Started</TH><TH>Status</TH><TH>Duration</TH><TH>Result / Error</TH>
+                    </tr></thead>
+                    <tbody>
+                      {pagedCronHistory.items.map((run) => (
+                        <tr key={run.id}>
+                          <TD mono color={C.blue}>{run.job_name}</TD>
+                          <TD>{formatIsoDate(run.started_at)}</TD>
+                          <TD color={run.status === 'success' ? C.green : run.status === 'error' ? C.red : C.orange}>{run.status}</TD>
+                          <TD mono>{run.duration_seconds ? `${run.duration_seconds}s` : run.finished_at ? `${Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s` : 'running'}</TD>
+                          <TD>
+                            <details>
+                              <summary style={{ cursor: 'pointer', color: run.error ? C.red : C.blue }}>
+                                {run.error ? 'show error' : 'show result'}
+                              </summary>
+                              <pre style={{ whiteSpace: 'pre-wrap', maxWidth: '620px', maxHeight: '260px', overflow: 'auto', marginTop: '8px', fontSize: '11px', lineHeight: 1.5, color: 'var(--text-2)' }}>
+                                {run.error ?? stringifyJson(run.result)}
+                              </pre>
+                            </details>
+                          </TD>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <PaginationControls
+                    className="mt-4"
+                    page={pagedCronHistory.page}
+                    pages={pagedCronHistory.pages}
+                    from={pagedCronHistory.from}
+                    to={pagedCronHistory.to}
+                    total={pagedCronHistory.total}
+                    pageSize={pagedCronHistory.pageSize}
+                    onPageChange={(nextPage) => setTablePage('cronHistory', nextPage)}
+                  />
+                </>
+              )
+            }
           </div>
 
           {/* Schema Drift Events */}
@@ -880,7 +1082,49 @@ export default function AdminPage() {
                         <TD>{ev.source}</TD>
                         <TD>{ago(ev.drifted_at)}</TD>
                         <TD color={ev.status === 'suspended' ? C.red : C.orange}>{ev.status}</TD>
-                        <TD>{ev.details?.slice(0, 100) ?? '—'}</TD>
+                        <TD>
+                          <details>
+                            <summary style={{ cursor: 'pointer', color: C.blue }}>{ev.details?.slice(0, 90) ?? 'view evidence'}</summary>
+                            <pre style={{ whiteSpace: 'pre-wrap', maxWidth: '620px', maxHeight: '260px', overflow: 'auto', marginTop: '8px', fontSize: '11px', lineHeight: 1.5, color: 'var(--text-2)' }}>
+                              {stringifyJson({ details: ev.details, issues: ev.issues })}
+                            </pre>
+                          </details>
+                        </TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            }
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Suspended servers</h3>
+            {suspendedServers.length === 0
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>No suspended servers.</div>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead><tr>
+                    <TH>Server</TH><TH>Source</TH><TH>Trust</TH><TH>Extraction</TH><TH>Updated</TH><TH>Reason</TH>
+                  </tr></thead>
+                  <tbody>
+                    {suspendedServers.map((server) => (
+                      <tr key={server.id}>
+                        <TD mono color={C.red}>
+                          <Link href={`/registry/${server.name}`} style={{ color: C.red, textDecoration: 'none' }}>{server.name}</Link>
+                        </TD>
+                        <TD>{server.source}</TD>
+                        <TD>{server.trust_score ?? '—'}</TD>
+                        <TD mono>{server.transport}/{server.tool_extraction_source}</TD>
+                        <TD>{server.updated_at ? ago(server.updated_at) : '—'}</TD>
+                        <TD>
+                          <details>
+                            <summary style={{ cursor: 'pointer', color: C.blue }}>show reason</summary>
+                            <pre style={{ whiteSpace: 'pre-wrap', maxWidth: '620px', maxHeight: '260px', overflow: 'auto', marginTop: '8px', fontSize: '11px', lineHeight: 1.5, color: 'var(--text-2)' }}>
+                              {stringifyJson(server.scan_issues)}
+                            </pre>
+                          </details>
+                        </TD>
                       </tr>
                     ))}
                   </tbody>
@@ -930,14 +1174,13 @@ export default function AdminPage() {
                   { path: '/api/servers/search', method: 'GET', auth: 'None', desc: 'Full-text + tag + tool search', rate: '60/min' },
                   { path: '/api/servers/stats', method: 'GET', auth: 'None', desc: 'Global registry statistics', rate: '120/min' },
                   { path: '/api/servers/[name]', method: 'GET', auth: 'None', desc: 'Server details by name', rate: '60/min' },
-                  { path: '/api/proxy/[server]/[tool]', method: 'POST', auth: 'Optional API key', desc: 'Proxy MCP tool call through registry', rate: '30/min (200 w/ key)' },
                   { path: '/api/ingest', method: 'POST', auth: 'CRON_SECRET', desc: 'Trigger ingestion pipeline', rate: 'Admin only' },
                   { path: '/api/ingest', method: 'GET', auth: 'CRON_SECRET', desc: 'Get last 10 ingest runs', rate: 'Admin only' },
                   { path: '/api/admin/ingest', method: 'POST', auth: 'Admin session', desc: 'Trigger ingest from dashboard', rate: 'Admin only' },
                   { path: '/api/cron/uptime-check', method: 'GET', auth: 'CRON_SECRET', desc: 'Probe all active server endpoints (every 15m)', rate: 'Cron only' },
                   { path: '/api/cron/schema-drift', method: 'GET', auth: 'CRON_SECRET', desc: 'Detect tool schema changes (every 6h)', rate: 'Cron only' },
                   { path: '/api/cron/reset-daily-calls', method: 'GET', auth: 'CRON_SECRET', desc: 'Reset calls_today counters (daily)', rate: 'Cron only' },
-                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'MCP-over-MCP server endpoint', rate: '60/min' },
+                  { path: '/api/mcp-server', method: 'POST', auth: 'None', desc: 'Cloud MCP discovery endpoint', rate: '60/min' },
                   { path: '/api/auth/callback', method: 'GET', auth: 'OAuth flow', desc: 'Auth provider callback', rate: 'N/A' },
                 ].map(ep => (
                   <tr key={ep.path + ep.method}>
@@ -1069,7 +1312,7 @@ export default function AdminPage() {
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Server Reliability — the ML training signal</h3>
             <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: '12px' }}>Historical success rates per server. High invoke_count + high success_rate = strong training examples.</p>
             {serverReliability.length === 0
-              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No reliability data yet. Accumulates as invoke_tool calls are made.</div>
+              ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-3)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>No reliability data yet. This is optional lab telemetry, not part of the lightweight MVP path.</div>
               : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                   <thead><tr><TH>Server</TH><TH>Invocations</TH><TH>Success %</TH><TH>Avg Latency</TH><TH>Unique Intents</TH><TH>Last Success</TH></tr></thead>
