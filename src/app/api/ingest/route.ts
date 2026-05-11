@@ -1,111 +1,40 @@
-import { safeCompare } from '@/lib/utils';
+import { isCronAuthorized }        from '@/lib/cron/cron-auth';
+import { z }                       from 'zod';
+import { zodError }                from '@/lib/api';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
-import {
-  fetchOfficialServers,
-  fetchSmitheryServers,
-  fetchGitHubServers,
-  fetchGlamaServers,
-  fetchPulseMCPServers,
-  upsertServers,
-} from '@/lib/ingest';
+import { createServiceClient }     from '@/lib/supabase/server';
+import { runIngest }               from '@/lib/cron/ingest';
 
-function isAuthorized(req: NextRequest) {
-  return safeCompare(req.headers.get('authorization') ?? '', `Bearer ${process.env.CRON_SECRET ?? ''}`);
+const IngestSchema = z.object({
+  source: z.enum(['all', 'official', 'smithery', 'glama', 'mcp_directory']).default('all'),
+});
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new NextResponse(JSON.stringify(payload, null, 2), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-  const { source = 'all' } = await req.json().catch(() => ({}));
-  const svc = createServiceClient();
-  const startedAt = new Date().toISOString();
-  const results: Record<string, any> = {};
+  let body: z.infer<typeof IngestSchema>;
+  try { body = IngestSchema.parse(await req.json().catch(() => ({}))); }
+  catch (e) { return zodError(e); }
 
-  // Track run
-  const { data: run } = await svc.from('ingest_runs').insert({
-    source, started_at: startedAt,
-  }).select('id').single();
-
-  try {
-    if (source === 'all' || source === 'official') {
-      console.log('[ingest] Fetching official registry...');
-      const servers = await fetchOfficialServers();
-      results.official = await upsertServers(servers, svc);
-      results.official.fetched = servers.length;
-    }
-
-    if (source === 'all' || source === 'smithery') {
-      console.log('[ingest] Fetching Smithery...');
-      const servers = await fetchSmitheryServers();
-      results.smithery = await upsertServers(servers, svc);
-      results.smithery.fetched = servers.length;
-    }
-
-    if (source === 'all' || source === 'glama') {
-      console.log('[ingest] Fetching Glama...');
-      const servers = await fetchGlamaServers();
-      results.glama = await upsertServers(servers, svc);
-      results.glama.fetched = servers.length;
-    }
-
-    if (source === 'all' || source === 'pulsemcp') {
-      console.log('[ingest] Fetching PulseMCP...');
-      const servers = await fetchPulseMCPServers();
-      results.pulsemcp = await upsertServers(servers, svc);
-      results.pulsemcp.fetched = servers.length;
-    }
-
-    if (source === 'all' || source === 'github') {
-      console.log('[ingest] Fetching GitHub servers...');
-      const servers = await fetchGitHubServers();
-      results.github = await upsertServers(servers, svc);
-      results.github.fetched = servers.length;
-    }
-
-    // Update ingest run record
-    const total = Object.values(results).reduce((acc: any, r: any) => ({
-      servers_found:    (acc.servers_found    || 0) + (r.fetched    || 0),
-      servers_added:    (acc.servers_added    || 0) + (r.added      || 0),
-      servers_updated:  (acc.servers_updated  || 0) + (r.updated    || 0),
-      servers_rejected: (acc.servers_rejected || 0) + (r.rejected   || 0),
-    }), {});
-
-    if (run?.id) {
-      await svc.from('ingest_runs').update({
-        finished_at: new Date().toISOString(),
-        ...total,
-      }).eq('id', run.id);
-    }
-
-    return NextResponse.json({
-      success: true,
-      results,
-      total,
-      timestamp: new Date().toISOString(),
-    });
-
-  } catch (err: any) {
-    if (run?.id) {
-      await svc.from('ingest_runs').update({
-        finished_at: new Date().toISOString(),
-        error: err.message,
-      }).eq('id', run.id);
-    }
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const result = await runIngest(body.source as any);
+  return jsonResponse(result, result.error ? 500 : 200);
 }
 
-// GET — ingest status / last run info
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(req)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const svc = createServiceClient();
-  const { data: runs } = await svc
-    .from('ingest_runs')
+  const { data: runs } = await (svc.from('ingest_runs') as any)
     .select('*')
     .order('started_at', { ascending: false })
     .limit(10);
 
-  return NextResponse.json({ runs: runs ?? [] });
+  return jsonResponse({ runs: runs ?? [] });
 }

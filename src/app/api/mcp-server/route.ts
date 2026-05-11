@@ -1,81 +1,68 @@
 /**
- * openMCP — Native MCP Server
+ * {BRAND.name} — Native MCP Server
  *
- * Exposes openMCP itself as a standard MCP server.
+ * Exposes {BRAND.name} itself as a standard MCP server.
  * Agents add ONE connection and get access to every verified server.
  *
  * Transport: StreamableHTTP (primary) + SSE (compatibility)
  * Auth: API key via Authorization: Bearer header (optional for read, required for invoke)
  *
  * Two tools exposed:
- *   search_tools(intent, limit?)  — semantic search returning servers + full schemas
+ *   search_tools(intent, limit?)  — intent search returning servers + full schemas
  *   invoke_tool(server, tool, args) — proxied through 15-layer security stack
  *
  * Config for Claude Desktop / Cursor / any MCP client:
  * {
  *   "mcpServers": {
- *     "openmcp": {
- *       "url": "https://openmcp.dev/api/mcp-server"
+ *     "<your-brand-slug>": {
+ *       "url": "https://<your-domain>/api/mcp-server"
  *     }
  *   }
  * }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import {
-  dlpScan, shellInjectionScan, piiScan,
-  checkElicitationUrl, contextLeakScan, indirectInjectionScan,
-} from '@/lib/security';
-import { rateLimit, LIMITS } from '@/lib/ratelimit';
-
-// ── Auth helper ──────────────────────────────────────────────────────────────
-// API key is optional for search_tools (public) but logged for invoke_tool.
-// Authenticated callers get higher rate limits.
-async function resolveApiKey(req: NextRequest): Promise<{ userId: string | null; keyId: string | null }> {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return { userId: null, keyId: null };
-
-  const token = authHeader.slice(7);
-  if (!token.startsWith('sk_mcp_')) return { userId: null, keyId: null };
-
-  try {
-    const { createHash } = await import('crypto');
-    const keyHash = createHash('sha256').update(token).digest('hex');
-
-    const svc = createServiceClient();
-    const { data } = await svc
-      .from('api_keys')
-      .select('id, user_id')
-      .eq('key_hash', keyHash)
-      .single();
-
-    if (data) {
-      // Update last used (fire-and-forget)
-      svc.from('api_keys')
-        .update({ last_used_at: new Date().toISOString() })
-        .eq('id', data.id)
-        .catch(() => {});
-      return { userId: data.user_id, keyId: data.id };
-    }
-  } catch {}
-  return { userId: null, keyId: null };
-}
+import { NextRequest, NextResponse }   from 'next/server';
+import { rateLimit, getLimitConfig }   from '@/lib/ratelimit';
+import { BRAND }                        from '@/lib/brand';
+import { resolveApiKey }                from '@/lib/auth-server';
+import { corsHeaders }                  from '@/lib/utils';
+import { after }                        from '@/lib/after';
+import { executeProxyCall }             from '@/lib/proxy-execute';
+import { getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
+import { ensureRuntimeContracts }       from '@/lib/runtime-contracts';
+import { hashIntent, recordSearchEvent } from '@/lib/search-analytics';
+import { runSearch, MAX_TOOLS_PER_RESULT } from '@/lib/search';
 
 // ── MCP Protocol constants ────────────────────────────────────────────────────
-const MCP_VERSION     = '2024-11-05';
-const SERVER_NAME     = 'openMCP';
+const MCP_VERSION     = '2025-03-26';
+const SERVER_NAME     = BRAND.name;
 const SERVER_VERSION  = '0.1.0';
 
-// ── Tool definitions — the entire openMCP API surface ─────────────────────────
+// ── Tool definitions — the entire {BRAND.name} API surface ──────────────────────
+//
+// LEVER 1: Descriptions encode *when* to use each tool, not just what they do.
+// The activation condition ("before taking any real-world action") is explicit.
+// The non-activation condition ("not for knowledge questions") is explicit.
+// This is the single highest-ROI change for tool-calling reliability.
+//
 const TOOLS = [
   {
     name: 'search_tools',
     description: [
-      'Search the openMCP registry for MCP servers by natural language intent.',
-      'Returns verified servers with trust scores and full tool schemas.',
-      'Always call this before invoke_tool — use the inputSchema from results to construct arguments.',
-      'Prefer servers with trust_score > 80 for production use.',
+      // What it does
+      `Searches the ${BRAND.name} registry and returns MCP servers matching your intent,`,
+      'with full tool schemas (inputSchema) ready to use with invoke_tool.',
+      // WHEN to call it — the activation condition
+      'Call this BEFORE taking any action that affects external systems:',
+      'sending emails, querying databases, creating issues, calling APIs,',
+      'writing files, posting messages, processing payments, or interacting',
+      'with any service. Always search before you invoke.',
+      // WHEN NOT to call it — the non-activation condition
+      'Do NOT call this for questions you can answer from your own knowledge',
+      '(definitions, explanations, calculations, writing, reasoning tasks).',
+      // How to use results
+      'Use trust_score >= 65 for production. Copy the inputSchema exactly when',
+      'constructing args for invoke_tool.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -83,11 +70,18 @@ const TOOLS = [
       properties: {
         intent: {
           type: 'string',
-          description: 'Natural language description of what you need. E.g. "send a transactional email" or "create a GitHub pull request".',
+          description: [
+            'Describe what you need to DO in plain language — not what tool you want.',
+            'Good: "send a transactional email with an order confirmation"',
+            'Good: "create a GitHub pull request from a feature branch"',
+            'Good: "query a postgres database to get user records"',
+            'Bad: "email tool" (too vague)',
+            'Bad: "what is sendgrid" (knowledge question — answer from training)',
+          ].join(' '),
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results to return. Default: 5. Max: 20.',
+          description: 'Max results to return. Default 5, max 20. Increase if first results are not a strong match.',
           default: 5,
         },
       },
@@ -96,10 +90,18 @@ const TOOLS = [
   {
     name: 'invoke_tool',
     description: [
-      'Invoke a tool on a verified MCP server through the openMCP security proxy.',
-      'Every call is DLP-scanned, shell-injection checked, PII-scanned, and audited.',
-      'Use the inputSchema from search_tools results to construct args correctly.',
-      'Never put API keys or secrets in args — credentials are injected automatically.',
+      // What it does
+      `Executes a tool on a verified MCP server through the ${BRAND.name} security proxy.`,
+      // Security guarantees — agent should know what it gets for free
+      'Every call is automatically: DLP-scanned (blocks leaked credentials),',
+      'shell-injection checked, PII-detected, policy-enforced, and audit-logged.',
+      'Credentials are vault-injected automatically — never pass API keys in args.',
+      // How to use it correctly
+      'Use the server name and tool name exactly as returned by search_tools.',
+      'Build args by following the inputSchema from search_tools results precisely.',
+      // Error handling guidance
+      'If you receive authentication_required, follow the setup_url instructions.',
+      'If you receive confirmation_required, resend with the X-Confirm-Token header.',
     ].join(' '),
     inputSchema: {
       type: 'object',
@@ -107,15 +109,23 @@ const TOOLS = [
       properties: {
         server: {
           type: 'string',
-          description: 'Server name from search_tools results. E.g. "sendgrid-mail".',
+          description: 'Exact server name from search_tools results. E.g. "sendgrid-mail". Do not guess — always use search_tools first.',
         },
         tool: {
           type: 'string',
-          description: 'Tool name from the server\'s tools list. E.g. "send_email".',
+          description: 'Exact tool name from the server\'s tools list in search_tools results. E.g. "send_email".',
         },
         args: {
           type: 'object',
-          description: 'Tool arguments matching the inputSchema exactly.',
+          description: 'Tool arguments matching the inputSchema exactly. Business data only — no API keys, tokens, or secrets.',
+        },
+        search_event_id: {
+          type: 'string',
+          description: 'Optional correlation ID returned by search_tools. Pass it through unchanged so Relay can learn from the search -> invoke chain.',
+        },
+        intent: {
+          type: 'string',
+          description: 'Optional original intent string from search_tools. Pass it through unchanged to strengthen Relay ranking feedback.',
         },
       },
     },
@@ -132,7 +142,7 @@ async function handleInitialize(id: any) {
       name:    SERVER_NAME,
       version: SERVER_VERSION,
     },
-    instructions: 'openMCP gives you access to 7,000+ verified MCP servers. Call search_tools first, then invoke_tool. Read https://openmcp.dev/openmcp.md for full documentation.',
+    instructions: getMcpInitializeInstructions(),
   });
 }
 
@@ -151,7 +161,7 @@ async function handleToolsCall(id: any, params: any, req: NextRequest) {
   const auth = await resolveApiKey(req);
 
   if (name === 'search_tools') {
-    return handleSearchTools(id, args, ip);
+    return handleSearchTools(id, args, ip, auth);
   }
   if (name === 'invoke_tool') {
     return handleInvokeTool(id, args, req, ip, auth);
@@ -160,176 +170,208 @@ async function handleToolsCall(id: any, params: any, req: NextRequest) {
   return mcpError(id, -32601, `Tool not found: ${name}`);
 }
 
-async function handleSearchTools(id: any, args: any, ip: string) {
-  const rl = await rateLimit(`mcp-search:${ip}`, LIMITS.search);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
+async function handleSearchTools(
+  id: any,
+  args: any,
+  ip: string,
+  auth?: { userId: string | null }
+) {
+  const handlerStart = Date.now();
+  const rlKey = auth?.userId ? `mcp-search:user:${auth.userId}` : `mcp-search:ip:${ip}`;
+  const rlConfig = auth?.userId ? await getLimitConfig('proxyAuth') : await getLimitConfig('search');
+  const rl = await rateLimit(rlKey, rlConfig);
+  if (!rl.allowed) return mcpError(id, -32000, `Rate limit exceeded. ${getRateLimitAuthHint()}`);
 
   const intent = String(args?.intent ?? '').trim();
   if (!intent) return mcpError(id, -32602, 'intent is required');
 
-  const limit = Math.min(Number(args?.limit ?? 5), 20);
-  const supabase = createClient();
+  const parsedLimit = Number(args?.limit ?? 5);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(20, Math.max(1, parsedLimit))
+    : 5;
+  const intentHash = hashIntent(intent);
+  const searchEventId = crypto.randomUUID();
+  const sessionId  = `${ip.slice(0, 8)}:${Date.now().toString(36)}`;
 
-  const { data: results } = await supabase
-    .rpc('search_servers', { query_text: intent, result_limit: limit });
+  // ── LEVER 3A: Heuristic intent classifier ────────────────────────────────────
+  // Intercepts knowledge queries before touching the database.
+  // Teaches agents the correct activation boundary through in-loop feedback.
+  // Every no_tool_needed response is logged as a knowledge deflection — this
+  // becomes training data for Lever 3B (ML classifier, Sprint 6).
+  const KNOWLEDGE_PATTERNS: RegExp[] = [
+    // S10: ^ anchors removed — patterns now match anywhere in the intent string.
+    // "I need to know how to send email" was not deflected by ^how because the
+    // sentence doesn't start with "how". Anchor-free matching fixes this.
+    /(what|who|when|where|why|how)\s+(is|are|was|were|does|do|did|has|have|can|could|would|should|will)\b/i,
+    /(explain|define|describe|tell me about|what does .+ mean|what is the difference)\b/i,
+    /(compare|vs\.?|versus|difference between|which is better)\b/i,
+    /(calculate|compute|solve|what is \d|convert \d)/i,
+    /(write|draft|summarize|translate|rewrite|fix|improve|edit)\s+(a |an |the |this |my )?(text|paragraph|sentence|email template|summary|description|copy)\b/i,
+    /(list|name|give me|tell me)\s+(the\s+)?(top|best|main|key|common|example|type)/i,
+    /(history of|background on|overview of|introduction to)\b/i,
+  ];
+  const ACTION_OVERRIDES: RegExp[] = [
+    /\b(send|create|delete|update|fetch|get|post|push|pull|deploy|run|execute|invoke|call|trigger|schedule|notify|email|message|upload|download|save|store|insert|query|search(?! for tools| registry))\b/i,
+  ];
 
-  if (!results || results.length === 0) {
+  const looksLikeKnowledge = KNOWLEDGE_PATTERNS.some(p => p.test(intent));
+  const hasActionOverride  = ACTION_OVERRIDES.some(p => p.test(intent));
+
+  if (looksLikeKnowledge && !hasActionOverride) {
+    // Record as knowledge deflection — non-blocking
+    after(() => recordSearchEvent({
+      searchEventId,
+      userId: auth?.userId ?? null, sessionId,
+      interface: 'mcp_server', intentText: intent,
+      intentClass: 'knowledge', resultCount: 0,
+      resultServers: [], topServer: null, topConfidence: null,
+      cacheHit: false, noToolNeeded: true,
+      searchLatencyMs: 0, totalLatencyMs: Date.now() - handlerStart,
+    }));
+
     return mcpResponse(id, {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          results: [],
-          message: `No servers found for intent: "${intent}". Try broader terms.`,
-        }, null, 2),
-      }],
+      content: [{ type: 'text', text: JSON.stringify({
+        no_tool_needed: true,
+        reason: 'This is a knowledge or reasoning task. Answer from your training — no external tool needed.',
+        intent,
+        intent_hash: intentHash,
+        search_event_id: searchEventId,
+        hint: 'Call search_tools when you need to take action on an external system (send, create, query, update, delete, etc.).',
+      }, null, 2) }],
     });
   }
 
-  const formatted = results.map((s: any) => ({
-    name:         s.name,
-    display_name: s.display_name,
-    description:  s.description,
-    trust_score:  s.trust_score,
-    latency_ms:   s.latency_ms,
-    uptime_pct:   s.uptime_pct,
-    source:       s.source ?? 'direct',
-    verified:     s.verified,
-    scan_status:  s.scan_status,
-    tools: (s.tools ?? []).map((t: any) => (
-      typeof t === 'string'
-        ? { name: t }
-        : { name: t.name, description: t.description, inputSchema: t.inputSchema }
-    )),
-    usage: `invoke_tool({ server: "${s.name}", tool: "<tool_name>", args: {...} })`,
-    credential_note: 'Pass only business data as tool arguments. Never include API keys. The server manages its own credentials.',
-    is_new: s.is_new ?? false,
+  // ── S15: Shared search pipeline ───────────────────────────────────────────────
+  // Delegates to runSearch() — identical pipeline used by REST surface too.
+  const searchResult = await runSearch({ intent, limit, surface: 'mcp', intentHash });
+  const { results: formatted, cacheHit, searchLatencyMs } = searchResult;
+
+  if (formatted.length === 0) {
+    after(() => recordSearchEvent({
+      searchEventId,
+      userId: auth?.userId ?? null, sessionId,
+      interface: 'mcp_server', intentText: intent,
+      intentClass: 'action', resultCount: 0,
+      resultServers: [], topServer: null, topConfidence: null,
+      cacheHit: false, noToolNeeded: false,
+      searchLatencyMs, totalLatencyMs: Date.now() - handlerStart,
+    }));
+
+    return mcpResponse(id, {
+      content: [{ type: 'text', text: JSON.stringify({
+        results: [],
+        message: `No servers found for: "${intent}". Try broader terms or check spelling.`,
+        intent,
+        intent_hash: intentHash,
+        search_event_id: searchEventId,
+      }, null, 2) }],
+    });
+  }
+
+  const topResult = formatted[0];
+
+  // ── Record search event (non-blocking) ────────────────────────────────────────
+  after(() => recordSearchEvent({
+    searchEventId,
+    userId:       auth?.userId ?? null,
+    sessionId,
+    interface:    'mcp_server',
+    intentText:   intent,
+    intentClass:  'action',
+    resultCount:  formatted.length,
+    resultServers: formatted.map(s => s.name),
+    topServer:    topResult?.name ?? null,
+    topConfidence: topResult?.confidence ?? null,
+    cacheHit,
+    noToolNeeded: false,
+    searchLatencyMs,
+    totalLatencyMs: Date.now() - handlerStart,
   }));
 
   return mcpResponse(id, {
-    content: [{
-      type: 'text',
-      text: JSON.stringify({
-        intent,
-        results: formatted,
-        tip: 'Use trust_score > 80 for production. Copy inputSchema exactly for args.',
-      }, null, 2),
-    }],
+    content: [{ type: 'text', text: JSON.stringify({
+      intent,
+      intent_hash: intentHash,
+      search_event_id: searchEventId,
+      results: formatted,
+      tip: [
+        cacheHit
+          ? 'Cache hit — server ordering comes from historical success for this intent.'
+          : 'Results ordered by confidence (position + trust + history).',
+        'Use invoke_tool with the exact server and tool names shown.',
+        'Pass search_event_id and intent through to invoke_tool so Relay can learn from successful chains.',
+        `Schemas trimmed to ${MAX_TOOLS_PER_RESULT} most relevant tools per server — use total_tools to see if more exist.`,
+      ].join(' '),
+      cache_hit: cacheHit,
+    }, null, 2) }],
   });
 }
 
-async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string, auth?: { userId: string | null }) {
-  // Authenticated users get the proxy limit; anonymous callers get search limit
+async function handleInvokeTool(id: any, args: any, req: NextRequest, ip: string, auth?: { userId: string | null; keyId?: string | null }) {
   const rlKey    = auth?.userId ? `mcp-invoke:user:${auth.userId}` : `mcp-invoke:ip:${ip}`;
-  const rlConfig = auth?.userId ? LIMITS.proxy : LIMITS.search;
+  const rlConfig = auth?.userId ? await getLimitConfig('proxyAuth') : await getLimitConfig('proxy');
   const rl = await rateLimit(rlKey, rlConfig);
-  if (!rl.allowed) return mcpError(id, -32000, 'Rate limit exceeded. Add Authorization: Bearer sk_mcp_... for higher limits (200/min)');
+  if (!rl.allowed) return mcpError(id, -32000, `Rate limit exceeded. ${getRateLimitAuthHint()}`);
 
-  const { server: serverName, tool: toolName, args: toolArgs } = args ?? {};
+  const {
+    server: serverName,
+    tool: toolName,
+    args: toolArgs,
+    search_event_id: searchEventId,
+    intent,
+  } = args ?? {};
   if (!serverName || !toolName) {
     return mcpError(id, -32602, 'server and tool are required');
   }
 
-  const supabase    = createClient();
-  const svc         = createServiceClient();
-  const start       = Date.now();
-
-  // Resolve server
-  const { data: server } = await supabase
-    .from('servers')
-    .select('id, name, endpoint, tools, trust_score')
-    .eq('name', serverName)
-    .eq('status', 'active')
-    .single();
-
-  if (!server) return mcpError(id, -32602, `Server '${serverName}' not found or not active`);
-
-  const argsStr = JSON.stringify(toolArgs ?? {});
-
-  // S-12: Shell injection scan
-  const shellIssues = shellInjectionScan(argsStr);
-  if (shellIssues.length > 0) {
-    return mcpError(id, -32000, `Blocked: shell injection detected — ${shellIssues[0]}`);
-  }
-
-  // L4: DLP on request
-  const reqDlp = dlpScan(argsStr);
-  if (reqDlp.length > 0) {
-    return mcpError(id, -32000, `Blocked: credential pattern in arguments — ${reqDlp[0]}`);
-  }
-
-  // Forward to upstream MCP server
-  let result: any;
+  // Call proxy execution directly — no internal HTTP round-trip
+  let result;
   try {
-    const upstream = await fetch(`${server.endpoint}/tools/call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: toolName, arguments: toolArgs ?? {} }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    const body = await upstream.text();
-
-    // L4: DLP on response
-    const resDlp      = dlpScan(body);
-    const piiIssues   = piiScan(body);
-    const leakIssues  = contextLeakScan(body);
-    const indirIssues = indirectInjectionScan(body);
-    const allIssues   = [...resDlp, ...piiIssues, ...leakIssues, ...indirIssues];
-
-    // Audit log
-    await svc.from('audit_log').insert({
-      server_id:     server.id,
-      action:        'mcp_server_invoke',
-      tool_name:     toolName,
-      request_size:  argsStr.length,
-      response_size: body.length,
-      latency_ms:    Date.now() - start,
-      status_code:   upstream.status,
-      dlp_triggered: allIssues.length > 0,
-      dlp_issues:    allIssues,
+    result = await executeProxyCall({
+      serverName,
+      toolName,
+      rawBody:       JSON.stringify(toolArgs ?? {}),
+      callerUserId:  auth?.userId ?? null,
+      callerKeyId:   auth?.keyId ?? null,
       ip,
-      user_agent:    req.headers.get('user-agent') || '',
-    }).catch(() => {});
-
-    // Metering event
-    svc.from('metering_events').insert({
-      server_id:      server.id,
-      user_id:        auth?.userId ?? null,
-      tool_name:      toolName,
-      interface:      'mcp_server',
-      request_bytes:  argsStr.length,
-      response_bytes: body.length,
-      latency_ms:     Date.now() - start,
-      status_code:    upstream.status,
-      dlp_triggered:  allIssues.length > 0,
-    }).catch(() => {});
-
-    // Increment call counters
-    svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
-
-    if (!upstream.ok) {
-      return mcpError(id, -32000, `Upstream error ${upstream.status}: ${body.slice(0, 200)}`);
-    }
-
-    result = JSON.parse(body);
+      userAgent:     req.headers.get('user-agent') ?? '',
+      confirmHeader: req.headers.get('x-confirm-token'),
+      callInterface: 'mcp_server',
+      searchEventId: typeof searchEventId === 'string' ? searchEventId : null,
+      intentText: typeof intent === 'string' ? intent : undefined,
+      intentHash: typeof intent === 'string' ? hashIntent(intent) : undefined,
+    });
   } catch (e: any) {
-    return mcpError(id, -32000, `Upstream connection failed: ${e.message}`);
+    return mcpError(id, -32000, `Proxy execution failed: ${e.message}`);
   }
+
+  const dlpWarning = result.headers['X-Registry-DLP-Warning'];
+  const meta = {
+    server:      serverName,
+    tool:        toolName,
+    trust_score: result.headers['X-Registry-Trust-Score'] ? Number(result.headers['X-Registry-Trust-Score']) : null,
+    latency_ms:  result.headers['X-Registry-Latency']     ? Number(result.headers['X-Registry-Latency'])     : null,
+    warnings:    dlpWarning ? dlpWarning.split('; ').filter(Boolean) : [],
+  };
+
+  // Surface confirmation requirement back to agent
+  if (result.status === 202 || result.status === 401) {
+    let payload: any = result.body;
+    try { payload = JSON.parse(result.body); } catch {}
+    return mcpResponse(id, {
+      content: [{ type: 'text', text: JSON.stringify({ status: result.status, ...meta, response: payload }, null, 2) }],
+    });
+  }
+
+  if (result.status >= 400) {
+    return mcpError(id, -32000, `Proxy error ${result.status}: ${result.body.replace(/<[^>]*>/g, '').slice(0, 200)}`);
+  }
+
+  let parsed: any = result.body;
+  try { parsed = JSON.parse(result.body); } catch {}
 
   return mcpResponse(id, {
-    content: [{
-      type: 'text',
-      text: JSON.stringify({
-        result,
-        meta: {
-          server:      serverName,
-          tool:        toolName,
-          trust_score: server.trust_score,
-          latency_ms:  Date.now() - start,
-          security:    'DLP + shell injection + PII scanned',
-        },
-      }, null, 2),
-    }],
+    content: [{ type: 'text', text: JSON.stringify({ result: parsed, meta }, null, 2) }],
   });
 }
 
@@ -344,6 +386,14 @@ function mcpError(id: any, code: number, message: string) {
 
 // ── StreamableHTTP transport ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  try {
+    await ensureRuntimeContracts();
+  } catch (e: any) {
+    return NextResponse.json(
+      { jsonrpc: '2.0', id: null, error: { code: -32000, message: `Runtime contract check failed: ${e?.message ?? 'unknown'}` } },
+      { status: 500 }
+    );
+  }
   let body: any;
   try {
     body = await req.json();
@@ -377,65 +427,57 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(response, {
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      ...corsHeaders(req.headers.get('origin')),
     },
   });
 }
 
-// ── SSE transport (compatibility for older MCP clients) ───────────────────────
+// ── SSE transport (compatibility for 2024-11-05 clients) ─────────────────────
+// For Streamable HTTP (2025-03-26) clients the POST handler is sufficient.
+// SSE GET is kept for older clients (Claude Desktop pre-2025, some frameworks).
+// Per spec: on connect, send the endpoint event then wait for client to POST.
 export async function GET(req: NextRequest) {
-  const encoder = new TextEncoder();
+  const encoder  = new TextEncoder();
+  const sessionId = crypto.randomUUID();
 
   const stream = new ReadableStream({
     start(controller) {
-      // Send server capabilities on connect
-      const capabilities = {
-        jsonrpc: '2.0',
-        method: 'notifications/initialized',
-        params: {
-          serverInfo:  { name: SERVER_NAME, version: SERVER_VERSION },
-          tools:       TOOLS,
-          instructions: 'openMCP — search_tools then invoke_tool. Read /openmcp.md for full docs.',
-        },
-      };
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(capabilities)}\n\n`));
+      // Per 2024-11-05 SSE spec: first event must be the POST endpoint URL
+      const postEndpoint = new URL(req.url).origin + '/api/mcp-server';
+      controller.enqueue(encoder.encode(`event: endpoint\ndata: ${postEndpoint}\n\n`));
 
-      // Keep alive every 30s
+      // Keep-alive comments every 25s (Cloudflare drops idle SSE after 30s)
       const keepAlive = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(': keepalive\n\n'));
+          controller.enqueue(encoder.encode(': ka\n\n'));
         } catch {
           clearInterval(keepAlive);
         }
-      }, 30_000);
+      }, 25_000);
 
       req.signal.addEventListener('abort', () => {
         clearInterval(keepAlive);
-        controller.close();
+        try { controller.close(); } catch {}
       });
     },
   });
 
   return new NextResponse(stream, {
     headers: {
-      'Content-Type':                'text/event-stream',
-      'Cache-Control':               'no-cache',
-      'Connection':                  'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'X-MCP-Server':                SERVER_NAME,
-      'X-MCP-Version':               MCP_VERSION,
+      'Content-Type':    'text/event-stream',
+      'Cache-Control':   'no-cache, no-transform',
+      'Connection':      'keep-alive',
+      'X-MCP-Server':    SERVER_NAME,
+      'X-MCP-Version':   MCP_VERSION,
+      'Mcp-Session-Id':  sessionId,
+      ...corsHeaders(req.headers.get('origin')),
     },
   });
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
-    headers: {
-      'Access-Control-Allow-Origin':  '*',
-      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
+    status: 204,
+    headers: corsHeaders(req.headers.get('origin')),
   });
 }

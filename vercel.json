@@ -1,81 +1,36 @@
 {
   "framework": "nextjs",
-  "regions": [
-    "iad1"
-  ],
+  "regions": ["iad1"],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        }
+        { "key": "X-Content-Type-Options",  "value": "nosniff" },
+        { "key": "X-Frame-Options",          "value": "DENY" },
+        { "key": "X-XSS-Protection",         "value": "1; mode=block" },
+        { "key": "Referrer-Policy",          "value": "strict-origin-when-cross-origin" }
       ]
     },
     {
-      "source": "/api/mcp-server",
+      "source": "/agents.md",
       "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization"
-        }
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Content-Type",                "value": "text/markdown; charset=utf-8" },
+        { "key": "Cache-Control",               "value": "public, max-age=300" }
       ]
     },
     {
-      "source": "/openmcp.md",
+      "source": "/.well-known/mcp.json",
       "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Content-Type",
-          "value": "text/markdown; charset=utf-8"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=300"
-        }
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control",               "value": "public, max-age=300" }
       ]
     }
   ],
   "crons": [
-    {
-      "path": "/api/cron/schema-drift",
-      "schedule": "0 */6 * * *"
-    },
-    {
-      "path": "/api/cron/uptime-check",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/reset-daily-calls",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/ingest",
-      "schedule": "0 2 * * *"
-    }
+    { "path": "/api/cron/schema-drift",      "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/uptime-check",      "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/reset-daily-calls", "schedule": "0 0 * * *" },
+    { "path": "/api/ingest",                 "schedule": "0 2 * * *" }
   ]
 }

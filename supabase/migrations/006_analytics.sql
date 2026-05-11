@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 006: Detailed analytics views
+-- relay — Migration 006: Detailed analytics views
 -- Run after 005_metering.sql
 -- ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 004: Tool schemas + Glama source + MCP server config
+-- relay — Migration 004: Tool schemas + Glama source + MCP server config
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Add Glama as a valid source
@@ -40,73 +40,6 @@ CREATE TABLE IF NOT EXISTS public.mcp_connections (
 -- RLS on mcp_connections (service role only)
 ALTER TABLE public.mcp_connections ENABLE ROW LEVEL SECURITY;
 
--- Update search_servers RPC to include tool_schemas in results
-CREATE OR REPLACE FUNCTION public.search_servers(
-  query_text   TEXT,
-  result_limit INTEGER DEFAULT 5
-)
-RETURNS TABLE (
-  id            UUID,
-  name          TEXT,
-  display_name  TEXT,
-  description   TEXT,
-  endpoint      TEXT,
-  version       TEXT,
-  tags          TEXT[],
-  tools         TEXT[],
-  tool_schemas  JSONB,
-  trust_score   NUMERIC,
-  verified      BOOLEAN,
-  source        TEXT,
-  scan_status   TEXT,
-  cve_issues    JSONB,
-  latency_ms    INTEGER,
-  uptime_pct    NUMERIC,
-  stars         INTEGER,
-  calls_today   INTEGER
-)
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT
-    s.id,
-    s.name,
-    s.display_name,
-    s.description,
-    s.endpoint,
-    s.version,
-    s.tags,
-    s.tools,
-    s.tool_schemas,
-    s.trust_score,
-    s.verified,
-    s.source,
-    s.scan_status,
-    s.cve_issues,
-    s.latency_ms,
-    s.uptime_pct,
-    s.stars,
-    s.calls_today
-  FROM public.servers s
-  WHERE
-    s.status = 'active'
-    AND (
-      query_text = ''
-      OR s.search_vector @@ plainto_tsquery('english', query_text)
-      OR similarity(s.name, query_text) > 0.2
-      OR EXISTS (
-        SELECT 1 FROM unnest(s.tags) t(tag)
-        WHERE t.tag ILIKE '%' || query_text || '%'
-      )
-    )
-  ORDER BY
-    CASE WHEN query_text = '' THEN 0 ELSE
-      ts_rank(s.search_vector, plainto_tsquery('english', query_text))
-    END DESC,
-    similarity(s.name, query_text) DESC,
-    s.trust_score DESC,
-    s.stars DESC
-  LIMIT result_limit;
-$$;
-
 -- Update global_stats to include glama source count
 CREATE OR REPLACE FUNCTION public.global_stats()
 RETURNS JSON LANGUAGE sql STABLE SECURITY DEFINER AS $$
@@ -133,6 +66,8 @@ $$;
 --   1. New server ranking boost (first 90 days)
 --   2. Category saturation dampening (diversifies results when niche is dominated)
 --   3. Runtime quality signals (failure rate from metering)
+
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER);
 
 CREATE OR REPLACE FUNCTION public.search_servers(
   query_text   TEXT,

@@ -1,9 +1,9 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 009: Transport type + stdio exclusion from agent search
+-- relay — Migration 009: Transport type + stdio exclusion from agent search
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Add transport column to servers table
--- Determines whether a server is invokable through the openMCP proxy
+-- Determines whether a server is invokable through the relay proxy
 ALTER TABLE public.servers
   ADD COLUMN IF NOT EXISTS transport TEXT NOT NULL DEFAULT 'unknown'
     CHECK (transport IN ('stdio', 'sse', 'streamable_http', 'unknown'));
@@ -38,6 +38,9 @@ WHERE transport = 'unknown';
 -- ── Update search_servers RPC to exclude stdio ────────────────────────────────
 -- Agents should only discover servers they can actually invoke through the proxy.
 -- stdio servers are listed in the human browse UI but not returned in search.
+
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN);
 
 CREATE OR REPLACE FUNCTION public.search_servers(
   query_text   TEXT,

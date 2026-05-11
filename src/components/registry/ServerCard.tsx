@@ -1,107 +1,128 @@
-import Link from 'next/link';
-import type { Server } from '@/types';
+import Link            from 'next/link';
+import { cn }          from '@/lib/cn';
+import { Badge }       from '@/components/ui/badge';
+import { highlight }   from '@/lib/highlight';
+import { Shield, Star, Zap, Clock } from 'lucide-react';
 
-const TAG_PALETTE: Record<string, string> = {
-  security: 'red', credentials: 'red', proxy: 'red', zk: 'red',
-  payments: 'green', finance: 'green', billing: 'green', stripe: 'green',
-  database: 'blue', sql: 'blue', postgres: 'blue', data: 'blue',
-  git: 'orange', devops: 'orange', code: 'orange', 'ci-cd': 'orange',
-  email: 'purple', marketing: 'purple', notifications: 'purple',
-  browser: 'orange', automation: 'orange', scraping: 'orange',
-  messaging: 'blue', slack: 'blue', storage: 'blue',
-};
+interface ServerCardProps {
+  server: {
+    name:         string;
+    display_name: string;
+    description:  string;
+    trust_score:  number;
+    verified:     boolean;
+    stars:        number;
+    calls_today:  number;
+    latency_ms:   number | null;
+    uptime_pct:   number;
+    scan_status:  string;
+    tags:         string[];
+    source?:      string;
+    is_new?:      boolean;
+    github_url?:  string | null;
+    profiles?:    { username: string; avatar_url?: string } | null;
+  };
+  /** Active search query — passed down to highlight matched text */
+  query?: string;
+}
 
-const SOURCE_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  official: { label: '⬡ official',  color: '#22c55e', bg: '#0d2b1a', border: '#166534' },
-  github:   { label: '◆ github',    color: '#a855f7', bg: '#1a0b2b', border: '#581c87' },
-  smithery: { label: '◈ smithery',  color: '#3b82f6', bg: '#0d1a2b', border: '#1e3a5f' },
-  direct:   { label: '◉ direct',    color: '#6b7280', bg: '#121212', border: '#1f1f1f' },
-};
-
-function TrustDot({ score }: { score: number }) {
-  const color = score >= 90 ? 'var(--green)' : score >= 70 ? 'var(--yellow)' : 'var(--red)';
+function TrustBar({ score }: { score: number }) {
+  const color = score >= 85 ? 'bg-green-500' : score >= 65 ? 'bg-amber-400' : 'bg-red-400';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }} />
-      <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color }}>{Math.round(score)}</span>
+    <div className="flex items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${score}%` }} />
+      </div>
+      <span className={cn('min-w-[28px] font-mono text-xs font-semibold',
+        score >= 85 ? 'text-green-700' : score >= 65 ? 'text-amber-600' : 'text-red-500'
+      )}>{score}</span>
     </div>
   );
 }
 
-function SourceBadge({ source }: { source: string }) {
-  const s = SOURCE_BADGE[source] ?? SOURCE_BADGE.direct;
+export function ServerCard({ server: s, query = '' }: ServerCardProps) {
   return (
-    <span style={{
-      fontSize: '9px', fontFamily: 'var(--mono)', padding: '1px 6px',
-      borderRadius: '3px', border: `1px solid ${s.border}`,
-      background: s.bg, color: s.color, letterSpacing: '0.04em',
-    }}>
-      {s.label}
-    </span>
-  );
-}
+    <Link href={`/registry/${s.name}`} className="group block no-underline">
+      <div className="h-full rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:border-brand/30 hover:shadow-md">
 
-// Security coverage indicator — shows how many layers the server passed
-function SecurityBar({ scanStatus, cveIssues }: { scanStatus: string; cveIssues?: any[] }) {
-  const hasCve    = (cveIssues?.length ?? 0) > 0;
-  const passed    = scanStatus === 'passed' && !hasCve;
-  const partial   = scanStatus === 'passed' && hasCve;
-
-  if (passed)  return <span style={{ fontSize: '10px', color: 'var(--green)',  fontFamily: 'var(--mono)' }}>✓ scanned</span>;
-  if (partial) return <span style={{ fontSize: '10px', color: 'var(--yellow)', fontFamily: 'var(--mono)' }}>⚠ cve</span>;
-  return         <span style={{ fontSize: '10px', color: 'var(--red)',    fontFamily: 'var(--mono)' }}>✕ issues</span>;
-}
-
-interface Props { server: Server & { author_name?: string; profiles?: any }; compact?: boolean; }
-
-export function ServerCard({ server, compact = false }: Props) {
-  const authorName = (server as any).profiles?.username ?? (server as any).author_name ?? 'unknown';
-  const source     = (server as any).source ?? 'direct';
-  const cveIssues  = (server as any).cve_issues ?? [];
-
-  return (
-    <Link href={`/registry/${server.name}`} style={{ textDecoration: 'none' }}>
-      <div className="card" style={{ padding: compact ? '14px 16px' : '18px 20px', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-1)'; }}>
-
-        {/* Top row: name + badges + trust */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'var(--mono)', fontWeight: 500, fontSize: '14px' }}>{server.name}</span>
-            {server.verified && <span className="badge badge-green">✓ verified</span>}
-            {server.scan_status === 'failed' && <span className="badge badge-red">⚠ issues</span>}
-            <SourceBadge source={source} />
+        {/* Header */}
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="truncate font-mono text-[13px] font-semibold text-brand">
+                {highlight(s.name, query)}
+              </span>
+              {s.verified && (
+                <Shield size={12} className="shrink-0 text-green-600" />
+              )}
+              {s.is_new && (
+                <Badge variant="new" className="text-[10px]">NEW</Badge>
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">
+              {s.github_url && s.github_url.includes('github.com/') ? (
+                <>
+                  <span className="text-muted-foreground hover:text-foreground transition-colors" title={s.github_url}>
+                    {s.github_url.replace(/.*github\.com\//i, '').split('/')[0]}
+                  </span>
+                  <span className="text-muted-foreground/40">/</span>
+                </>
+              ) : null}
+              <span>{highlight(s.display_name, query)}</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-            <SecurityBar scanStatus={server.scan_status} cveIssues={cveIssues} />
-            <TrustDot score={server.trust_score} />
-            <span style={{ fontSize: '12px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>★ {server.stars?.toLocaleString()}</span>
+          <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+            <Star size={12} />
+            <span className="text-xs">{s.stars?.toLocaleString() ?? 0}</span>
           </div>
         </div>
 
-        {/* Author + version */}
-        <div style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)', marginBottom: '8px' }}>
-          {authorName} · v{server.version}
+        {/* Description */}
+        <p className="mb-4 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
+          {highlight(s.description, query)}
+        </p>
+
+        {/* Trust bar */}
+        <div className="mb-3">
+          <TrustBar score={s.trust_score} />
         </div>
 
-        {!compact && (
-          <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.5, marginBottom: '12px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {server.description}
-          </p>
-        )}
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: compact ? 0 : '12px' }}>
-          {server.tags.slice(0, 4).map(tag => (
-            <span key={tag} className={`tag tag-${TAG_PALETTE[tag] ?? 'default'}`}>{tag}</span>
-          ))}
+        {/* Stats row */}
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          {s.latency_ms != null && (
+            <span className="flex items-center gap-1">
+              <Zap size={10} />
+              {s.latency_ms}ms
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Clock size={10} />
+            {(s.uptime_pct ?? 100).toFixed(1)}%
+          </span>
+          {s.calls_today > 0 && (
+            <span>{s.calls_today.toLocaleString()} calls today</span>
+          )}
         </div>
 
-        {!compact && (
-          <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-            {server.latency_ms && <span>⚡ {server.latency_ms}ms</span>}
-            <span>↑ {Number(server.uptime_pct)?.toFixed(1)}%</span>
-            <span>{((server.calls_today ?? 0) / 1000).toFixed(1)}K calls/day</span>
+        {/* Tags — also highlighted when query matches */}
+        {s.tags?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {s.tags.slice(0, 4).map(tag => {
+              const isMatch = query && tag.toLowerCase().includes(query.toLowerCase());
+              return (
+                <span
+                  key={tag}
+                  className={cn(
+                    'rounded-md px-2 py-0.5 text-[11px] transition-colors',
+                    isMatch
+                      ? 'bg-[#22d3ee]/10 text-[#22d3ee] font-medium'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {highlight(tag, query)}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

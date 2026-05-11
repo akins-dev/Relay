@@ -1,244 +1,234 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link           from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { Button }     from '@/components/ui/button';
+import { cn }         from '@/lib/cn';
+import { ChevronLeft, Check, Loader2 } from 'lucide-react';
 
 const PERMISSION_GROUPS = [
-  {
-    id: 'read',
-    label: 'Read',
-    icon: '👁',
-    description: 'View, list, get, search, fetch, describe operations',
-    patterns: ['read_*','get_*','list_*','search_*','fetch_*','find_*','query_*','describe_*','show_*'],
-    default: 'allow' as const,
-    safe: true,
-  },
-  {
-    id: 'create',
-    label: 'Create',
-    icon: '✚',
-    description: 'Create, add, insert, upload, generate new items',
-    patterns: ['create_*','add_*','insert_*','upload_*','new_*','make_*','generate_*','build_*'],
-    default: 'allow' as const,
-    safe: true,
-  },
-  {
-    id: 'update',
-    label: 'Update',
-    icon: '✎',
-    description: 'Update, edit, patch, modify, rename existing items',
-    patterns: ['update_*','edit_*','patch_*','modify_*','set_*','change_*','rename_*','move_*'],
-    default: 'confirm' as const,
-    safe: false,
-  },
-  {
-    id: 'delete',
-    label: 'Delete',
-    icon: '✕',
-    description: 'Delete, remove, destroy, drop, purge, wipe, truncate',
-    patterns: ['delete_*','remove_*','destroy_*','drop_*','purge_*','wipe_*','truncate_*','clear_*','reset_*'],
-    default: 'block' as const,
-    safe: false,
-  },
-  {
-    id: 'send',
-    label: 'Send / Publish',
-    icon: '📤',
-    description: 'Send messages, emails, notifications, publish posts',
-    patterns: ['send_*','publish_*','post_*','notify_*','broadcast_*','email_*','message_*'],
-    default: 'confirm' as const,
-    safe: false,
-  },
-  {
-    id: 'execute',
-    label: 'Execute / Deploy',
-    icon: '▶',
-    description: 'Execute code, run scripts, deploy, trigger pipelines',
-    patterns: ['execute_*','run_*','deploy_*','trigger_*','launch_*','start_*','apply_*'],
-    default: 'confirm' as const,
-    safe: false,
-  },
-  {
-    id: 'git',
-    label: 'Merge / Push',
-    icon: '⇡',
-    description: 'Push code, merge branches, approve pull requests, force operations',
-    patterns: ['push_*','merge_*','approve_*','commit_*','force_*','rebase_*'],
-    default: 'confirm' as const,
-    safe: false,
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    icon: '⚙',
-    description: 'Admin operations, permission changes, user management, format',
-    patterns: ['admin_*','grant_*','revoke_*','ban_*','terminate_*','format_*','invite_*','kick_*'],
-    default: 'block' as const,
-    safe: false,
-  },
+  { id: 'read',    label: 'Read',           icon: '👁',  desc: 'View, list, get, search, fetch, describe operations',          patterns: ['read_*','get_*','list_*','search_*','fetch_*','find_*','query_*','describe_*','show_*'],                          default: 'allow'   as const, safe: true  },
+  { id: 'create',  label: 'Create',         icon: '✚',  desc: 'Create, add, insert, upload, generate new items',             patterns: ['create_*','add_*','insert_*','upload_*','new_*','make_*','generate_*','build_*'],                               default: 'allow'   as const, safe: true  },
+  { id: 'update',  label: 'Update',         icon: '✎',  desc: 'Update, edit, patch, modify, rename existing items',          patterns: ['update_*','edit_*','patch_*','modify_*','set_*','change_*','rename_*','move_*'],                               default: 'confirm' as const, safe: false },
+  { id: 'delete',  label: 'Delete',         icon: '✕',  desc: 'Delete, remove, destroy, drop, purge, wipe, truncate',        patterns: ['delete_*','remove_*','destroy_*','drop_*','purge_*','wipe_*','truncate_*','clear_*','reset_*'],                  default: 'block'   as const, safe: false },
+  { id: 'send',    label: 'Send / Publish', icon: '📤', desc: 'Send messages, emails, notifications, publish posts',         patterns: ['send_*','publish_*','post_*','notify_*','broadcast_*','email_*','message_*'],                                   default: 'confirm' as const, safe: false },
+  { id: 'execute', label: 'Execute / Run',  icon: '▶',  desc: 'Execute code, run scripts, deploy, trigger pipelines',        patterns: ['execute_*','run_*','deploy_*','trigger_*','launch_*','start_*','apply_*'],                                       default: 'confirm' as const, safe: false },
+  { id: 'git',     label: 'Merge / Push',   icon: '⇡',  desc: 'Push code, merge branches, approve pull requests',           patterns: ['push_*','merge_*','approve_*','commit_*','force_*','rebase_*'],                                                  default: 'confirm' as const, safe: false },
+  { id: 'admin',   label: 'Admin',          icon: '⚙',  desc: 'Admin operations, permission changes, user management',      patterns: ['admin_*','grant_*','revoke_*','ban_*','terminate_*','format_*','invite_*','kick_*'],                              default: 'block'   as const, safe: false },
 ];
 
 type Action = 'allow' | 'confirm' | 'block';
 
-const ACTIONS: Record<Action, { label: string; desc: string; color: string; bg: string; border: string }> = {
-  allow:   { label: 'Allow',   desc: 'Agent calls freely',         color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
-  confirm: { label: 'Confirm', desc: 'Agent must pause, ask you',  color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  block:   { label: 'Block',   desc: 'Call rejected immediately',  color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+const ACTIONS: Record<Action, { label: string; desc: string; activeClass: string; dotColor: string }> = {
+  allow:   { label: 'Allow',   desc: 'Agent calls freely',        activeClass: 'border-green-500/30 bg-green-500/10 text-green-400',   dotColor: 'bg-green-500'  },
+  confirm: { label: 'Confirm', desc: 'Agent pauses, asks you',    activeClass: 'border-amber-500/30 bg-amber-500/10 text-amber-400',   dotColor: 'bg-amber-400'  },
+  block:   { label: 'Block',   desc: 'Call rejected immediately',  activeClass: 'border-red-500/30 bg-red-500/10 text-red-400',         dotColor: 'bg-red-500'    },
 };
 
-export default function PoliciesPage() {
+// Helper to get Bearer auth headers
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return {};
+  return { 'Authorization': `Bearer ${session.access_token}` };
+}
+
+export default function PoliciesPage() {
   const [settings, setSettings] = useState<Record<string, Action>>(() => {
     const d: Record<string, Action> = {};
     PERMISSION_GROUPS.forEach(g => { d[g.id] = g.default; });
     return d;
   });
-  const [userId,  setUserId]  = useState<string | null>(null);
+  const [authed,  setAuthed]  = useState<boolean | null>(null);
   const [saving,  setSaving]  = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved,   setSaved]   = useState<string | null>(null);
+  const [error,   setError]   = useState('');
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setLoading(false); return; }
-      setUserId(user.id);
-      supabase.from('tool_policies').select('*').eq('user_id', user.id).is('server_name', null)
-        .then(({ data }) => {
-          if (data?.length) {
-            const loaded: Record<string, Action> = {};
-            data.forEach((row: any) => {
-              PERMISSION_GROUPS.forEach(g => {
-                if (g.patterns.includes(row.tool_pattern)) loaded[g.id] = row.action;
-              });
-            });
-            setSettings(prev => ({ ...prev, ...loaded }));
-          }
-          setLoading(false);
+    async function load() {
+      const headers = await getAuthHeaders();
+      if (!headers['Authorization']) { setAuthed(false); setLoading(false); return; }
+      setAuthed(true);
+
+      const res = await fetch('/api/policies', { headers });
+      if (!res.ok) { setLoading(false); return; }
+      const { policies } = await res.json();
+
+      if (policies?.length) {
+        const loaded: Record<string, Action> = {};
+        policies.forEach((row: any) => {
+          PERMISSION_GROUPS.forEach(g => {
+            if (g.patterns.includes(row.tool_pattern)) loaded[g.id] = row.action;
+          });
         });
-    });
+        setSettings(prev => ({ ...prev, ...loaded }));
+      }
+      setLoading(false);
+    }
+    load();
   }, []);
 
   async function save(groupId: string, action: Action) {
-    if (!userId) return;
     setSaving(groupId);
+    setError('');
     const group = PERMISSION_GROUPS.find(g => g.id === groupId)!;
+    const headers = await getAuthHeaders();
 
-    await supabase.from('tool_policies').delete()
-      .eq('user_id', userId).in('tool_pattern', group.patterns).is('server_name', null);
+    const res = await fetch('/api/policies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ group_id: groupId, patterns: group.patterns, action, label: group.label }),
+    });
 
-    if (action !== 'allow') {
-      await supabase.from('tool_policies').insert(
-        group.patterns.map(p => ({
-          user_id: userId, server_name: null, tool_pattern: p, action,
-          reason: `${group.label}: ${action}`,
-        }))
-      );
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      setError(json.error ?? 'Failed to save');
+    } else {
+      setSettings(prev => ({ ...prev, [groupId]: action }));
+      setSaved(groupId);
+      setTimeout(() => setSaved(null), 2000);
     }
-
-    setSettings(prev => ({ ...prev, [groupId]: action }));
     setSaving(null);
-    setSaved(groupId);
-    setTimeout(() => setSaved(null), 1500);
   }
 
-  if (!userId && !loading) return (
-    <div style={{ textAlign: 'center', padding: '80px 24px' }}>
-      <p style={{ color: 'var(--text-2)', marginBottom: '20px' }}>
-        Sign in to manage your agent permissions.
-      </p>
-      <Link href="/login" className="btn btn-primary">Sign in</Link>
-    </div>
-  );
+  async function resetAll() {
+    if (!confirm('Reset all policies to defaults?')) return;
+    const headers = await getAuthHeaders();
+
+    const allPatterns = PERMISSION_GROUPS.flatMap(g => g.patterns);
+    await fetch(`/api/policies?patterns=${allPatterns.join(',')}`, { method: 'DELETE', headers });
+
+    const d: Record<string, Action> = {};
+    PERMISSION_GROUPS.forEach(g => { d[g.id] = g.default; });
+    setSettings(d);
+  }
+
+  if (authed === false) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
+        <p className="text-muted-foreground">Sign in to manage agent permissions.</p>
+        <Link href="/login"><Button>Sign in</Button></Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-sm" style={{ paddingTop: '48px', paddingBottom: '80px' }}>
+    <div className="mx-auto max-w-2xl px-6 py-10 pb-16 sm:px-8">
 
-      <div style={{ marginBottom: '40px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <Link href="/dashboard" style={{ fontSize: '13px', color: 'var(--text-3)', textDecoration: 'none' }}>Dashboard</Link>
-          <span style={{ color: 'var(--text-3)' }}>→</span>
-          <span style={{ fontSize: '13px', color: 'var(--text-2)' }}>Permissions</span>
+      {/* Header */}
+      <div className="mb-8">
+        <Link href="/dashboard" className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground no-underline hover:text-foreground">
+          <ChevronLeft size={12} /> Dashboard
+        </Link>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-1 text-2xl font-bold tracking-tight">Agent Permissions</h1>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              Control what operations your agents can perform through relay. Applied globally across all MCP servers.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={resetAll}>Reset defaults</Button>
         </div>
-        <h1 style={{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '10px', fontFamily: 'var(--font-serif)' }}>
-          Agent Permissions
-        </h1>
-        <p style={{ color: 'var(--text-2)', fontSize: '15px', lineHeight: 1.7, maxWidth: '520px' }}>
-          Control what operations your agents can perform through openMCP.
-          These apply globally across all MCP servers.
-        </p>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '28px' }}>
-        {Object.entries(ACTIONS).map(([action, s]) => (
-          <div key={action} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-            <span style={{ color: s.color, fontWeight: 600 }}>{s.label}</span>
-            <span style={{ color: 'var(--text-3)' }}>— {s.desc}</span>
+      <div className="mb-6 flex flex-wrap gap-4">
+        {(Object.entries(ACTIONS) as [Action, typeof ACTIONS[Action]][]).map(([action, s]) => (
+          <div key={action} className="flex items-center gap-2 text-[12px]">
+            <div className={cn('h-2 w-2 rounded-full', s.dotColor)} />
+            <span className="font-semibold text-foreground">{s.label}</span>
+            <span className="text-muted-foreground">— {s.desc}</span>
           </div>
         ))}
       </div>
 
-      {/* Groups */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {PERMISSION_GROUPS.map(group => {
-          const current = settings[group.id] ?? group.default;
-          const isSaved = saved === group.id;
-          return (
-            <div key={group.id} style={{
-              display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap',
-              padding: '14px 18px',
-              background: 'var(--surface)',
-              border: `1px solid ${ACTIONS[current].border}`,
-              borderRadius: '10px',
-              transition: 'border-color .2s',
-            }}>
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-                  <span style={{ fontSize: '15px' }}>{group.icon}</span>
-                  <span style={{ fontSize: '14px', fontWeight: 600 }}>{group.label}</span>
-                  {isSaved && <span style={{ fontSize: '11px', color: '#15803d', fontFamily: 'var(--mono)' }}>✓ saved</span>}
+      {/* Policy groups */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {PERMISSION_GROUPS.map(group => {
+            const current = settings[group.id] ?? group.default;
+            const isSaving = saving === group.id;
+            const isSaved  = saved  === group.id;
+
+            return (
+              <div
+                key={group.id}
+                className={cn(
+                  'flex flex-wrap items-center gap-4 rounded-xl border px-5 py-4 transition-colors',
+                  current === 'allow'   && 'border-green-500/20 bg-green-500/5',
+                  current === 'confirm' && 'border-amber-500/20 bg-amber-500/5',
+                  current === 'block'   && 'border-red-500/20 bg-red-500/5',
+                )}
+              >
+                {/* Group info */}
+                <div className="flex min-w-[200px] flex-1 items-start gap-3">
+                  <span className="mt-0.5 text-base" aria-hidden>{group.icon}</span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[14px] font-semibold text-foreground">{group.label}</p>
+                      {!group.safe && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-muted-foreground">
+                          sensitive
+                        </span>
+                      )}
+                      {isSaved && (
+                        <span className="flex items-center gap-0.5 text-[11px] font-medium text-green-700">
+                          <Check size={11} /> saved
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-muted-foreground">{group.desc}</p>
+                  </div>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-3)' }}>{group.description}</div>
-              </div>
 
-              {/* Toggle */}
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {(['allow', 'confirm', 'block'] as Action[]).map(action => {
-                  const ac = ACTIONS[action];
-                  const active = current === action;
-                  return (
-                    <button
-                      key={action}
-                      onClick={() => save(group.id, action)}
-                      disabled={saving === group.id}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px', fontSize: '12px',
-                        fontWeight: active ? 600 : 400, cursor: 'pointer',
-                        border: `1px solid ${active ? ac.border : 'var(--border)'}`,
-                        background: active ? ac.bg : 'transparent',
-                        color: active ? ac.color : 'var(--text-3)',
-                        transition: 'all .15s',
-                        opacity: saving === group.id ? .5 : 1,
-                      }}
-                    >
-                      {saving === group.id && active ? '...' : ac.label}
-                    </button>
-                  );
-                })}
+                {/* Action toggle */}
+                <div className="flex gap-1.5">
+                  {(['allow', 'confirm', 'block'] as Action[]).map(action => {
+                    const a = ACTIONS[action];
+                    const isActive = current === action;
+                    return (
+                      <button
+                        key={action}
+                        onClick={() => !isSaving && save(group.id, action)}
+                        disabled={isSaving}
+                        className={cn(
+                          'flex min-w-[68px] items-center justify-center rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-all',
+                          isActive
+                            ? a.activeClass
+                            : 'border-border bg-transparent text-muted-foreground hover:border-border/80 hover:text-foreground',
+                          isSaving && 'opacity-50'
+                        )}
+                      >
+                        {isSaving && isActive
+                          ? <Loader2 size={12} className="animate-spin" />
+                          : a.label
+                        }
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Note */}
-      <div style={{ marginTop: '24px', padding: '14px 18px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.7 }}>
-        Policies apply to authenticated API key calls only. openMCP's built-in security
-        stack (shell injection detection, DLP, schema pinning) always runs regardless of
-        these settings. The defaults shown are the recommended starting point — safe for
-        most agent workflows.
+      {/* Footnote */}
+      <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4 text-[12px] leading-relaxed text-muted-foreground">
+        <strong className="text-foreground">Note:</strong> Policies apply to authenticated API key calls only.
+        The built-in security stack (shell injection, DLP, schema pinning) always runs regardless of these settings.
+        Defaults shown are the recommended starting point for most agent workflows.
       </div>
     </div>
   );

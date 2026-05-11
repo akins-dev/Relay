@@ -1,277 +1,285 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link            from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { Button }      from '@/components/ui/button';
+import { Input }       from '@/components/ui/input';
+import { cn }          from '@/lib/cn';
+import {
+  Lock, Plus, Trash2, Eye, EyeOff, ExternalLink,
+  ChevronLeft, AlertCircle, Shield,
+} from 'lucide-react';
 
-// ── ⚠️  CRITICAL REMINDER ─────────────────────────────────────────────────────
-// Before this page can store secrets safely, Supabase statement logging
-// must be disabled. See migration 011 header for instructions.
-// Dashboard → Database → Database Settings → Log Settings → Statement log level: ddl
-// ─────────────────────────────────────────────────────────────────────────────
+// ── ⚠ CRITICAL: Supabase statement logging must be set to ddl/none before use ─
 
 interface Secret {
-  id:          string;
-  server_name: string | null;
-  secret_name: string;
-  description: string | null;
-  created_at:  string;
-  updated_at:  string;
+  id: string; server_name: string | null; secret_name: string;
+  description: string | null; created_at: string; updated_at: string;
 }
 
-// Common credential hints — shown as suggestions when adding a secret
-const CREDENTIAL_HINTS: Record<string, { label: string; obtain_url: string; description: string }> = {
-  'STRIPE_API_KEY':          { label: 'Stripe API Key',           obtain_url: 'https://dashboard.stripe.com/apikeys', description: 'Your Stripe secret key (sk_live_... or sk_test_...)' },
-  'STRIPE_PAYMENTS_API_KEY': { label: 'Stripe API Key',           obtain_url: 'https://dashboard.stripe.com/apikeys', description: 'Your Stripe secret key' },
-  'GITHUB_TOKEN':            { label: 'GitHub Personal Access Token', obtain_url: 'https://github.com/settings/tokens', description: 'GitHub PAT with required repo scopes' },
-  'GITHUB_TOOLS_API_KEY':    { label: 'GitHub Token',             obtain_url: 'https://github.com/settings/tokens', description: 'GitHub PAT with required repo scopes' },
-  'SENDGRID_API_KEY':        { label: 'SendGrid API Key',         obtain_url: 'https://app.sendgrid.com/settings/api_keys', description: 'SendGrid API key with Mail Send permission' },
-  'SENDGRID_MAIL_API_KEY':   { label: 'SendGrid API Key',         obtain_url: 'https://app.sendgrid.com/settings/api_keys', description: 'SendGrid API key with Mail Send permission' },
-  'OPENAI_API_KEY':          { label: 'OpenAI API Key',           obtain_url: 'https://platform.openai.com/api-keys', description: 'Your OpenAI secret key (sk-...)' },
-  'SLACK_TOKEN':             { label: 'Slack Bot Token',          obtain_url: 'https://api.slack.com/apps', description: 'Slack Bot OAuth token (xoxb-...)' },
-  'NOTION_API_KEY':          { label: 'Notion Integration Token', obtain_url: 'https://www.notion.so/my-integrations', description: 'Notion internal integration secret' },
-  'LINEAR_API_KEY':          { label: 'Linear API Key',           obtain_url: 'https://linear.app/settings/api', description: 'Linear personal API key' },
+const HINTS: Record<string, { label: string; url: string; desc: string }> = {
+  'STRIPE_API_KEY':          { label: 'Stripe API Key',              url: 'https://dashboard.stripe.com/apikeys',         desc: 'Your Stripe secret key (sk_live_... or sk_test_...)' },
+  'STRIPE_PAYMENTS_API_KEY': { label: 'Stripe API Key',              url: 'https://dashboard.stripe.com/apikeys',         desc: 'Your Stripe secret key' },
+  'GITHUB_TOKEN':            { label: 'GitHub Personal Access Token', url: 'https://github.com/settings/tokens',          desc: 'GitHub PAT with required repo scopes' },
+  'GITHUB_TOOLS_API_KEY':    { label: 'GitHub Token',                url: 'https://github.com/settings/tokens',          desc: 'GitHub PAT with required repo scopes' },
+  'SENDGRID_API_KEY':        { label: 'SendGrid API Key',            url: 'https://app.sendgrid.com/settings/api_keys',  desc: 'SendGrid API key with Mail Send permission' },
+  'SENDGRID_MAIL_API_KEY':   { label: 'SendGrid API Key',            url: 'https://app.sendgrid.com/settings/api_keys',  desc: 'SendGrid API key with Mail Send permission' },
+  'OPENAI_API_KEY':          { label: 'OpenAI API Key',              url: 'https://platform.openai.com/api-keys',        desc: 'Your OpenAI secret key (sk-... or sk-proj-...)' },
+  'SLACK_TOKEN':             { label: 'Slack Bot Token',             url: 'https://api.slack.com/apps',                  desc: 'Slack Bot OAuth token (xoxb-...)' },
+  'NOTION_API_KEY':          { label: 'Notion Integration Token',    url: 'https://www.notion.so/my-integrations',       desc: 'Notion internal integration secret' },
+  'LINEAR_API_KEY':          { label: 'Linear API Key',              url: 'https://linear.app/settings/api',             desc: 'Linear personal API key' },
+  'ANTHROPIC_API_KEY':       { label: 'Anthropic API Key',           url: 'https://console.anthropic.com/settings/keys', desc: 'Your Anthropic secret key (sk-ant-...)' },
 };
 
 export default function SecretsPage() {
-  const searchParams   = useSearchParams();
-  const preServer      = searchParams.get('server') ?? '';
-  const preName        = searchParams.get('name') ?? '';
+  const sp = useSearchParams();
+  const preServer = sp.get('server') ?? '';
+  const preName   = sp.get('name')   ?? '';
 
-  const [secrets,      setSecrets]      = useState<Secret[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [showAdd,      setShowAdd]      = useState(!!(preServer || preName));
-  const [saving,       setSaving]       = useState(false);
-  const [deleting,     setDeleting]     = useState<string | null>(null);
-  const [error,        setError]        = useState('');
-  const [success,      setSuccess]      = useState('');
-  const [showValue,    setShowValue]    = useState(false);
+  const [secrets,   setSecrets]   = useState<Secret[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [showForm,  setShowForm]  = useState(!!(preServer || preName));
+  const [saving,    setSaving]    = useState(false);
+  const [deleting,  setDeleting]  = useState<string | null>(null);
+  const [error,     setError]     = useState('');
+  const [success,   setSuccess]   = useState('');
+  const [showVal,   setShowVal]   = useState(false);
 
-  // Form state
-  const [serverName,   setServerName]   = useState(preServer);
-  const [secretName,   setSecretName]   = useState(preName);
-  const [secretValue,  setSecretValue]  = useState('');
-  const [description,  setDescription]  = useState('');
+  const [serverName,  setServerName]  = useState(preServer);
+  const [secretName,  setSecretName]  = useState(preName);
+  const [secretValue, setSecretValue] = useState('');
+  const [description, setDescription] = useState('');
 
-  const hint = CREDENTIAL_HINTS[secretName];
+  const hint = HINTS[secretName];
 
-  async function load() {
+  const load = async () => {
     setLoading(true);
-    const res = await fetch('/api/secrets').then(r => r.json());
-    setSecrets(res.secrets ?? []);
-    setLoading(false);
-  }
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      const res = await fetch('/api/secrets', { headers }).then(r => r.json());
+      setSecrets(res.secrets ?? []);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (success) { const t = setTimeout(() => setSuccess(''), 5000); return () => clearTimeout(t); } }, [success]);
+
+  const resetForm = () => {
+    setServerName(''); setSecretName(''); setSecretValue('');
+    setDescription(''); setError(''); setShowVal(false);
+  };
 
   async function save() {
-    if (!secretName || !secretValue) {
-      setError('Secret name and value are required');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    const res = await fetch('/api/secrets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        server_name:  serverName || null,
-        secret_name:  secretName.toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
-        secret_value: secretValue,
-        description:  description || hint?.description || null,
-      }),
-    }).then(r => r.json());
+    const name  = secretName.trim();
+    const value = secretValue.trim();
+    if (!name)  { setError('Secret name is required'); return; }
+    if (!value) { setError('Secret value is required'); return; }
+    setSaving(true); setError('');
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
 
-    if (res.success) {
-      setSuccess(`${secretName} stored securely. The proxy will inject it automatically.`);
-      setSecretValue('');
-      setShowAdd(false);
-      load();
-    } else {
-      setError(res.error ?? 'Failed to store secret');
+      const res = await fetch('/api/secrets', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          server_name:  serverName.trim() || null,
+          secret_name:  name.toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
+          secret_value: value,
+          description:  description.trim() || hint?.desc || null,
+        }),
+      }).then(r => r.json());
+
+      if (res.success) {
+        setSuccess(`${name} stored. The proxy will inject it automatically.`);
+        setShowForm(false);
+        resetForm();
+        load();
+      } else {
+        setError(res.error ?? 'Failed to store secret');
+      }
+    } catch {
+      setError('Network error — please try again');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(`Delete secret "${name}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${name}"? Calls requiring this credential will return 401 immediately.`)) return;
     setDeleting(id);
-    const res = await fetch(`/api/secrets?id=${id}`, { method: 'DELETE' }).then(r => r.json());
-    if (res.success) {
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      await fetch(`/api/secrets?id=${id}`, { method: 'DELETE', headers });
       setSecrets(s => s.filter(x => x.id !== id));
+    } finally {
+      setDeleting(null);
     }
-    setDeleting(null);
   }
 
   return (
-    <div className="page-sm" style={{ paddingTop: '40px', paddingBottom: '80px' }}>
+    <div className="mx-auto max-w-2xl px-6 py-10 pb-16 sm:px-8">
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <Link href="/dashboard" style={{ fontSize: '13px', color: 'var(--text-3)', textDecoration: 'none' }}>Dashboard</Link>
-            <span style={{ color: 'var(--text-3)' }}>→</span>
-            <span style={{ fontSize: '13px', color: 'var(--text-2)' }}>Secrets</span>
+      {/* Breadcrumb + header */}
+      <div className="mb-8">
+        <Link href="/dashboard" className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground no-underline hover:text-foreground">
+          <ChevronLeft size={12} /> Dashboard
+        </Link>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-1 text-2xl font-bold tracking-tight">Stored Credentials</h1>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              Store API keys once. The proxy decrypts and injects them at call time — your agent never sees the raw value.
+            </p>
           </div>
-          <h1 style={{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '8px', fontFamily: 'var(--font-serif)' }}>
-            Stored Credentials
-          </h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-2)', lineHeight: 1.6, maxWidth: '480px' }}>
-            Store API keys and tokens once. The openMCP proxy injects them automatically
-            on every call — your agent never sees the raw value.
-          </p>
+          <Button size="sm" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }} className="shrink-0 gap-1.5">
+            <Plus size={13} /> Add secret
+          </Button>
         </div>
-        <button onClick={() => { setShowAdd(true); setError(''); setSuccess(''); }}
-          className="btn btn-primary btn-sm">
-          + Add Secret
-        </button>
       </div>
 
-      {/* How it works — short explanation */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px',
-        marginBottom: '28px',
-      }}>
+      {/* How it works */}
+      <div className="mb-6 grid grid-cols-3 gap-2.5">
         {[
-          { step: '1', text: 'You store your API key here, encrypted in Supabase Vault' },
-          { step: '2', text: 'Agent calls a tool through the openMCP proxy' },
-          { step: '3', text: 'Proxy resolves your key and injects it — agent never sees it' },
+          { n: '1', t: 'You store your API key — encrypted in Supabase Vault (AES-256-GCM)' },
+          { n: '2', t: 'Agent calls any tool through the relay proxy' },
+          { n: '3', t: 'Proxy resolves and injects key — agent never touches the value' },
         ].map(s => (
-          <div key={s.step} style={{ padding: '14px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-            <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--accent)', fontWeight: 700, marginBottom: '4px' }}>{s.step}</div>
-            <div style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.5 }}>{s.text}</div>
+          <div key={s.n} className="rounded-xl border border-border bg-muted/30 p-3.5">
+            <p className="mb-1 font-mono text-[10px] font-bold text-brand">{s.n}</p>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">{s.t}</p>
           </div>
         ))}
       </div>
 
-      {/* Success */}
+      {/* Success banner */}
       {success && (
-        <div style={{ padding: '12px 16px', marginBottom: '16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '13px', color: '#15803d' }}>
-          ✓ {success}
+        <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-[13px] text-green-400">
+          <Shield size={14} className="shrink-0" />
+          {success}
         </div>
       )}
 
-      {/* Add secret form */}
-      {showAdd && (
-        <div style={{
-          padding: '24px', marginBottom: '24px',
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: '14px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Add a secret</h3>
-            <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '18px' }}>×</button>
+      {/* Add form */}
+      {showForm && (
+        <div className="mb-6 rounded-xl border border-border bg-card p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h3 className="font-semibold text-foreground">Add a secret</h3>
+            <button onClick={() => { setShowForm(false); resetForm(); }} className="text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
           </div>
 
           {error && (
-            <div style={{ padding: '10px 14px', marginBottom: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#dc2626' }}>
+            <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-400">
+              <AlertCircle size={13} className="shrink-0" />
               {error}
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="space-y-4">
             {/* Server name */}
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', display: 'block' }}>
-                Server name <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional — leave blank for global)</span>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-foreground">
+                Server name <span className="font-normal text-muted-foreground">(optional — blank = global)</span>
               </label>
-              <input
-                className="input"
-                placeholder="e.g. stripe-payments (blank = inject for any server)"
+              <Input
+                placeholder="e.g. stripe-payments"
                 value={serverName}
                 onChange={e => setServerName(e.target.value)}
-                style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}
+                className="font-mono text-[13px]"
               />
-              <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>
-                Server-specific secrets take priority over global ones. Use the exact server name from the registry.
-              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Server-specific secrets take priority over global ones. Use the exact name from the registry.
+              </p>
             </div>
 
             {/* Secret name */}
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', display: 'block' }}>
-                Secret name <span style={{ color: 'var(--red)', fontWeight: 400 }}>*</span>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-foreground">
+                Secret name <span className="text-destructive">*</span>
               </label>
-              <input
-                className="input"
+              <Input
                 placeholder="e.g. STRIPE_API_KEY"
                 value={secretName}
                 onChange={e => setSecretName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-                style={{ fontFamily: 'var(--mono)', fontSize: '13px' }}
+                className="font-mono text-[13px]"
               />
-              <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>
-                Uppercase letters, numbers, underscores only. The proxy resolves secrets by this name.
-              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Uppercase letters, numbers, underscores only. The proxy matches by this name.
+              </p>
             </div>
 
-            {/* Hint if we recognise the secret name */}
+            {/* Known service hint */}
             {hint && (
-              <div style={{ padding: '12px 14px', background: 'var(--accent-bg)', border: '1px solid rgba(194,68,12,0.2)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent)', marginBottom: '4px' }}>
-                  {hint.label}
-                </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-2)', marginBottom: '6px' }}>
-                  {hint.description}
-                </div>
-                <a href={hint.obtain_url} target="_blank" rel="noopener"
-                  style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none' }}>
-                  Get your key from {new URL(hint.obtain_url).hostname} →
+              <div className="rounded-xl border border-brand/20 bg-brand-bg px-4 py-3.5">
+                <p className="mb-1 text-[13px] font-semibold text-brand">{hint.label}</p>
+                <p className="mb-2 text-[12px] text-muted-foreground">{hint.desc}</p>
+                <a href={hint.url} target="_blank" rel="noopener"
+                  className="inline-flex items-center gap-1 text-[12px] text-brand no-underline hover:underline">
+                  Get your key from {new URL(hint.url).hostname}
+                  <ExternalLink size={10} />
                 </a>
               </div>
             )}
 
             {/* Secret value */}
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', display: 'block' }}>
-                Secret value <span style={{ color: 'var(--red)', fontWeight: 400 }}>*</span>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-foreground">
+                Value <span className="text-destructive">*</span>
               </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  className="input"
-                  type={showValue ? 'text' : 'password'}
+              <div className="relative">
+                <Input
+                  type={showVal ? 'text' : 'password'}
                   placeholder="Paste your API key or token"
                   value={secretValue}
                   onChange={e => setSecretValue(e.target.value)}
-                  style={{ fontFamily: 'var(--mono)', fontSize: '13px', paddingRight: '80px' }}
+                  className="pr-16 font-mono text-[13px]"
                   autoComplete="off"
-                  autoCorrect="off"
                   spellCheck={false}
                 />
                 <button
-                  onClick={() => setShowValue(v => !v)}
-                  style={{
-                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: '12px', color: 'var(--text-3)',
-                  }}
-                >{showValue ? 'Hide' : 'Show'}</button>
+                  onClick={() => setShowVal(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  {showVal ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: '4px' }}>
-                Encrypted immediately via Supabase Vault. The value is never stored in plaintext
-                and never returned through the API.
-              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Encrypted immediately. Never stored in plaintext. Never returned through the API after saving.
+              </p>
             </div>
 
-            {/* Description */}
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', display: 'block' }}>
-                Note <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(optional)</span>
+            {/* Note */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-foreground">
+                Note <span className="font-normal text-muted-foreground">(optional)</span>
               </label>
-              <input
-                className="input"
+              <Input
                 placeholder="e.g. Production Stripe key"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={save} disabled={saving} className="btn btn-primary">
-                {saving ? 'Storing...' : 'Store securely'}
-              </button>
-              <button onClick={() => { setShowAdd(false); setError(''); }} className="btn btn-ghost">
-                Cancel
-              </button>
+            <div className="flex gap-2.5 pt-1">
+              <Button onClick={save} disabled={saving || !secretName || !secretValue}>
+                {saving ? 'Storing…' : 'Store securely'}
+              </Button>
+              <Button variant="ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancel</Button>
             </div>
           </div>
         </div>
@@ -279,61 +287,61 @@ export default function SecretsPage() {
 
       {/* Secrets list */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-3)' }}>Loading...</div>
+        <div className="flex justify-center py-16">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand" />
+        </div>
       ) : secrets.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--text-3)' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔑</div>
-          <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-2)' }}>No secrets stored yet</div>
-          <div style={{ fontSize: '14px', lineHeight: 1.6, maxWidth: '360px', margin: '0 auto 20px' }}>
-            When you call a tool that requires authentication, the proxy will return a 401
-            with a link back here to store the credential.
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-muted/40">
+            <Lock size={20} className="text-muted-foreground/50" />
           </div>
-          <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-sm">
-            Add your first secret
-          </button>
+          <div>
+            <p className="mb-1 font-semibold text-foreground">No secrets stored</p>
+            <p className="max-w-xs text-[13px] text-muted-foreground">
+              When a tool returns 401, the proxy response includes the exact name to use and a link back here.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
+            <Plus size={13} /> Add your first secret
+          </Button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: '0', marginBottom: '4px', padding: '0 12px' }}>
+        <div className="space-y-2">
+          {/* Header row */}
+          <div className="grid grid-cols-[1fr_1.5fr_2fr_auto] gap-3 px-4 py-1">
             {['Server', 'Name', 'Note', ''].map(h => (
-              <div key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</div>
+              <p key={h} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">{h}</p>
             ))}
           </div>
           {secrets.map(s => (
-            <div key={s.id} style={{
-              display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: '12px',
-              alignItems: 'center', padding: '14px 12px',
-              background: 'var(--surface)', border: '1px solid var(--border)',
-              borderRadius: '10px',
-            }}>
-              <div style={{ fontSize: '13px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-                {s.server_name ?? <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>global</span>}
-              </div>
-              <div style={{ fontSize: '13px', fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--accent)' }}>
-                {s.secret_name}
-              </div>
-              <div style={{ fontSize: '13px', color: 'var(--text-2)' }}>
-                {s.description ?? <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>—</span>}
-              </div>
-              <button
+            <div key={s.id} className="grid grid-cols-[1fr_1.5fr_2fr_auto] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+              <code className="truncate font-mono text-[12px] text-muted-foreground">
+                {s.server_name ?? <span className="italic text-muted-foreground/50">global</span>}
+              </code>
+              <code className="truncate font-mono text-[12px] font-semibold text-brand">{s.secret_name}</code>
+              <p className="truncate text-[12px] text-muted-foreground">
+                {s.description ?? <span className="italic text-muted-foreground/40">—</span>}
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={() => remove(s.id, s.secret_name)}
                 disabled={deleting === s.id}
-                className="btn btn-danger btn-sm"
+                className="h-7 gap-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
-                {deleting === s.id ? '...' : 'Delete'}
-              </button>
+                {deleting === s.id ? '…' : <Trash2 size={12} />}
+              </Button>
             </div>
           ))}
         </div>
       )}
 
       {/* Security note */}
-      <div style={{ marginTop: '32px', padding: '16px 18px', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.7 }}>
-        <strong style={{ color: 'var(--text-2)' }}>How encryption works:</strong> Secret values are encrypted
-        by Supabase Vault using pgsodium (libsodium). The encryption key is never stored in the database —
-        it is managed by the Supabase Key Management Service. Even if the database is fully compromised,
-        the values cannot be read without the KMS key. The proxy decrypts at call time and immediately
-        discards the value after injecting it as an Authorization header.
+      <div className="mt-8 rounded-xl border border-border bg-muted/30 p-4 text-[12px] leading-relaxed text-muted-foreground">
+        <strong className="text-foreground">Encryption:</strong> Values are encrypted by Supabase Vault using pgsodium
+        (libsodium AES-256-GCM). The encryption key is managed by Supabase KMS — never stored in the database.
+        Even full database access cannot recover values without the KMS key. The proxy decrypts at call time
+        and discards immediately after injecting the Authorization header.
       </div>
     </div>
   );

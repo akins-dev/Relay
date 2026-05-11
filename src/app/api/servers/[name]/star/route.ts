@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveUser } from '@/lib/auth-server';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { name: string } }
+  { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data: server } = await supabase
-    .from('servers').select('id').eq('name', params.name).single();
+    .from('servers').select('id').eq('name', name).single();
   if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const { data: existing } = await supabase

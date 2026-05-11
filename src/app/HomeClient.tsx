@@ -1,535 +1,495 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+
 import Link from 'next/link';
+import { motion, useMotionValue, useSpring, useMotionTemplate } from 'framer-motion';
+import {
+  ArrowRight,
+  Compass,
+  Radar,
+  ShieldCheck,
+  Workflow,
+  Command,
+  Terminal,
+} from 'lucide-react';
+import { HeroOrbital } from '@/components/HeroOrbital';
+import { SecurityTimelineSimulation } from '@/components/SecurityTimelineSimulation';
 import { ServerCard } from '@/components/registry/ServerCard';
-import { AgentSimulation } from '@/components/AgentSimulation';
-import type { Server, GlobalStats } from '@/types';
+import {
+  AnimatedHeading,
+  AnimatedParagraph,
+  AnimatedSection,
+  AnimatedLabel,
+} from '@/components/AnimatedText';
+import type { GlobalStats, Server } from '@/types';
+import { BRAND } from '@/lib/brand';
 
+// ─── animation helpers ───────────────────────────────────────────────────────
 
-/* ── Flow Diagram ───────────────────────────────────────── */
-const FLOW = [
-  { num: '01', icon: '⬡', label: 'Agent', sub: 'Has task', color: '#9898a8' },
-  { num: '02', icon: '🔍', label: 'Registry', sub: 'Search by intent', color: 'var(--accent)' },
-  { num: '03', icon: '🛡', label: 'Security', sub: '12 layers active', color: '#3b82f6' },
-  { num: '04', icon: '⚡', label: 'Invoke', sub: 'Audited call', color: '#f97316' },
-  { num: '05', icon: '✓', label: 'Done', sub: 'Zero config', color: 'var(--accent)' },
-];
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { delay, duration: 0.6, ease: [0.22, 1, 0.36, 1] as const },
+});
 
-function FlowDiagram() {
+// ─── constants ───────────────────────────────────────────────────────────────
+
+const PRINCIPLES = [
+  {
+    title: 'Intelligent Discovery',
+    description:
+      `${BRAND.name} is the industry\'s first runtime discovery tool for searching by intent. Agents describe the capability they need, and we instantly return matching remote MCP tools with complete schema mapping.`,
+    icon: Compass,
+  },
+  {
+    title: 'Verified Trust Layer',
+    description:
+      'A highly robust security layer governs every tool invocation locally and remotely, handling custom policy validation, strict rate limits, and zero-knowledge credential injection.',
+    icon: Workflow,
+  },
+  {
+    title: 'Minimal Context',
+    description:
+      'Rather than preloading thousands of tokens of unverified tools, the agent discovers and fetches exactly what it needs right when the intent arises.',
+    icon: Radar,
+  },
+] as const;
+
+// ─── sub-components ───────────────────────────────────────────────────────────
+
+function Metric({ value, label, delay = 0 }: { value: string; label: string; delay?: number }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '4px' }}>
-      {FLOW.map((step, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '0 12px' }}>
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '14px',
-              border: `1px solid ${step.color}30`,
-              background: `linear-gradient(135deg, ${step.color}12, ${step.color}06)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '22px',
-              position: 'relative',
-              boxShadow: `0 0 20px ${step.color}10`,
-            }}>
-              {step.icon}
-              <span style={{
-                position: 'absolute', top: '-8px', right: '-8px',
-                fontSize: '9px', fontFamily: 'var(--mono)', fontWeight: 700,
-                color: step.color, background: 'var(--bg)', border: `1px solid ${step.color}30`,
-                padding: '1px 5px', borderRadius: '4px',
-              }}>{step.num}</span>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: step.color }}>{step.label}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-3)', maxWidth: '80px', lineHeight: 1.3, marginTop: '2px' }}>{step.sub}</div>
-            </div>
-          </div>
-          {i < FLOW.length - 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '40px' }}>
-              <div style={{ width: '12px', height: '1px', background: 'var(--border-2)' }} />
-              <svg width="12" height="10" viewBox="0 0 12 10" fill="none" style={{ color: 'var(--border-3)' }}>
-                <path d="M7 1L11 5L7 9M1 5H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <div style={{ width: '12px', height: '1px', background: 'var(--border-2)' }} />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
+    <AnimatedSection delay={delay} className="flex flex-col items-center justify-center p-5 sm:p-4 h-full w-full">
+      <div className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-brand-steel">
+        {label}
+      </div>
+      <div className="mt-2 font-display text-3xl sm:text-4xl font-medium tracking-[-0.03em] text-white drop-shadow-md">
+        {value}
+      </div>
+    </AnimatedSection>
   );
 }
 
-/* ── Security layers ─────────────────────────────────────── */
-const SEC = [
-  { num: 'L1',  title: 'Static Scan',        desc: 'Tool descriptions scanned for prompt injection, exfiltration patterns, and hidden instructions at publish time.',    color: '#ef4444' },
-  { num: 'L2',  title: 'WASM Sandbox',        desc: 'Sandboxed pre-listing execution catches runtime behaviors static analysis misses — deferred payloads, error-channel attacks.', color: '#f97316' },
-  { num: 'L3',  title: 'Schema Pinning',      desc: 'Tool schemas hashed at publish. Any mutation auto-suspends the server and triggers re-scan. Rug-pull attacks blocked.', color: '#a855f7' },
-  { num: 'L4',  title: 'Proxy DLP',           desc: 'Every invocation routes through the proxy. Credential patterns blocked on request and response. Real-time audit log.', color: '#3b82f6' },
-  { num: 'L5',  title: 'Trust Score',         desc: 'Dynamic per-server score from scan history, uptime, schema stability, and community signals — returned on every search result.', color: 'var(--accent)' },
-  { num: 'L6',  title: 'Database RLS',        desc: 'Supabase Row Level Security enforced at the database layer. App-level bugs cannot leak cross-user data under any circumstance.', color: '#0ea5e9' },
-  { num: 'L7',  title: 'OAuth 2.1 + PKCE',   desc: 'Auth handled by Supabase with PKCE enforced on every flow. Blocks confused deputy attacks and consent bypass exploits.', color: '#6366f1' },
-  { num: 'L8',  title: 'Typosquatting',       desc: 'pg_trgm fuzzy similarity check at publish time. Names too close to verified servers are rejected before listing.', color: '#ec4899' },
-  { num: 'L9',  title: 'Sampling Inspection', desc: 'MCP sampling requests (server-initiated LLM calls) inspected for injection patterns before being forwarded to clients.', color: '#f59e0b' },
-  { num: 'L10', title: 'PII Detection',       desc: 'Proxy responses scanned for email addresses, phone numbers, SSNs, and card numbers before being returned to the agent.', color: '#14b8a6' },
-  { num: 'L11', title: 'URL Elicitation',     desc: 'MCP elicitation URLs validated before acting on them. Blocks javascript:, data:, file://, localhost redirects, and SSRF attempts.', color: '#84cc16' },
-  { num: 'L12', title: 'Context Isolation',   desc: 'Proxy responses scanned for session tokens, bearer tokens, and auth values that could indicate cross-user context leakage.', color: '#f97316' },
-];
-
-/* ── OSS Features ────────────────────────────────────────── */
-const OSS_FEATURES = [
-  {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-      </svg>
-    ),
-    color: 'var(--accent)',
-    title: 'Open source',
-    desc: 'MIT licensed. Full source on GitHub. Fork it, self-host it, contribute back.',
-  },
-  {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-      </svg>
-    ),
-    color: '#3b82f6',
-    title: 'Free forever',
-    desc: 'Free forever. No rate limits on core features. No credit card required. No lock-in.',
-  },
-  {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-      </svg>
-    ),
-    color: '#f97316',
-    title: 'Agent-native',
-    desc: 'Designed for machine consumption. Clean JSON, semantic search, trust scores on every result.',
-  },
-];
-
-/* ── Main ───────────────────────────────────────────────── */
-function useIsMobile() {
-  const [mobile, setMobile] = React.useState(false);
-  React.useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-  return mobile;
-}
+// ─── main component ───────────────────────────────────────────────────────────
 
 export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: Server[] }) {
-  const isMobile = useIsMobile();
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothX = useSpring(mouseX, { damping: 40, stiffness: 150 });
+  const smoothY = useSpring(mouseY, { damping: 40, stiffness: 150 });
+
+  // useMotionTemplate MUST be called at top level — not inside style={{}}
+  const glowBackground = useMotionTemplate`radial-gradient(500px circle at ${smoothX}px ${smoothY}px, rgba(79,70,229,0.15), transparent 80%)`;
+
+  function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
+    const { left, top } = currentTarget.getBoundingClientRect();
+    mouseX.set(clientX - left);
+    mouseY.set(clientY - top);
+  }
+
+  const discovered = (stats.discovered_servers ?? stats.total_servers).toLocaleString();
+  const cloudReady =
+    stats.invokable_servers?.toLocaleString() ?? stats.active_servers.toLocaleString();
+  const avgTrust = stats.avg_trust_score ? stats.avg_trust_score.toFixed(1) : '0.0';
+
   return (
-    <div style={{ overflowX: 'hidden' }}>
+    <div className="overflow-x-hidden pb-16">
 
-      {/* ── HERO ─────────────────────────────────────────── */}
-      <section style={{ position: 'relative', minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
-        {/* Ambient background layers */}
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-          {/* Dot grid */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            backgroundImage: 'radial-gradient(rgba(194,68,12,.07) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-            WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)', maskImage: 'radial-gradient(ellipse 80% 70% at 50% 0%, black 20%, transparent 75%)',
-          }} />
-          {/* Top center glow */}
-          <div style={{
-            position: 'absolute', top: '-120px', left: '50%', transform: 'translateX(-50%)',
-            width: '900px', height: '700px',
-            background: 'radial-gradient(ellipse, rgba(194,68,12,0.06) 0%, transparent 68%)',
-          }} />
-          {/* Side glows */}
-          <div style={{
-            position: 'absolute', top: '20%', left: '-100px',
-            width: '400px', height: '400px',
-            background: 'radial-gradient(circle, rgba(194,68,12,0.04) 0%, transparent 70%)',
-          }} />
-          <div style={{
-            position: 'absolute', top: '30%', right: '-100px',
-            width: '400px', height: '400px',
-            background: 'radial-gradient(circle, rgba(194,68,12,0.04) 0%, transparent 70%)',
-          }} />
+      {/* ── 1. Hero ── */}
+      <section 
+        className="page text-center relative w-full h-screen flex items-center justify-center overflow-hidden"
+        onMouseMove={handleMouseMove}
+      >
+        {/* Glow following cursor */}
+        <motion.div
+           className="pointer-events-none absolute inset-0 z-0 opacity-40 mix-blend-screen"
+           style={{
+             background: glowBackground
+           }}
+        />
+
+        {/* Animated Ambient Background */}
+        <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none mix-blend-screen">
+          <motion.div
+            className="absolute rounded-full bg-brand-signal opacity-[0.2] blur-[100px] w-[400px] h-[400px] sm:w-[600px] sm:h-[600px]"
+            animate={{
+              scale: [1, 1.25, 1],
+              opacity: [0.15, 0.3, 0.15],
+              x: [-100, 100, -100],
+              y: [-50, 100, -50],
+            }}
+            transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute rounded-full bg-brand-DEFAULT opacity-[0.25] blur-[120px] w-[500px] h-[500px] sm:w-[800px] sm:h-[800px]"
+            animate={{
+              scale: [1, 1.15, 1],
+              opacity: [0.2, 0.4, 0.2],
+              x: [100, -150, 100],
+              y: [50, -100, 50],
+            }}
+            transition={{ duration: 24, repeat: Infinity, ease: 'easeInOut' }}
+          />
         </div>
 
-        <div className="page" style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-          gap: isMobile ? '40px' : '64px',
-          alignItems: 'center',
-          position: 'relative',
-          zIndex: 1,
-          width: '100%',
-        }}>
-          {/* Left — Copy */}
-          <div style={{ animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) both' }}>
-            {/* Pill badge */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '7px 16px',
-              background: 'rgba(194,68,12,0.06)',
-              border: '1px solid rgba(194,68,12,0.15)',
-              borderRadius: '100px',
-              marginBottom: '32px',
-              animation: 'fadeIn .5s ease .1s both',
-            }}>
-              <div className="anim-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' }} />
-              <span style={{ fontSize: '12px', color: 'var(--accent)', fontFamily: 'var(--mono)', letterSpacing: '0.02em' }}>open source · free forever · MIT</span>
-            </div>
+        {/* Subtle dot matrix overlay */}
+        <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_0)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_75%_75%_at_50%_40%,#000_20%,transparent_100%)]" />
 
-            {/* Headline */}
-            <h1 className="heading-serif" style={{
-              fontWeight: 700,
-              fontSize: 'clamp(36px, 5vw, 60px)',
-              lineHeight: 1.08,
-              letterSpacing: '-0.02em',
-              marginBottom: '24px',
-              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .1s both',
-              fontFamily: 'var(--font-lora)',
-            }}>
-              The secure<br />
-              <span style={{
-                color: 'var(--accent)',
-                textShadow: '0 0 50px rgba(232,103,58,0.3)',
-              }}>open MCP</span><br />
-              registry.
-            </h1>
+        <div className="mx-auto max-w-4xl flex flex-col items-center relative z-10">
 
-            {/* Quote + Subheadline */}
-            <div style={{
-              marginBottom: '40px',
-              maxWidth: '480px',
-              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .2s both',
-            }}>
-              <div style={{
-                borderLeft: '2px solid var(--accent)',
-                paddingLeft: '16px',
-                marginBottom: '20px',
-              }}>
-                <p style={{
-                  fontSize: '14px',
-                  color: 'var(--accent)',
-                  fontFamily: 'var(--font-serif)',
-                  fontStyle: 'italic',
-                  lineHeight: 1.6,
-                  opacity: 0.9,
-                }}>
-                  "Agent development will never scale treating every tool integration as a 1:1 integration."
-                </p>
-              </div>
-              <p style={{
-                fontSize: '17px',
-                color: 'var(--text-2)',
-                lineHeight: 1.7,
-              }}>
-                Your AI agent can now find and use any tool it needs — automatically. thousands of scanned MCP servers, discovered by intent, invoked through a security proxy. Zero pre-configuration. Always free.
-              </p>
-            </div>
-
-            {/* CTAs */}
-            <div style={{
-              display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', flexWrap: 'wrap',
-              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .3s both',
-            }}>
-              <Link href="/connect" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
-                Connect your agent
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </Link>
-              <Link href="/registry" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>Browse registry</Link>
-            </div>
-
-            {/* Live stats */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, auto)',
-              gap: isMobile ? '20px' : '32px',
-              marginTop: '56px',
-              paddingTop: '40px',
-              borderTop: '1px solid var(--border)',
-              animation: 'slideUp .7s cubic-bezier(.22,1,.36,1) .4s both',
-            }}>
-              {[
-                { v: stats.invokable_servers?.toLocaleString() ?? stats.active_servers?.toLocaleString() ?? '—', l: 'Invokable Servers' },
-                { v: stats.calls_today ? `${(stats.calls_today / 1000).toFixed(0)}K` : '—', l: 'Calls Today' },
-                { v: stats.verified_servers?.toLocaleString() ?? '—', l: 'Verified' },
-                { v: stats.sources ? `${stats.sources.official + stats.sources.github + stats.sources.smithery}` : '—', l: 'Sources' },
-              ].map(s => (
-                <div key={s.l}>
-                  <div style={{
-                    fontSize: '28px', fontWeight: 700,
-                    color: 'var(--accent)',
-                    fontFamily: 'var(--mono)',
-                    letterSpacing: '-0.03em',
-                    lineHeight: 1,
-                  }}>{s.v}</div>
-                  <div style={{
-                    fontSize: '11px',
-                    color: 'var(--text-3)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.1em',
-                    marginTop: '6px',
-                    fontWeight: 500,
-                  }}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right — Interactive simulation */}
-          <div style={{ animation: 'fadeIn .8s ease .3s both' }}>
-            <AgentSimulation />
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ──────────────────────────────────── */}
-      <section style={{ padding: isMobile ? '60px 24px' : '120px 80px', borderTop: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: '64px' }}>
-            <div className="section-label" style={{ color: 'var(--accent)', justifyContent: 'center' }}>how it works</div>
-            <h2 className="heading-serif" style={{ fontSize: 'clamp(26px,3.5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '16px', fontFamily: 'var(--font-lora)' }}>
-              One prompt. Every tool.
-            </h2>
-            <p style={{ color: 'var(--text-2)', fontSize: '16px', maxWidth: '480px', margin: '0 auto', lineHeight: 1.7 }}>
-              The alternative to 1:1 tool integrations. One endpoint, queried by intent, invoked through a 15-layer security proxy.
-            </p>
-          </div>
-
-          {/* Flow diagram */}
-          <div style={{
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border)',
-            borderRadius: '20px',
-            padding: '48px 24px',
-            marginBottom: '48px',
-          }}>
-            <FlowDiagram />
-          </div>
-
-          {/* Prompt snippet */}
-          <div className="codeblock">
-            <div className="codeblock-header">
-              <span style={{ fontSize: '11px', color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>AGENTS.md · your complete MCP configuration</span>
-              <span style={{ fontSize: '11px', color: 'var(--accent)', fontFamily: 'var(--mono)' }}>2 lines</span>
-            </div>
-            <pre>{`## MCP Tools
-
-You have access to the openMCP at https://registry.the-17.dev.
-When you need any capability, search: `}<span style={{ color: 'var(--accent)' }}>GET /api/servers/search?q={'{intent}'}</span>{`
-Then invoke via:                       `}<span style={{ color: 'var(--accent)' }}>POST /api/proxy/{'{serverName}'}/{'{toolName}'}</span>{`
-
-Never assume a tool doesn't exist. Always search first.`}</pre>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECURITY ──────────────────────────────────────── */}
-      <section style={{
-        padding: isMobile ? '60px 24px' : '120px 80px',
-        background: 'var(--bg-1)',
-        borderTop: '1px solid var(--border)',
-        borderBottom: '1px solid var(--border)',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        {/* Background decoration */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          width: '600px', height: '400px',
-          background: 'radial-gradient(ellipse, rgba(220,38,38,0.03) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-
-        <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative' }}>
-          <div style={{ textAlign: 'center', marginBottom: '56px' }}>
-            <div className="section-label" style={{ color: 'var(--red)', justifyContent: 'center' }}>security first</div>
-            <h2 className="heading-serif" style={{ fontSize: 'clamp(26px,3.5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '16px', fontFamily: 'var(--font-lora)' }}>
-              12-layer protection stack
-            </h2>
-            <p style={{ color: 'var(--text-2)', fontSize: '16px', maxWidth: '520px', margin: '0 auto', lineHeight: 1.7 }}>
-              1 in 3 public MCP servers have critical vulnerabilities. Every server is scanned, pinned, and monitored from publish time through every proxy call.
-            </p>
-          </div>
-
-          <div className="grid-4">
-            {SEC.map(l => (
-              <div key={l.num} className="card" style={{
-                padding: '22px 18px',
-                position: 'relative',
-                overflow: 'hidden',
-                cursor: 'default',
-              }}>
-                {/* Colored top accent bar */}
-                <div style={{
-                  position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
-                  background: `linear-gradient(90deg, ${l.color}, ${l.color}88)`,
-                  animation: 'borderPulse 3s ease-in-out infinite',
-                }} />
-                {/* Layer number */}
-                <div style={{
-                  fontSize: '11px', fontWeight: 700,
-                  color: l.color, fontFamily: 'var(--mono)',
-                  background: `${l.color}12`,
-                  border: `1px solid ${l.color}25`,
-                  borderRadius: '6px',
-                  padding: '3px 8px',
-                  display: 'inline-block',
-                  marginBottom: '12px',
-                  letterSpacing: '0.05em',
-                }}>{l.num}</div>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: 'var(--text)' }}>{l.title}</div>
-                <p style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.6 }}>{l.desc}</p>
-              </div>
+          {/* Word-by-word animated hero heading */}
+          <motion.h1
+            className="heading-display max-w-4xl text-[2.75rem] font-medium leading-[1.05] text-white sm:text-[4.5rem] lg:text-[6rem] drop-shadow-2xl"
+            initial="hidden"
+            animate="visible"
+          >
+            {['Seamless Intent.', 'Instant Execution.'].map((line, li) => (
+              <span key={li} className="block">
+                {line.split(' ').map((word, wi) => (
+                  <motion.span
+                    key={wi}
+                    className="inline-block mr-[0.25em]"
+                    initial={{ opacity: 0, y: 32, filter: 'blur(8px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    transition={{
+                      delay: 0.1 + (li * 2 + wi) * 0.1,
+                      duration: 0.65,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                  >
+                    {word}
+                  </motion.span>
+                ))}
+              </span>
             ))}
-          </div>
+          </motion.h1>
+
+          <motion.p
+            className="mt-8 max-w-2xl text-base sm:text-lg leading-relaxed sm:leading-8 text-brand-steel px-4 sm:px-0"
+            {...fadeUp(0.6)}
+          >
+            Give your agents the power to dynamically discover, verify, and safely invoke remote
+            MCP tools at runtime—no hardcoded menus required.
+          </motion.p>
+
+          <motion.div
+            className="mt-10 flex flex-col items-center gap-4 sm:flex-row justify-center px-4 sm:px-0 w-full"
+            {...fadeUp(0.75)}
+          >
+            <Link
+              href="/connect"
+              className="btn btn-primary btn-lg w-full md:w-auto shadow-[0_0_30px_rgba(79,70,229,0.3)]"
+            >
+              Connect your agent
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="/registry" className="btn btn-ghost btn-lg w-full md:w-auto">
+              Explore the registry
+            </Link>
+          </motion.div>
+
         </div>
       </section>
 
-      {/* ── FEATURED ──────────────────────────────────────── */}
+      {/* ── Stats Section ── */}
+      <AnimatedSection
+        as="section"
+        className="page py-10 sm:py-12 border-b border-[rgba(255,255,255,0.05)] mt-8 sm:mt-12"
+      >
+        <div className="grid grid-cols-2 gap-0 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[rgba(255,255,255,0.08)] backdrop-blur-md bg-[rgba(255,255,255,0.02)] rounded-3xl border border-[rgba(255,255,255,0.05)]">
+          <Metric delay={0.1} label="Discovered" value={discovered} />
+          <Metric delay={0.2} label="Cloud-ready" value={cloudReady} />
+          <Metric delay={0.3} label="Verified" value={stats.verified_servers?.toLocaleString() ?? '0'} />
+          <Metric delay={0.4} label="Avg trust" value={avgTrust} />
+        </div>
+      </AnimatedSection>
+
+      {/* ── Industry Firsts Section (The 10000x Brag) ── */}
+      <section className="page py-16 flex justify-center">
+        <AnimatedSection className="w-full max-w-5xl rounded-[32px] border border-brand-DEFAULT/30 bg-brand-DEFAULT/5 backdrop-blur-xl p-8 sm:p-12 text-center shadow-[0_0_50px_rgba(79,70,229,0.15)] relative overflow-hidden">
+           <div className="absolute top-0 right-0 w-96 h-96 bg-brand-DEFAULT opacity-20 blur-[120px] pointer-events-none rounded-full" />
+           <AnimatedLabel className="inline-flex items-center gap-2 mb-6 border-brand-DEFAULT/40 bg-brand-DEFAULT/10 px-4 py-1.5 rounded-full text-brand-signal font-mono text-sm uppercase tracking-widest">
+             Industry Firsts
+           </AnimatedLabel>
+           <h2 className="heading-display text-3xl sm:text-5xl font-medium text-white leading-tight mb-12">
+             The only registry built for <span className="pr-1 text-transparent bg-clip-text bg-gradient-to-r from-brand-signal to-brand-DEFAULT drop-shadow-md">runtime.</span>
+           </h2>
+           <div className="grid md:grid-cols-3 gap-8 text-left relative z-10">
+             <AnimatedSection delay={0.1} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-signal/30 transition-colors">
+                <div className="text-brand-signal font-mono text-xs font-bold uppercase tracking-wider">01. Discovery</div>
+                <h3 className="text-white text-xl font-medium tracking-tight">Search by intent</h3>
+                <p className="text-brand-steel text-[15px] leading-relaxed">
+                  We are the industry&apos;s first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
+                </p>
+             </AnimatedSection>
+             <AnimatedSection delay={0.2} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
+                <div className="text-brand-trust font-mono text-xs font-bold uppercase tracking-wider">02. Security</div>
+                <h3 className="text-white text-xl font-medium tracking-tight">Robust trust layer</h3>
+                <p className="text-brand-steel text-[15px] leading-relaxed">
+                  A highly robust security layer governs every tool invocation, handling custom policy validation, zero-knowledge credential injection, and strict rate limits.
+                </p>
+             </AnimatedSection>
+             <AnimatedSection delay={0.3} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#38bdf8]/30 transition-colors">
+                <div className="text-[#38bdf8] font-mono text-xs font-bold uppercase tracking-wider">03. Precision</div>
+                <h3 className="text-white text-xl font-medium tracking-tight">Absolute accuracy</h3>
+                <p className="text-brand-steel text-[15px] leading-relaxed">
+                  The first registry to dynamically sandbox and extract mathematically perfect primitive data for <code className="text-[12px] bg-white/10 px-1 rounded">stdio</code> servers, regardless of whether the developer wrote a good Readme.
+                </p>
+             </AnimatedSection>
+           </div>
+        </AnimatedSection>
+      </section>
+
+      {/* ── {BRAND.name} Flow Section ── */}
+      <section className="page py-14 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
+
+        <AnimatedLabel className="inline-flex items-center gap-2.5 mb-10 sm:mb-16 px-3 py-1 rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.1)] shadow-[0_0_20px_rgba(6,182,212,0.4)]">
+          <div className="w-1.5 h-1.5 rounded-full bg-brand-signal animate-[pulse_2s_infinite]" />
+          <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-brand-signal">
+            The {BRAND.name} Flow
+          </span>
+        </AnimatedLabel>
+
+        {/* Text / Code Block */}
+        <AnimatedSection className="w-full max-w-5xl rounded-[24px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] p-5 sm:p-10 lg:flex lg:items-center lg:justify-between lg:gap-10 backdrop-blur-md relative overflow-hidden mb-10 sm:mb-16">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-DEFAULT opacity-10 blur-[100px] pointer-events-none" />
+          <div className="lg:w-1/2 relative z-10">
+            <AnimatedHeading
+              as="h2"
+              className="heading-display text-2xl sm:text-3xl font-medium leading-tight text-white sm:text-4xl"
+            >
+              From intent to safe execution.
+            </AnimatedHeading>
+            <AnimatedParagraph
+              className="mt-4 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel"
+              delay={0.15}
+            >
+              The agent stays focused on business intent. {BRAND.name} natively handles the search
+              surface, the trust checks, the secret injection, and the audit trail.
+            </AnimatedParagraph>
+          </div>
+          <div className="mt-6 lg:mt-0 lg:w-1/2 relative z-10">
+            <pre className="whitespace-pre-wrap font-mono text-[12px] sm:text-[13px] leading-7 sm:leading-8 text-brand-steel bg-[#030712] p-4 sm:p-6 rounded-2xl border border-[rgba(255,255,255,0.06)] shadow-[inset_0_2px_20px_rgba(0,0,0,0.5)] overflow-x-auto">
+              <span className="text-brand-white">1.</span> search_tools(&quot;create issue&quot;){'\n'}
+              <span className="text-brand-white">2.</span> Registry returns matching schemas{'\n'}
+              <span className="text-brand-white">3.</span> invoke_tool{`({ server, tool, args })`}{'\n'}
+              <span className="text-brand-white">4.</span> Policy, auth, and DLP proxy runs{'\n'}
+              <span className="text-brand-white">5.</span> Result returned to agent safely
+            </pre>
+          </div>
+        </AnimatedSection>
+
+        {/* Central Orb Simulation */}
+        <AnimatedSection className="w-full relative flex justify-center" delay={0.1}>
+          <HeroOrbital />
+        </AnimatedSection>
+
+      </section>
+
+      {/* ── 2. Security Timeline Section ── */}
+      <section className="page py-16 sm:py-24 border-b border-[rgba(255,255,255,0.05)] text-center overflow-hidden">
+        <div className="mx-auto max-w-3xl mb-10 sm:mb-16 relative z-10 px-4 sm:px-0">
+          <AnimatedLabel className="inline-flex items-center justify-center gap-2 mb-4 text-brand-trust font-mono text-[11px] uppercase tracking-[0.18em] shadow-[0_0_20px_rgba(16,185,129,0.4)] px-3 py-1 bg-[rgba(16,185,129,0.1)] rounded-full border border-[rgba(16,185,129,0.2)]">
+            <ShieldCheck className="h-4 w-4" /> Runtime Security
+          </AnimatedLabel>
+
+          <AnimatedHeading
+            as="h2"
+            className="heading-display text-[2rem] sm:text-[2.5rem] font-medium leading-[1.05] text-white sm:text-[4rem]"
+          >
+            {'Govern every invocation.\nAutomatically.'}
+          </AnimatedHeading>
+
+          <AnimatedParagraph
+            className="mt-6 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel"
+            delay={0.2}
+          >
+            Discovery is only useful if invocation is safe. {BRAND.name} injects a unified trust
+            layer between your agent and remote MCP tools—handling zero-knowledge credentials,
+            policy validation, and DLP scanning in milliseconds.
+          </AnimatedParagraph>
+        </div>
+
+        <div className="relative">
+          <SecurityTimelineSimulation />
+        </div>
+      </section>
+
+      {/* ── 3. Features / Principles Section ── */}
+      <section className="page py-16 sm:py-24 flex flex-col items-center">
+        <div className="text-center max-w-3xl mb-16">
+          <AnimatedLabel className="section-label mx-auto mb-6">Why This Matters</AnimatedLabel>
+          <AnimatedHeading
+            as="h2"
+            className="heading-display text-[2.5rem] font-medium leading-[1.05] text-white sm:text-[3.5rem]"
+          >
+            Hardcoded tools create brittle agents.
+          </AnimatedHeading>
+        </div>
+        <div className="grid gap-8 w-full md:grid-cols-3 text-left">
+          {PRINCIPLES.map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <AnimatedSection key={item.title} delay={i * 0.12}>
+                <div className="group h-full p-8 rounded-3xl border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)] transition-all hover:bg-[rgba(255,255,255,0.05)] hover:border-brand-DEFAULT">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(255,255,255,0.05)] text-brand-signal transition-colors group-hover:bg-brand-DEFAULT group-hover:text-white group-hover:shadow-[0_0_20px_rgba(79,70,229,0.5)]">
+                    <Icon className="h-7 w-7" />
+                  </div>
+                  <h3 className="mt-8 font-display text-2xl font-medium leading-tight text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-4 text-[15px] leading-relaxed text-brand-steel">
+                    {item.description}
+                  </p>
+                </div>
+              </AnimatedSection>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Featured Registry Section */}
       {featured.length > 0 && (
-        <section style={{ padding: isMobile ? '60px 24px' : '120px 80px' }}>
-          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
-              <div>
-                <div className="section-label" style={{ color: 'var(--accent)' }}>featured</div>
-                <h2 className="heading-serif" style={{ fontSize: 'clamp(20px,2.5vw,30px)', fontWeight: 700, letterSpacing: '-0.02em', fontFamily: 'var(--font-lora)' }}>
-                  Top verified servers
-                </h2>
-              </div>
-              <Link href="/registry" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
-                View all
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </Link>
+        <section className="page py-16 sm:py-24 border-t border-[rgba(255,255,255,0.05)]">
+          <div className="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <AnimatedLabel className="section-label">Current Landscape</AnimatedLabel>
+              <AnimatedHeading
+                as="h2"
+                className="heading-display text-[2.5rem] font-medium leading-[1.05] text-white"
+              >
+                Verified remote tools
+              </AnimatedHeading>
+              <AnimatedParagraph
+                className="mt-3 max-w-2xl text-lg leading-7 text-brand-steel"
+                delay={0.15}
+              >
+                A first look at the governed capabilities your agents can discover through
+                {BRAND.name} Cloud today.
+              </AnimatedParagraph>
             </div>
-            <div className="grid-2">
-              {featured.map(s => <ServerCard key={s.id} server={s} />)}
-            </div>
+            <Link href="/registry" className="btn btn-ghost">
+              Explore registry
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="grid-2 [&_.card]:bg-[rgba(255,255,255,0.03)] [&_.card]:text-white [&_.card]:border-[rgba(255,255,255,0.08)] [&_.card:hover]:border-[rgba(255,255,255,0.2)]">
+            {featured.map((server) => (
+              <ServerCard key={server.id} server={server} />
+            ))}
           </div>
         </section>
       )}
 
-      {/* ── OSS CTA ───────────────────────────────────────── */}
-      <section style={{
-        padding: isMobile ? '60px 24px' : '120px 80px',
-        borderTop: '1px solid var(--border)',
-        background: 'var(--bg-1)',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        {/* Background glow */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          width: '700px', height: '500px',
-          background: 'radial-gradient(ellipse, rgba(194,68,12,0.04) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
+      {/* ── 4. Upcoming CLI Section ── */}
+      <section className="page py-14 sm:py-24 border-t border-[rgba(255,255,255,0.05)] flex justify-center">
+        <AnimatedSection className="max-w-4xl w-full rounded-[24px] sm:rounded-[32px] border border-[rgba(255,255,255,0.1)] bg-[rgba(15,23,42,0.4)] backdrop-blur-xl p-7 sm:p-16 text-center relative overflow-hidden shadow-2xl">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-brand-signal opacity-10 blur-[120px] rounded-full pointer-events-none" />
 
-        <div style={{ maxWidth: '760px', margin: '0 auto', textAlign: 'center', position: 'relative' }}>
-          <div className="section-label" style={{ color: 'var(--accent)', justifyContent: 'center' }}>open ecosystem</div>
-          <h2 className="heading-serif" style={{
-            fontSize: 'clamp(26px,3.5vw,46px)',
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            marginBottom: '16px',
-            lineHeight: 1.15,
-            fontFamily: 'var(--font-lora)',
-          }}>
-            Built for the<br /><span style={{ color: 'var(--accent)' }}>open ecosystem</span>
-          </h2>
-          <p style={{ color: 'var(--text-2)', fontSize: '17px', lineHeight: 1.7, maxWidth: '440px', margin: '0 auto 56px' }}>
-            Fully open source. No lock-in. Self-hostable. Developers keep 100% of everything.
-          </p>
-
-          <div className="grid-3" style={{ textAlign: 'left', marginBottom: '48px', maxWidth: '860px', margin: '0 auto 48px' }}>
-            {OSS_FEATURES.map(f => (
-              <div key={f.title} className="card-glass" style={{ padding: '28px 24px' }}>
-                <div style={{
-                  width: '44px', height: '44px', borderRadius: '12px',
-                  background: `${f.color}12`,
-                  border: `1px solid ${f.color}25`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: f.color, marginBottom: '18px',
-                }}>
-                  {f.icon}
-                </div>
-                <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '10px', color: 'var(--text)' }}>{f.title}</div>
-                <p style={{ fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.65 }}>{f.desc}</p>
-              </div>
-            ))}
+          <div className="inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.05)] text-white mb-6 sm:mb-8 relative z-10 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
+            <Terminal className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            <Link href="/publish" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
-              Publish your MCP server
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-            </Link>
-            <a
-              href="https://github.com/the-17/openmcp"
-              target="_blank" rel="noopener"
-              className="btn btn-ghost btn-lg"
-              style={{ textDecoration: 'none' }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-              </svg>
-              View on GitHub
-            </a>
-          </div>
-        </div>
+          <AnimatedHeading
+            as="h2"
+            className="heading-display text-[1.9rem] sm:text-[2.5rem] font-medium leading-[1.05] text-white relative z-10 sm:text-[3.5rem]"
+          >
+            {`${BRAND.name} CLI is coming soon.`}
+          </AnimatedHeading>
+
+          <AnimatedParagraph
+            className="mt-4 sm:mt-6 text-base sm:text-lg leading-7 sm:leading-8 text-brand-steel mx-auto max-w-2xl relative z-10"
+            delay={0.2}
+          >
+            <>
+              {BRAND.name} Cloud brings governed invocation to the network. The upcoming CLI brings
+              that exact same trust fabric to local{' '}
+              <code className="text-[#e2e8f0] bg-[rgba(255,255,255,0.1)] px-2 py-1 rounded font-mono text-sm mx-1">
+                stdio
+              </code>{' '}
+              MCP servers. Local testing, universal discovery.
+            </>
+          </AnimatedParagraph>
+
+          {/* <AnimatedParagraph
+             className="mt-4 sm:mt-6 text-sm sm:text-base leading-6 text-brand-trust mx-auto max-w-3xl relative z-10 font-mono tracking-tight"
+             delay={0.3}
+          >
+            {BRAND.name} is the first registry to have mathematically perfect data for stdio servers regardless of whether the developer wrote a good Readme.
+          </AnimatedParagraph> */}
+        </AnimatedSection>
       </section>
 
-      {/* ── FOOTER ────────────────────────────────────────── */}
-      <footer style={{ borderTop: '1px solid var(--border)', padding: isMobile ? '24px 20px' : '40px 80px' }}>
-        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-            width: '24px', height: '24px',
-            background: 'linear-gradient(135deg,#e8673a,#c9552e)',
-            borderRadius: '6px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '12px',
-            boxShadow: '0 0 12px rgba(232,103,58,0.25)',
-          }}>⬡</div>
-            <span style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '-0.02em' }}>openMCP</span>
-          </div>
+      {/* ── 5. Footer / CTA ── */}
+      <section className="page py-16 sm:py-24 border-t border-[rgba(255,255,255,0.05)] relative overflow-hidden">
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-DEFAULT opacity-10 blur-[150px] pointer-events-none rounded-[100%]" />
 
-          {/* Links */}
-          <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-            {[
-              { href: '/registry', label: 'Registry' },
-              { href: '/publish', label: 'Publish' },
-              { href: 'https://github.com/the-17/openmcp', label: 'GitHub', external: true },
-            ].map(l => (
-              <a
-                key={l.label}
-                href={l.href}
-                target={l.external ? '_blank' : undefined}
-                rel={l.external ? 'noopener' : undefined}
-                style={{ fontSize: '13px', color: 'var(--text-3)', textDecoration: 'none', transition: 'color .15s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'}
-              >{l.label}</a>
-            ))}
-          </div>
+        <div className="text-center max-w-3xl mx-auto relative z-10 px-4 sm:px-0">
+          <AnimatedHeading
+            as="h2"
+            className="heading-display mt-4 text-[2.75rem] font-medium leading-[1.05] text-white sm:text-[5rem] drop-shadow-md"
+          >
+            {`Start building\nwith ${BRAND.name}.`}
+          </AnimatedHeading>
 
-          {/* Legal */}
-          <p
-            style={{ fontSize: '12px', color: 'var(--text-3)' }}>
-            MIT License · Built by <a href="https://github.com/the-17" style={{ color: 'var(--accent)', textDecoration: 'none' }}>The-17</a>
-          </p>
+          <motion.div
+            className="mt-12 flex flex-col gap-4 sm:flex-row justify-center w-full"
+            {...fadeUp(0.3)}
+          >
+            <Link
+              href="/connect"
+              className="btn btn-primary btn-lg shadow-[0_0_30px_rgba(255,255,255,0.2)] w-full sm:w-auto"
+            >
+              Connect your agent
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a
+              href={BRAND.githubUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost btn-lg w-full sm:w-auto"
+            >
+              View the Source
+            </a>
+          </motion.div>
         </div>
-      </footer>
+
+        <footer className="mt-16 sm:mt-32 pt-8 border-t border-[rgba(255,255,255,0.08)] flex flex-col gap-6 text-sm text-brand-steel sm:flex-row sm:items-center sm:justify-between relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-black text-black shrink-0">
+              ⇢
+            </div>
+            <div>
+              <div className="font-display text-xl font-medium tracking-tight text-white">
+                {BRAND.name}
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                by Akinbobola Emmanuel
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 font-medium">
+            <Link href="/registry" className="hover:text-white transition-colors">
+              Registry
+            </Link>
+            <Link href="/docs" className="hover:text-white transition-colors">
+              Docs
+            </Link>
+            <Link href="/publish" className="hover:text-white transition-colors">
+              Publish
+            </Link>
+            <a
+              href={BRAND.githubUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors"
+            >
+              GitHub
+            </a>
+          </div>
+        </footer>
+      </section>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- openMCP — Migration 012: Per-server OAuth connections
+-- relay — Migration 012: Per-server OAuth connections
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Adds OAuth metadata to servers and stores per-user OAuth tokens in the vault.
 -- The proxy reads the token from vault and injects it as Authorization header.
@@ -7,11 +7,28 @@
 
 -- ── OAuth metadata on servers ─────────────────────────────────────────────────
 ALTER TABLE public.servers
+  DROP CONSTRAINT IF EXISTS servers_auth_type_check;
+
+ALTER TABLE public.servers
   ADD COLUMN IF NOT EXISTS oauth_authorization_url TEXT, -- e.g. https://github.com/login/oauth/authorize
   ADD COLUMN IF NOT EXISTS oauth_token_url          TEXT, -- e.g. https://github.com/login/oauth/access_token
   ADD COLUMN IF NOT EXISTS oauth_scopes             TEXT, -- space-separated, e.g. "repo read:user"
-  ADD COLUMN IF NOT EXISTS oauth_client_id          TEXT; -- openMCP's registered client_id for this service
+  ADD COLUMN IF NOT EXISTS oauth_client_id          TEXT; -- relay's registered client_id for this service
   -- oauth_client_secret lives in Vercel env, never in DB
+
+ALTER TABLE public.servers
+  ADD CONSTRAINT servers_auth_type_check
+  CHECK (auth_type IN (
+    'none',
+    'managed',
+    'key_param',
+    'agentsecrets',
+    'oauth'
+  ));
+
+UPDATE public.servers
+SET auth_type = 'oauth'
+WHERE oauth_authorization_url IS NOT NULL;
 
 -- ── User OAuth connections registry ──────────────────────────────────────────
 -- Tracks which users have connected which OAuth services.
@@ -41,7 +58,7 @@ CREATE POLICY "oauth_own_delete"
   ON public.user_oauth_connections FOR DELETE TO authenticated
   USING (user_id = auth.uid());
 
-CREATE INDEX idx_oauth_user_server ON public.user_oauth_connections(user_id, server_name);
+CREATE INDEX IF NOT EXISTS idx_oauth_user_server ON public.user_oauth_connections(user_id, server_name);
 
 -- ── OAuth state table — CSRF protection ──────────────────────────────────────
 -- Each OAuth flow generates a random state param stored here for 10 minutes.
@@ -55,8 +72,10 @@ CREATE TABLE IF NOT EXISTS public.oauth_states (
   expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '10 minutes'
 );
 
+ALTER TABLE public.oauth_states ENABLE ROW LEVEL SECURITY;
+
 -- Auto-clean expired states
-CREATE INDEX idx_oauth_states_expires ON public.oauth_states(expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON public.oauth_states(expires_at);
 
 -- ── RPC: store OAuth tokens in vault ─────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.store_oauth_connection(
@@ -76,14 +95,28 @@ DECLARE
   v_refresh_vault_id UUID;
   v_access_key       TEXT;
   v_refresh_key      TEXT;
+  v_old_access_id    UUID;
+  v_old_refresh_id   UUID;
 BEGIN
   v_access_key  := 'oauth:access:'  || p_user_id::TEXT || ':' || p_server_name;
   v_refresh_key := 'oauth:refresh:' || p_user_id::TEXT || ':' || p_server_name;
 
   -- Delete old tokens if reconnecting
+  SELECT vault_id, refresh_vault_id
+  INTO v_old_access_id, v_old_refresh_id
+  FROM public.user_oauth_connections
+  WHERE user_id = p_user_id AND server_name = p_server_name;
+
   DELETE FROM public.user_oauth_connections
   WHERE user_id = p_user_id AND server_name = p_server_name;
-  DELETE FROM vault.secrets WHERE name LIKE 'oauth:%:' || p_user_id::TEXT || ':' || p_server_name;
+
+  IF v_old_access_id IS NOT NULL THEN
+    DELETE FROM vault.secrets WHERE id = v_old_access_id;
+  END IF;
+
+  IF v_old_refresh_id IS NOT NULL THEN
+    DELETE FROM vault.secrets WHERE id = v_old_refresh_id;
+  END IF;
 
   -- Store access token in vault
   SELECT vault.create_secret(p_access_token, v_access_key, 'OAuth access token')

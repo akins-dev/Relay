@@ -1,25 +1,37 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Space_Grotesk, Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { Nav }          from '@/components/layout/Nav';
-import { AuthProvider } from '@/components/AuthProvider';
+import { Nav }           from '@/components/layout/Nav';
+import { AuthProvider }  from '@/components/AuthProvider';
+import { LenisProvider } from '@/components/LenisProvider';
+import { SITE_URL }      from '@/lib/site';
+import { BRAND }         from '@/lib/brand';
 
 // ── Fonts via next/font — zero layout shift, self-hosted at build time ────────
-// This replaces the @import in globals.css which blocked rendering.
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets:  ['latin'],
-  variable: '--font-inter',
+  variable: '--font-inter', // mapped to original css variable for ease
   display:  'swap',
 });
 
-// Lora and JetBrains Mono loaded on demand via CSS — acceptable for headings/code.
-// next/font/google handles caching and self-hosting.
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-editorial', // mapped to original display variable
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-ibm-plex-mono', // mapped to original mono variable
+  weight: ['400', '500', '600'],
+  display: 'swap',
+});
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
-const SITE_URL   = 'https://openmcp.dev';
-const SITE_NAME  = 'openMCP';
-const TITLE      = 'openMCP — The Secure MCP Registry';
-const DESCRIPTION = 'Free, open-source registry for MCP servers. 7,000+ servers scanned across 15 security layers. One line connects any AI agent to every tool it needs.';
+const SITE_NAME   = BRAND.name;
+const TITLE       = `${BRAND.name} — The Intelligence Layer for Agent Tools`;
+const DESCRIPTION = BRAND.description;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -34,8 +46,8 @@ export const metadata: Metadata = {
     'MCP', 'Model Context Protocol', 'AI agents', 'tool discovery',
     'MCP registry', 'MCP security', 'open source', 'agent infrastructure',
   ],
-  authors:  [{ name: 'The-17', url: 'https://github.com/the-17' }],
-  creator:  'The-17',
+  authors:  [{ name: BRAND.org, url: BRAND.githubUrl }],
+  creator:  BRAND.org,
   publisher: SITE_NAME,
 
   // ── Canonical ─────────────────────────────────────────────────────────────
@@ -52,7 +64,7 @@ export const metadata: Metadata = {
       url:    '/og-image.png',
       width:  1200,
       height: 630,
-      alt:    'openMCP — The Secure MCP Registry',
+      alt:    `${BRAND.name} — The Intelligence Layer for Agent Tools`,
     }],
     locale: 'en_US',
   },
@@ -63,7 +75,7 @@ export const metadata: Metadata = {
     title:        TITLE,
     description:  DESCRIPTION,
     images:      ['/og-image.png'],
-    creator:     '@the17dev',
+    creator:     BRAND.twitterHandle,
   },
 
   // ── Robots ────────────────────────────────────────────────────────────────
@@ -89,8 +101,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor:    '#c2440c',
-  colorScheme:   'light',
+  themeColor:    '#050505',
+  colorScheme:   'dark',
   width:         'device-width',
   initialScale:  1,
 };
@@ -98,12 +110,14 @@ export const viewport: Viewport = {
 // ── Root layout ───────────────────────────────────────────────────────────────
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body>
-        <AuthProvider>
-          <Nav />
-          <main>{children}</main>
-        </AuthProvider>
+    <html lang="en" className={`${spaceGrotesk.variable} ${outfit.variable} ${jetbrainsMono.variable} dark`}>
+      <body className="bg-black text-white antialiased">
+        <LenisProvider>
+          <AuthProvider>
+            <Nav />
+            <main>{children}</main>
+          </AuthProvider>
+        </LenisProvider>
       </body>
     </html>
   );

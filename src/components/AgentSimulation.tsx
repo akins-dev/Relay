@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { BRAND } from '@/lib/brand';
 
 // ── Single continuous story ───────────────────────────────────────────────────
 // No tabs. No user interaction required. Plays on loop.
 // delay = ms after the previous beat before this one appears.
 
 const STORY = [
-  { type: 'comment',  text: '// AGENTS.md — your entire MCP configuration',         delay: 0    },
-  { type: 'comment',  text: 'You have access to openMCP. Query before assuming.',    delay: 500  },
+  { type: 'comment',  text: '// AGENTS.md — your runtime tool connection',            delay: 0    },
+  { type: 'comment',  text: `You have access to ${BRAND.name}. Query before assuming.`,   delay: 500  },
   { type: 'comment',  text: 'GET /api/servers/search?q={intent}',                   delay: 300  },
   { type: 'gap',      text: '',                                                       delay: 500  },
 
@@ -55,16 +56,16 @@ const STORY = [
 ];
 
 const COLORS: Record<string, string> = {
-  comment:  '#78716c',
+  comment:  '#71717a', // zinc-500
   gap:      'transparent',
-  agent:    '#d6cfc8',
-  query:    '#c2440c',
-  result:   '#4f8cc9',
-  scan:     '#15803d',
-  policy:   '#7c3aed',
-  call:     '#c2440c',
-  response: '#4f8cc9',
-  success:  '#15803d',
+  agent:    '#ffffff', // white
+  query:    '#d4d4d8', // zinc-300
+  result:   '#a1a1aa', // zinc-400
+  scan:     '#4ade80', // green-400
+  policy:   '#e879f9', // fuchsia-400
+  call:     '#ffffff', // white
+  response: '#a1a1aa', // zinc-400
+  success:  '#4ade80', // green-400
 };
 
 export function AgentSimulation() {
@@ -98,61 +99,58 @@ export function AgentSimulation() {
     const start = setTimeout(play, 400);
     const blink = setInterval(() => setCursor(c => !c), 530);
     return () => { clearAll(); clearTimeout(start); clearInterval(blink); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div style={{
-      background: '#1c1917',
-      border: '1px solid #3c3330',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      boxShadow: '0 8px 40px rgba(28,22,18,0.12)',
-      fontFamily: 'var(--mono)',
-    }}>
+    <div className="flex flex-col overflow-hidden rounded-[16px] border border-[rgba(255,255,255,0.15)] bg-black font-mono shadow-2xl">
       {/* Chrome bar */}
-      <div style={{ display:'flex', alignItems:'center', gap:'6px', padding:'13px 18px', borderBottom:'1px solid #292524', background:'#141211' }}>
-        {['#ef4444','#eab308','#22c55e'].map(col => (
-          <div key={col} style={{ width:'10px', height:'10px', borderRadius:'50%', background:col, opacity:.75 }} />
-        ))}
-        <span style={{ marginLeft:'10px', fontSize:'11px', color:'#78716c' }}>agent-runtime · openmcp · live</span>
-        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'5px' }}>
-          <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#c2440c', animation:'pulse 2s ease-in-out infinite' }} />
-          <span style={{ fontSize:'10px', color:'#c2440c' }}>connected</span>
+      <div className="flex items-center gap-2 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a] px-5 py-3.5">
+        <div className="flex gap-1.5">
+          <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
+          <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
+          <div className="h-2.5 w-2.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
+        </div>
+        <span className="ml-3 text-[11px] font-medium tracking-wide text-[#52525b]">agent-runtime · {BRAND.name} · live</span>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4ade80]" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">connected</span>
         </div>
       </div>
 
       {/* Output */}
       <div
         ref={scrollRef}
-        style={{ padding:'20px 24px', height:'360px', overflowY:'auto', fontSize:'12.5px', lineHeight:1.9, scrollBehavior:'smooth' }}
+        className="h-[360px] overflow-y-auto px-6 py-5 text-[12.5px] leading-[1.9] scroll-smooth"
+        style={{ scrollbarWidth: 'none' }}
       >
         {STORY.map((beat, i) => {
           const vis = visible.includes(i);
-          if (beat.type === 'gap') return <div key={i} style={{ height:'6px', opacity: vis ? 1 : 0 }} />;
+          if (beat.type === 'gap') return <div key={i} className="h-1.5" style={{ opacity: vis ? 1 : 0 }} />;
           return (
             <div key={i} style={{
               opacity:    vis ? 1 : 0,
-              transform:  vis ? 'translateY(0)' : 'translateY(3px)',
-              transition: 'opacity .25s ease, transform .25s ease',
-              color:      COLORS[beat.type] || '#d6cfc8',
-              fontWeight: beat.type === 'success' ? 600 : 400,
+              transform:  vis ? 'translateY(0)' : 'translateY(4px)',
+              transition: 'opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              color:      COLORS[beat.type] || '#ffffff',
+              fontWeight: beat.type === 'success' || beat.type === 'agent' ? 600 : 400,
             }}>
               {beat.text}
             </div>
           );
         })}
-        <span style={{ color:'#c2440c', opacity: cursor ? 1 : 0, transition:'opacity .08s' }}>▋</span>
+        <span className="text-white transition-opacity duration-75" style={{ opacity: cursor ? 1 : 0 }}>▋</span>
       </div>
 
       {/* Footer */}
-      <div style={{ padding:'10px 20px', borderTop:'1px solid #292524', background:'#141211', display:'flex', gap:'20px', flexWrap:'wrap' }}>
+      <div className="flex flex-wrap gap-5 border-t border-[rgba(255,255,255,0.06)] bg-[#0a0a0a] px-5 py-3">
         {[
-          ['15 security layers', '#15803d'],
-          ['DLP on every call',  '#4f8cc9'],
-          ['audit trail',        '#7c3aed'],
-          ['free forever',       '#c2440c'],
+          ['15 security layers', '#4ade80'],
+          ['DLP on every call',  '#4ade80'],
+          ['audit trail',        '#4ade80'],
+          ['free forever',       '#a1a1aa'],
         ].map(([label, color]) => (
-          <span key={label} style={{ fontSize:'10px', color }}>{`✓ ${label}`}</span>
+          <span key={label} className="text-[10px] font-bold uppercase tracking-widest" style={{ color }}>{`✓ ${label}`}</span>
         ))}
       </div>
     </div>

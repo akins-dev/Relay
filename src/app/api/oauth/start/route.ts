@@ -4,14 +4,15 @@
  * Initiates the OAuth flow for a server that requires it.
  * 1. Validates user is authenticated
  * 2. Looks up server OAuth metadata (authorization_url, client_id, scopes)
- * 3. Generates PKCE + CSRF state, stores in oauth_states table
+ * 3. Generates CSRF state, stores it in oauth_states table
  * 4. Redirects user to the provider's authorization endpoint
  */
 import { NextRequest, NextResponse }         from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { randomBytes }                       from 'crypto';
-import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
+import { rateLimit }                         from '@/lib/ratelimit';
 import { extractIp }                         from '@/lib/api';
+import { resolveUser }                       from '@/lib/auth-server';
 
 // Only allow redirects to our own origin — prevents open redirect abuse
 function validateRedirect(redirect: string | null, serverName: string): string {
@@ -39,8 +40,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Must be authenticated
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('redirect', req.url);
@@ -48,14 +48,15 @@ export async function GET(req: NextRequest) {
   }
 
   // Look up server OAuth config
-  const { data: server } = await supabase
+  const svc = createServiceClient();
+  const { data: server } = await svc
     .from('servers')
     .select('name, oauth_authorization_url, oauth_client_id, oauth_scopes, auth_type')
     .eq('name', serverName)
     .eq('status', 'active')
     .single();
 
-  if (!server || server.auth_type !== 'oauth' || !server.oauth_authorization_url) {
+  if (!server || !server.oauth_authorization_url) {
     return NextResponse.json({
       error: 'This server does not support OAuth',
       auth_type: server?.auth_type,
@@ -68,13 +69,12 @@ export async function GET(req: NextRequest) {
   if (!server.oauth_client_id) {
     return NextResponse.json({
       error: 'OAuth not configured for this server yet',
-      hint:  'openMCP needs a registered OAuth client for this service. Contact support.',
+      hint:  'A registered OAuth client is required for this service. Contact support.',
     }, { status: 501 });
   }
 
   // Generate CSRF state — 32 random bytes as hex
   const state = randomBytes(32).toString('hex');
-  const svc   = createServiceClient();
 
   // Clean up any existing state for this user+server, store new one
   await svc.from('oauth_states').delete()

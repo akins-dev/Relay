@@ -1,319 +1,119 @@
 /**
- * openMCP — Security Proxy
+ * Security Proxy Route
  *
- * All MCP tool calls route through here. Security layers in order:
- *   Rate limit → Server lookup + SSRF guard → Body size limit →
- *   HMAC confirm token → Policy → DLP (req) → Sampling → Shell injection →
- *   URL elicitation → Vault injection (all name variants) →
- *   Upstream call (bounded response) → DLP/PII/Leak/Indirect (resp) →
- *   Metering → Audit
+ * All security logic now lives in src/lib/proxy-execute.ts so it can be
+ * called directly by the native MCP server (invoke_tool) without an internal
+ * HTTP round-trip. This route is a thin wrapper that:
+ *   1. Resolves auth (session cookie or API key)
+ *   2. Rate limits the caller
+ *   3. Delegates to executeProxyCall()
+ *   4. Returns the response with CORS headers
  */
-import { NextRequest, NextResponse }         from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { rateLimit, LIMITS }                 from '@/lib/ratelimit';
-import { extractIp }                         from '@/lib/api';
-import { signToken, verifyToken, isSafeUrl, readBoundedResponse } from '@/lib/utils';
-import {
-  dlpScan, samplingDlpScan, piiScan,
-  checkElicitationUrl, contextLeakScan,
-  shellInjectionScan, indirectInjectionScan,
-} from '@/lib/security';
-
-// All secret name patterns a server might expect —
-// vault tries each in order and injects the first one found.
-function secretVariants(serverName: string): string[] {
-  const b = serverName.toUpperCase().replace(/-/g, '_').replace(/[^A-Z0-9_]/g, '');
-  return [`${b}_API_KEY`, `${b}_TOKEN`, `${b}_SECRET`, `${b}_ACCESS_TOKEN`, b];
-}
-
-const ua  = (r: NextRequest) => r.headers.get('user-agent') ?? '';
-const xip = (r: NextRequest) => extractIp(r);
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient }              from '@/lib/supabase/server';
+import { rateLimit, LIMITS, getLimitConfig }         from '@/lib/ratelimit';
+import { extractIp }                 from '@/lib/api';
+import { corsHeaders }               from '@/lib/utils';
+import { BRAND }                     from '@/lib/brand';
+import { SITE_URL }                  from '@/lib/site';
+import { resolveApiKey }             from '@/lib/auth-server';
+import { executeProxyCall }          from '@/lib/proxy-execute';
+import { getRateLimitAuthHint }      from '@/lib/agent-guidance';
+import { dlpScan, shellInjectionScan } from '@/lib/security';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { serverName: string; toolName: string } }
+  { params }: { params: Promise<{ serverName: string; toolName: string }> }
 ) {
-  const { serverName, toolName } = params;
-  const start    = Date.now();
+  const { serverName, toolName } = await params;
+  const ip       = extractIp(req);
   const supabase = createClient();
-  const ip       = xip(req);
 
-  // ── Rate limit ───────────────────────────────────────────────────────────────
-  const rl = await rateLimit(`proxy:${ip}`, LIMITS.proxy);
+  // Resolve caller
+  const apiKey = await resolveApiKey(req);
+  const { data: { user: sessionUser } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+
+  if (sessionUser && apiKey.userId && sessionUser.id !== apiKey.userId) {
+    return NextResponse.json(
+      { error: 'Authorization API key does not match the current session' },
+      { status: 401 }
+    );
+  }
+
+  const callerUserId = sessionUser?.id ?? apiKey.userId;
+
+  // Rate limit
+  const rlKey    = callerUserId ? `proxy:user:${callerUserId}` : `proxy:ip:${ip}`;
+  const rlConfig = callerUserId ? await getLimitConfig('proxyAuth') : await getLimitConfig('proxy');
+  const rl = await rateLimit(rlKey, rlConfig);
   if (!rl.allowed) {
     return NextResponse.json(
-      { error: 'Rate limit exceeded', hint: 'Add Authorization: Bearer sk_mcp_... for 200/min' },
+      { error: 'Rate limit exceeded', hint: getRateLimitAuthHint() },
       { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
     );
   }
 
-  // ── Server lookup — also fetches auth_type for 401 handling ─────────────────
-  const { data: server, error: serverErr } = await supabase
+  const rawBody       = await req.text();
+
+  // ── L4 DLP + shell injection (route boundary, defence-in-depth) ──────────────
+  // These are pure-function checks with no DB access. Running them here makes
+  // the route independently testable without un-mocking proxy-execute.
+  // proxy-execute.ts runs the same checks again for calls arriving via the
+  // native MCP server path (invoke_tool) — that's intentional redundancy.
+  const dlpIssues = dlpScan(rawBody);
+  if (dlpIssues.length > 0) {
+    return NextResponse.json(
+      { error: 'Request blocked — credential in args', pattern: dlpIssues[0], vault: `${SITE_URL}/dashboard/secrets` },
+      { status: 400 }
+    );
+  }
+  const shellIssues = shellInjectionScan(rawBody);
+  if (shellIssues.length > 0) {
+    return NextResponse.json(
+      { error: 'Request blocked — shell injection', issues: shellIssues },
+      { status: 400 }
+    );
+  }
+
+  const callInterface = (req.headers.get(`x-${BRAND.name}-interface`) ?? req.headers.get('x-relay-interface')) === 'mcp_server' ? 'mcp_server' : 'rest';
+
+  const result = await executeProxyCall({
+    serverName,
+    toolName,
+    rawBody,
+    callerUserId,
+    callerKeyId:   apiKey.keyId,
+    ip,
+    userAgent:     req.headers.get('user-agent') ?? '',
+    confirmHeader: req.headers.get('x-confirm-token'),
+    callInterface,
+  });
+
+  return new NextResponse(result.body, {
+    status: result.status,
+    headers: { ...result.headers, ...corsHeaders(req.headers.get('origin')) },
+  });
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ serverName: string; toolName: string }> }
+) {
+  const { serverName, toolName } = await params;
+  const { data: server } = await createClient()
     .from('servers')
-    .select('id, name, endpoint, tools, trust_score, latency_ms, auth_type, auth_setup_url')
+    .select('name, display_name, description, tools, trust_score, latency_ms, uptime_pct, verified, auth_type, transport, proxy_available')
     .eq('name', serverName)
     .eq('status', 'active')
     .single();
 
-  if (serverErr || !server) {
-    return NextResponse.json({ error: `Server '${serverName}' not found` }, { status: 404 });
-  }
-
-  // ── SSRF guard — validate endpoint before every call ────────────────────────
-  if (!isSafeUrl(server.endpoint)) {
-    return NextResponse.json({ error: 'Server endpoint failed safety validation' }, { status: 400 });
-  }
-
-  if (!server.tools.includes(toolName)) {
-    return NextResponse.json(
-      { error: `Tool '${toolName}' not found on '${serverName}'`, available_tools: server.tools },
-      { status: 404 }
-    );
-  }
-
-  // ── Request body — enforce 1 MB limit ────────────────────────────────────────
-  const rawBody = await req.text();
-  if (rawBody.length > 1_000_000) {
-    return NextResponse.json({ error: 'Request body exceeds 1 MB limit' }, { status: 413 });
-  }
-
-  const svc = createServiceClient();
-
-  // ── HMAC confirm token (replaces plain base64 — forgeable) ──────────────────
-  let confirmationVerified = false;
-  const confirmHeader = req.headers.get('x-confirm-token');
-  if (confirmHeader) {
-    const decoded = verifyToken<{ server: string; tool: string }>(confirmHeader);
-    confirmationVerified = !!(decoded?.server === serverName && decoded?.tool === toolName);
-  }
-
-  // ── Caller identity ──────────────────────────────────────────────────────────
-  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-
-  // ── Tool policy ──────────────────────────────────────────────────────────────
-  if (user) {
-    const { data: policy } = await svc.rpc('check_tool_policy', {
-      p_user_id: user.id, p_server: serverName, p_tool: toolName,
-    });
-
-    if (policy === 'blocked') {
-      await audit(svc, { server_id: server.id, action: 'policy_blocked', tool_name: toolName,
-        request_size: 0, response_size: 0, latency_ms: Date.now() - start,
-        status_code: 403, dlp_triggered: false, dlp_issues: [`Blocked: ${toolName}`], ip, user_agent: ua(req) });
-      return NextResponse.json(
-        { error: `Tool '${toolName}' is blocked by your policy`, hint: 'Update at /dashboard/policies' },
-        { status: 403 }
-      );
-    }
-
-    if (policy === 'require_confirmation' && !confirmationVerified) {
-      const token = signToken({ server: serverName, tool: toolName, uid: user.id });
-      return NextResponse.json({
-        status: 'confirmation_required',
-        message: `'${toolName}' requires your confirmation before running`,
-        confirm_token: token,
-        confirm_hint: `Resend with header X-Confirm-Token: ${token}`,
-      }, { status: 202 });
-    }
-  }
-
-  // ── L4: DLP — block credentials in request ───────────────────────────────────
-  const reqDlp = dlpScan(rawBody);
-  if (reqDlp.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'dlp_blocked_request', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: reqDlp, ip, user_agent: ua(req) });
-    return NextResponse.json({
-      error: 'Request blocked — credential in tool arguments',
-      pattern: reqDlp[0],
-      explanation: 'Tool arguments must contain only business data. API keys belong in the vault, not arguments.',
-      fix: {
-        wrong:   '{ "api_key": "sk_live_...", "amount": 4900 }',
-        correct: '{ "amount": 4900, "currency": "usd" }',
-        vault:   'Store your key once at https://openmcp.dev/dashboard/secrets',
-      },
-    }, { status: 400 });
-  }
-
-  // ── L9: Sampling injection ───────────────────────────────────────────────────
-  const samplingIssues = samplingDlpScan(rawBody);
-  if (samplingIssues.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'sampling_injection_blocked', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: samplingIssues, ip, user_agent: ua(req) });
-    return NextResponse.json({ error: 'Request blocked — sampling injection pattern', issues: samplingIssues }, { status: 400 });
-  }
-
-  // ── S-12: Shell injection ────────────────────────────────────────────────────
-  const shellIssues = shellInjectionScan(rawBody);
-  if (shellIssues.length > 0) {
-    await audit(svc, { server_id: server.id, action: 'shell_injection_blocked', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 400, dlp_triggered: true, dlp_issues: shellIssues, ip, user_agent: ua(req) });
-    return NextResponse.json({ error: 'Request blocked — shell injection pattern', issues: shellIssues }, { status: 400 });
-  }
-
-  // ── L11: URL elicitation ─────────────────────────────────────────────────────
-  try {
-    const parsed = JSON.parse(rawBody);
-    for (const field of ['url', 'redirect', 'elicitation_url', 'callback_url', 'webhook']) {
-      if (typeof parsed[field] === 'string') {
-        const danger = checkElicitationUrl(parsed[field]);
-        if (danger) return NextResponse.json({ error: `URL elicitation blocked: ${danger}`, field }, { status: 400 });
-      }
-    }
-  } catch { /* not JSON */ }
-
-  // ── Vault: try all secret name variants ─────────────────────────────────────
-  const upstreamHeaders: Record<string, string> = {
-    'Content-Type':     'application/json',
-    'X-Registry-Proxy': 'openmcp',
-    'X-Request-Id':     crypto.randomUUID(),
-  };
-
-  if (user) {
-    // Try OAuth token first (for oauth auth_type servers)
-    if ((server as any).auth_type === 'oauth') {
-      const { data: oauthToken } = await svc.rpc('get_oauth_token', {
-        p_user_id: user.id, p_server_name: serverName,
-      });
-      if (oauthToken) upstreamHeaders['Authorization'] = `Bearer ${oauthToken}`;
-    } else {
-      // Try all static key variants from vault
-      for (const secretName of secretVariants(serverName)) {
-        const { data: val } = await svc.rpc('get_user_secret', {
-          p_user_id: user.id, p_server_name: serverName, p_secret_name: secretName,
-        });
-        if (val) { upstreamHeaders['Authorization'] = `Bearer ${val}`; break; }
-      }
-    }
-  }
-
-  // ── Forward to upstream ──────────────────────────────────────────────────────
-  const targetUrl = `${server.endpoint}/tools/${toolName}`;
-  let responseBody: string;
-  let upstreamStatus: number;
-  let upstreamContentType: string;
-  let responseTruncated = false;
-
-  try {
-    const upstream = await fetch(targetUrl, {
-      method: 'POST', headers: upstreamHeaders, body: rawBody,
-      signal: AbortSignal.timeout(30_000),
-    });
-    upstreamStatus      = upstream.status;
-    upstreamContentType = upstream.headers.get('content-type') ?? 'application/json';
-
-    // ── Structured 401 — OAuth vs API key ────────────────────────────────────
-    if (upstreamStatus === 401) {
-      const isOAuth    = (server.auth_type === 'oauth');
-      const base       = serverName.toUpperCase().replace(/-/g, '_');
-      const keyName    = `${base}_API_KEY`;
-
-      if (isOAuth) {
-        return NextResponse.json({
-          error:        'authentication_required',
-          auth_type:    'oauth',
-          server:       serverName,
-          tool:         toolName,
-          message:      `${serverName} requires you to connect your account via OAuth before calling tools.`,
-          connect_url:  `https://openmcp.dev/registry/${serverName}?connect=1`,
-          instructions: [
-            `1. Visit: https://openmcp.dev/registry/${serverName}`,
-            '2. Click "Connect your account"',
-            '3. Complete the sign-in flow on the service',
-            '4. Return here — this call will work automatically',
-          ],
-        }, { status: 401 });
-      }
-
-      // API key path
-      return NextResponse.json({
-        error:          'authentication_required',
-        auth_type:      'api_key',
-        server:         serverName,
-        tool:           toolName,
-        message:        `${serverName} requires an API key. Store it once — the proxy injects it on every call automatically.`,
-        suggested_name: keyName,
-        setup_url:      `https://openmcp.dev/dashboard/secrets?server=${serverName}&name=${keyName}`,
-        instructions:   [
-          `1. Get your API key for ${serverName} from its dashboard`,
-          `2. Go to: https://openmcp.dev/dashboard/secrets`,
-          `3. Name: ${keyName}   Value: your key`,
-          '4. Re-run this call — it works automatically from now on',
-        ],
-      }, { status: 401 });
-    }
-
-    // ── Bounded response read — 10 MB max ────────────────────────────────────
-    const bounded      = await readBoundedResponse(upstream);
-    responseBody       = bounded.body;
-    responseTruncated  = bounded.truncated;
-
-  } catch (err: any) {
-    await audit(svc, { server_id: server.id, action: 'proxy_error', tool_name: toolName,
-      request_size: rawBody.length, response_size: 0, latency_ms: Date.now() - start,
-      status_code: 502, dlp_triggered: false, dlp_issues: [], ip, user_agent: ua(req) });
-    return NextResponse.json({ error: 'Upstream error', message: err.message }, { status: 502 });
-  }
-
-  const latency = Date.now() - start;
-
-  // ── Response security scans ──────────────────────────────────────────────────
-  const resDlp         = dlpScan(responseBody);
-  const piiIssues      = piiScan(responseBody);
-  const leakIssues     = contextLeakScan(responseBody);
-  const indirectIssues = indirectInjectionScan(responseBody); // was missing — caused ReferenceError crash
-  const allIssues      = [...new Set([...resDlp, ...piiIssues, ...leakIssues, ...indirectIssues])];
-
-  // ── Stats + metering — non-blocking, errors suppressed (observability only) ──
-  const ewma = Math.round(latency * 0.1 + (server.latency_ms ?? latency) * 0.9);
-  svc.from('servers').update({ latency_ms: ewma }).eq('id', server.id).catch(() => {});
-  svc.rpc('increment_calls', { server_id: server.id }).catch(() => {});
-  svc.from('metering_events').insert({
-    server_id: server.id, user_id: user?.id ?? null, tool_name: toolName,
-    interface: 'rest', request_bytes: rawBody.length, response_bytes: responseBody.length,
-    latency_ms: latency, status_code: upstreamStatus, dlp_triggered: allIssues.length > 0,
-  }).catch(() => {});
-
-  // ── Audit log ────────────────────────────────────────────────────────────────
-  await audit(svc, {
-    server_id: server.id, action: allIssues.length > 0 ? 'proxy_dlp_warning_response' : 'proxy_call',
-    tool_name: toolName, request_size: rawBody.length, response_size: responseBody.length,
-    latency_ms: latency, status_code: upstreamStatus,
-    dlp_triggered: allIssues.length > 0, dlp_issues: allIssues, ip, user_agent: ua(req),
-  });
-
-  // ── Response ─────────────────────────────────────────────────────────────────
-  const resHeaders: Record<string, string> = {
-    'Content-Type':           upstreamContentType,
-    'X-Registry-Latency':     String(latency),
-    'X-Registry-Server':      serverName,
-    'X-Registry-Trust-Score': String(server.trust_score),
-  };
-  if (allIssues.length > 0)  resHeaders['X-Registry-DLP-Warning'] = allIssues.slice(0, 3).join('; ');
-  if (responseTruncated)     resHeaders['X-Registry-Truncated']   = 'true';
-
-  return new NextResponse(responseBody, { status: upstreamStatus, headers: resHeaders });
-}
-
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { serverName: string; toolName: string } }
-) {
-  const { data: server } = await createClient()
-    .from('servers')
-    .select('name, display_name, description, tools, trust_score, latency_ms, uptime_pct, verified, auth_type')
-    .eq('name', params.serverName).eq('status', 'active').single();
   if (!server) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(server);
+  return NextResponse.json(server, { headers: corsHeaders(req.headers.get('origin')) });
 }
 
-async function audit(svc: ReturnType<typeof createServiceClient>, data: {
-  server_id: string; action: string; tool_name: string;
-  request_size: number; response_size: number; latency_ms: number;
-  status_code: number; dlp_triggered: boolean; dlp_issues: string[];
-  ip: string; user_agent: string;
-}) {
-  try { await svc.from('audit_log').insert(data); } catch {}
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders(req.headers.get('origin')),
+  });
 }

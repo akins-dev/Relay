@@ -6,10 +6,10 @@ import { NextRequest, NextResponse }         from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { apiError, extractIp }               from '@/lib/api';
 import { rateLimit }                         from '@/lib/ratelimit';
+import { resolveUser }                       from '@/lib/auth-server';
 
 export async function GET(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user) return apiError('Unauthorized', 401);
 
   const rl = await rateLimit(`oauth:connections:${user.id}`, { limit: 30, windowMs: 60_000 });
@@ -27,7 +27,7 @@ export async function DELETE(req: NextRequest) {
   if (!serverName) return apiError('server parameter required', 400);
 
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await resolveUser(req);
   if (!user) return apiError('Unauthorized', 401);
 
   const svc = createServiceClient();
