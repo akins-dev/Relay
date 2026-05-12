@@ -195,14 +195,14 @@ async function invokeRemoteMcp(
     );
   }
 
-  writeStatus(`connecting to remote ${params.serverName} (${launch.url})`);
+  const isSse = launch.transport === 'sse';
+  writeStatus(`connecting to remote ${params.serverName} (${launch.url}) [${isSse ? 'SSE' : 'HTTP'}]`);
 
-  // For remote MCP servers, we speak JSON-RPC over HTTP
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Initialize
+    // Shared JSON-RPC payloads
     const initBody = {
       jsonrpc: '2.0',
       id: 1,
@@ -214,30 +214,6 @@ async function invokeRemoteMcp(
       },
     };
 
-    const initResponse = await fetch(launch.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initBody),
-      signal: controller.signal,
-    });
-
-    if (!initResponse.ok) {
-      throw new RelayError(
-        `Remote MCP server returned ${initResponse.status} during initialization`,
-        'NETWORK',
-        { url: launch.url, status: initResponse.status },
-      );
-    }
-
-    // Send initialized notification (fire-and-forget)
-    fetch(launch.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
-    }).catch(() => {});
-
-    // Call the tool
-    writeStatus(`calling ${params.toolName}...`);
     const callBody = {
       jsonrpc: '2.0',
       id: 2,
@@ -245,41 +221,11 @@ async function invokeRemoteMcp(
       params: { name: params.toolName, arguments: params.args },
     };
 
-    const callResponse = await fetch(launch.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(callBody),
-      signal: controller.signal,
-    });
-
-    if (!callResponse.ok) {
-      throw new RelayError(
-        `Remote MCP tool call returned ${callResponse.status}`,
-        'NETWORK',
-        { url: launch.url, status: callResponse.status },
-      );
+    if (isSse) {
+      return await invokeRemoteSse(launch.url, initBody, callBody, controller, params, timeoutMs, startTime);
+    } else {
+      return await invokeRemoteHttp(launch.url, initBody, callBody, controller, params, timeoutMs, startTime);
     }
-
-    const callResult = await callResponse.json() as {
-      result?: { content: Array<{ type: string; text?: string }> };
-      error?: { code: number; message: string };
-    };
-
-    if (callResult.error) {
-      throw new SubprocessError(
-        `Remote MCP error ${callResult.error.code}: ${callResult.error.message}`,
-        { server: params.serverName, mcpError: callResult.error },
-      );
-    }
-
-    return {
-      success: true,
-      server: params.serverName,
-      tool: params.toolName,
-      content: callResult.result?.content ?? [],
-      latencyMs: Date.now() - startTime,
-      run_mode: 'remote_mcp',
-    };
   } catch (err: unknown) {
     if (err instanceof RelayError) throw err;
     if ((err as Error)?.name === 'AbortError') {
@@ -296,4 +242,188 @@ async function invokeRemoteMcp(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// ── Transport implementations ──────────────────────────────────────────────────
+
+async function invokeRemoteHttp(
+  url: string,
+  initBody: unknown,
+  callBody: unknown,
+  controller: AbortController,
+  params: InvokeParams,
+  timeoutMs: number,
+  startTime: number,
+): Promise<InvokeResult> {
+  const initResponse = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(initBody),
+    signal: controller.signal,
+  });
+
+  if (!initResponse.ok) {
+    throw new RelayError(`Remote MCP server returned ${initResponse.status} during initialization`, 'NETWORK', { url, status: initResponse.status });
+  }
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+  }).catch(() => {});
+
+  writeStatus(`calling ${params.toolName}...`);
+  const callResponse = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(callBody),
+    signal: controller.signal,
+  });
+
+  if (!callResponse.ok) {
+    throw new RelayError(`Remote MCP tool call returned ${callResponse.status}`, 'NETWORK', { url, status: callResponse.status });
+  }
+
+  const callResult = await callResponse.json() as any;
+
+  if (callResult.error) {
+    throw new SubprocessError(`Remote MCP error ${callResult.error.code}: ${callResult.error.message}`, { server: params.serverName, mcpError: callResult.error });
+  }
+
+  return {
+    success: true,
+    server: params.serverName,
+    tool: params.toolName,
+    content: callResult.result?.content ?? [],
+    latencyMs: Date.now() - startTime,
+    run_mode: 'remote_mcp',
+  };
+}
+
+async function invokeRemoteSse(
+  url: string,
+  initBody: unknown,
+  callBody: unknown,
+  controller: AbortController,
+  params: InvokeParams,
+  timeoutMs: number,
+  startTime: number,
+): Promise<InvokeResult> {
+  const sseResponse = await fetch(url, {
+    method: 'GET',
+    headers: { 'Accept': 'text/event-stream' },
+    signal: controller.signal,
+  });
+
+  if (!sseResponse.ok || !sseResponse.body) {
+    throw new RelayError(`Failed to connect to SSE endpoint (HTTP ${sseResponse.status})`, 'NETWORK', { url, status: sseResponse.status });
+  }
+
+  const reader = sseResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let postUrl = '';
+
+  let resolveCall!: (value: any) => void;
+  let rejectCall!: (reason: any) => void;
+  const callPromise = new Promise<any>((resolve, reject) => {
+    resolveCall = resolve;
+    rejectCall = reject;
+  });
+
+  // Read SSE stream in background
+  (async () => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const chunk = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf('\n\n');
+
+          let eventType = 'message';
+          let data = '';
+          for (const line of chunk.split('\n')) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              data += line.slice(6) + '\n';
+            }
+          }
+          data = data.trim();
+
+          if (eventType === 'endpoint') {
+            // Absolute URL resolution for the POST endpoint
+            postUrl = new URL(data, url).toString();
+            
+            // Fire sequence once endpoint is known
+            (async () => {
+              try {
+                // Initialize
+                const initRes = await fetch(postUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(initBody),
+                  signal: controller.signal,
+                });
+                if (!initRes.ok) throw new Error(`Initialize POST returned ${initRes.status}`);
+
+                // Initialized notification
+                await fetch(postUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+                  signal: controller.signal,
+                });
+
+                // Call Tool
+                writeStatus(`calling ${params.toolName}...`);
+                const callRes = await fetch(postUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(callBody),
+                  signal: controller.signal,
+                });
+                if (!callRes.ok) throw new Error(`Call POST returned ${callRes.status}`);
+              } catch (err) {
+                rejectCall(err);
+              }
+            })();
+          } else if (eventType === 'message' && data) {
+            try {
+              const parsed = JSON.parse(data);
+              // Match response by ID
+              if (parsed.id === 2) {
+                resolveCall(parsed);
+                controller.abort(); // Close the SSE stream
+              }
+            } catch (e) {
+              // Ignore non-JSON messages
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') rejectCall(err);
+    }
+  })();
+
+  const callResult = await callPromise;
+  
+  if (callResult.error) {
+    throw new SubprocessError(`Remote MCP error ${callResult.error.code}: ${callResult.error.message}`, { server: params.serverName, mcpError: callResult.error });
+  }
+
+  return {
+    success: true,
+    server: params.serverName,
+    tool: params.toolName,
+    content: callResult.result?.content ?? [],
+    latencyMs: Date.now() - startTime,
+    run_mode: 'remote_mcp',
+  };
 }
