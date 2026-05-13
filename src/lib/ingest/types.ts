@@ -252,6 +252,10 @@ export interface IngestResult {
     probe_success:            number;
     sandbox_attempts:         number;
     sandbox_success:          number;
+    /** README fallback attempts (after probe or sandbox returned 0 tools) */
+    readme_fallback_attempts?: number;
+    /** README fallback successes (actually extracted tools from README) */
+    readme_fallback_success?:  number;
     /** Servers with all Grade-A fields populated */
     grade_a_complete:         number;
     /** Servers with all Grade-A + Grade-B fields populated */

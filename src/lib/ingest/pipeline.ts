@@ -269,8 +269,22 @@ export async function upsertServers(
       // (the source object is shared; mutation would corrupt subsequent passes).
       let resolvedTools: string[] = [...s.tools];
 
-      // Only probe HTTP servers that are not from enrichment-only sources
-      if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
+      // Skip probe/sandbox when upstream already provided full schemas.
+      // Smithery Phase 2 detail provides tool_schemas, resources, and prompts —
+      // probe/sandbox would only add protocolVersion/mcpCompliant (Grade C/D diagnostics).
+      // Skipping saves ~5-30s per server on a full ingest run.
+      const hasUpstreamSchemas = toolSchemas.length > 0
+        && toolSchemas.some(t => t.inputSchema && Object.keys(t.inputSchema).length > 0)
+        && (toolExtractionSource === 'smithery_detail' || toolExtractionSource === 'upstream_schemas');
+
+      if (hasUpstreamSchemas) {
+        // Carry forward resources/prompts from the upstream source (Smithery provides these)
+        mcpResources = Array.isArray(s.resources) ? s.resources : [];
+        mcpPrompts   = Array.isArray(s.prompts) ? s.prompts : [];
+        log.progress(TAG, idx, servers.length, s.name,
+          `skip probe/sandbox — ${toolExtractionSource} already has ${toolSchemas.length} tools with inputSchema`);
+      } else if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
+        // Only probe HTTP servers that are not from enrichment-only sources
         log.progress(TAG, idx, servers.length, s.name, `probing ${s.endpoint.slice(0, 60)}...`);
         result.extraction_metrics!.probe_attempts++;
         const probeStart = Date.now();
@@ -299,6 +313,21 @@ export async function upsertServers(
         if (primitives.transport !== 'unknown') {
           transport = primitives.transport;
           proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
+        }
+
+        // README fallback for failed probes — mirrors sandbox behavior.
+        // Many HTTP servers fail to probe (auth-gated, rate-limited, non-standard MCP)
+        // but their GitHub README documents the exact tools available.
+        if (toolSchemas.length === 0 && s.github_url) {
+          log.progress(TAG, idx, servers.length, s.name, 'probe returned 0 tools → README fallback...');
+          result.extraction_metrics!.readme_fallback_attempts = (result.extraction_metrics!.readme_fallback_attempts ?? 0) + 1;
+          toolSchemas = normalizeToolSchemas(await parseReadmeSchemas(s.github_url));
+          if (toolSchemas.length > 0) {
+            toolExtractionSource = 'readme_parsed';
+            result.extraction_metrics!.readme_fallback_success = (result.extraction_metrics!.readme_fallback_success ?? 0) + 1;
+            log.progress(TAG, idx, servers.length, s.name,
+              `README fallback ✓ ${toolSchemas.length} tools extracted`);
+          }
         }
       } else if (runHeavyChecks && !isEnrichmentOnly && transport === 'stdio') {
         // Sandbox extraction attempt
@@ -712,6 +741,7 @@ export async function upsertServers(
     log.info(TAG, `  ├─────────────────────────────────────────────┤`);
     log.info(TAG, `  │  Probe:    ${result.extraction_metrics.probe_attempts} attempted → ${result.extraction_metrics.probe_success} success`);
     log.info(TAG, `  │  Sandbox:  ${result.extraction_metrics.sandbox_attempts} attempted → ${result.extraction_metrics.sandbox_success} success`);
+    log.info(TAG, `  │  README:   ${result.extraction_metrics.readme_fallback_attempts ?? 0} attempted → ${result.extraction_metrics.readme_fallback_success ?? 0} success`);
   }
   log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 
