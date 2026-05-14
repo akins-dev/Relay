@@ -20,7 +20,7 @@ flowchart TD
     subgraph SOURCES["Source Fetchers"]
         direction TB
         O["official.ts  [PRIMARY]\nregistry.modelcontextprotocol.io\n→ endpoint, env_var_schema\n→ package_info, icon_url, title\nFilter isLatest: true client-side"]
-        S["smithery.ts  [PRIMARY]\napi.smithery.ai\nPhase 1: listing sweep isDeployed:true\n  → verified (top-level boolean)\n  → bySmithery → is_canonical\n  → useCount → use_count\nPhase 2: detail fetch concurrency=5\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema"]
+        S["smithery.ts  [PRIMARY]\napi.smithery.ai\nPhase 1: seed-based deep pagination\n  → seed param bypasses 500 topK cap\n  → full catalog ~5200 servers, ~2400 deployed\n  → isDeployed:true filter\n  → verified, bySmithery → is_canonical\n  → useCount → use_count\nPhase 2: detail fetch concurrency=5\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema\n⚠ Pipeline skips probe/sandbox when\n  smithery_detail has full inputSchema"]
         G["glama.ts  [ENRICHMENT]\nglama.ai/api/mcp/v1\n→ env_var_schema (JSON Schema)\n→ SPDX license, attributes[] tags\n→ repository.url (dedup key)\n⚠ Never provides endpoint or tools"]
         D["mcp_directory.ts  [ENRICHMENT]\nmcp.directory/api/v1\n→ verified, icon_url\n→ heuristic github_url\n  (publisher.name/slug)\n→ classification tags\n⚠ Never provides endpoint or tools"]
     end
@@ -172,6 +172,8 @@ interface IngestResult {
     probe_success:            number;  // Probes that returned ≥1 tool schema
     sandbox_attempts:         number;  // Sandbox extraction attempts
     sandbox_success:          number;  // Sandbox calls that returned ≥1 tool
+    readme_fallback_attempts?: number; // README fallback after probe/sandbox returned 0 tools
+    readme_fallback_success?:  number; // README fallback that extracted ≥1 tool
     grade_a_complete:         number;  // Servers with all Grade-A fields populated
     grade_b_complete:         number;  // Servers with all Grade-A + Grade-B populated
   };

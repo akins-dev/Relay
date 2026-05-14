@@ -251,7 +251,15 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
     return [];
   }
 
-  // ── Phase 1: Listing sweep ──────────────────────────────────────────────
+  // ── Phase 1: Listing sweep (seed-based deep pagination) ─────────────────
+  // Smithery's listing API caps empty-query results at 500 (topK limit)
+  // unless a `seed` parameter is passed. The API docs state:
+  //   "pass seed for stable deep pagination"
+  // With `seed`, totalPages reflects the full catalog (~5200+ servers)
+  // and all pages are accessible.
+  //
+  // Seed value: Date.now() ensures a fresh shuffle each run while
+  // remaining deterministic within a single ingest sweep.
   log.info(TAG, 'Phase 1: listing sweep starting');
 
   type ListingEntry = {
@@ -283,6 +291,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
   };
 
   const listingEntries: ListingEntry[] = [];
+  const seed = Date.now(); // deterministic within a single sweep
   let page = 1;
   let totalFromApi = 0;
   let skippedNotDeployed = 0;
@@ -291,7 +300,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
     let data: any;
     try {
       const res = await fetch(
-        `${LISTING_URL}?q=&page=${page}&pageSize=${PAGE_SIZE}`,
+        `${LISTING_URL}?q=&page=${page}&pageSize=${PAGE_SIZE}&seed=${seed}`,
         {
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -322,7 +331,7 @@ export async function fetchSmitheryServers(): Promise<IngestServer[]> {
     const items: any[] = data.servers ?? [];
     if (items.length === 0) break;
 
-    totalFromApi = data.totalCount ?? totalFromApi;
+    totalFromApi = data.pagination?.totalCount ?? totalFromApi;
 
     for (const s of items) {
       const qn = typeof s.qualifiedName === 'string' ? s.qualifiedName : '';
