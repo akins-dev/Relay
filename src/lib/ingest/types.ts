@@ -265,4 +265,4 @@ export interface IngestResult {
 
 // ── Fetcher signature ────────────────────────────────────────────────────────
 
-export type IngestFetcher = () => Promise<IngestServer[]>;
+export type IngestFetcher = (svc?: any) => Promise<IngestServer[]>;

@@ -99,7 +99,7 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
       let servers: any[];
 
       try {
-        servers = await src.fetcher();
+        servers = await src.fetcher(svc);
       } catch (err) {
         log.error(`ingest:${src.key}`, 'Fetch failed', err);
         results[src.key] = { added: 0, updated: 0, skipped: 0, rejected: 0, errors: [String(err)] };
