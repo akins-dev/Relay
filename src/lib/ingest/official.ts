@@ -268,7 +268,7 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
         source:        'official',
         source_id:     rawName,
         official_id:   rawName,
-        verified:      officialMeta.status === 'active',
+        verified:      false,
         upstream_updated_at: officialMeta.updatedAt ?? officialMeta.publishedAt ?? null,
 
         raw_upstream_json: entry,

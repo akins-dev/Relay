@@ -204,7 +204,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
       </AnimatedSection>
 
       {/* ── Industry Firsts Section (The 10000x Brag) ── */}
-      <section className="page py-16 flex justify-center">
+      {/* <section className="page py-16 flex justify-center">
         <AnimatedSection className="w-full max-w-5xl rounded-[32px] border border-brand-DEFAULT/30 bg-brand-DEFAULT/5 backdrop-blur-xl p-8 sm:p-12 text-center shadow-[0_0_50px_rgba(79,70,229,0.15)] relative overflow-hidden">
            <div className="absolute top-0 right-0 w-96 h-96 bg-brand-DEFAULT opacity-20 blur-[120px] pointer-events-none rounded-full" />
            <AnimatedLabel className="inline-flex items-center gap-2 mb-6 border-brand-DEFAULT/40 bg-brand-DEFAULT/10 px-4 py-1.5 rounded-full text-brand-signal font-mono text-sm uppercase tracking-widest">
@@ -237,7 +237,7 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
              </AnimatedSection>
            </div>
         </AnimatedSection>
-      </section>
+      </section> */}
 
       {/* ── {BRAND.name} Flow Section ── */}
       <section className="page py-14 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
