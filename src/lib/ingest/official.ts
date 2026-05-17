@@ -25,6 +25,7 @@ import type {
   EnvVarSpec,
   PackageInfo,
 } from './types';
+import { connect } from 'node:http2';
 import { slugify } from './helpers';
 import { log } from '@/lib/logger';
 
@@ -34,6 +35,88 @@ const API_BASES = [
   'https://registry.modelcontextprotocol.io/v0/servers',
   'https://registry.modelcontextprotocol.io/v0.1/servers',
 ];
+
+function officialRegistryTimeoutMs(): number {
+  const value = Number(process.env.OFFICIAL_REGISTRY_TIMEOUT_MS || 30_000);
+  return Number.isFinite(value) && value > 0 ? value : 30_000;
+}
+
+async function fetchJsonWithHttp2(url: string, timeoutMs: number): Promise<{ status: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = connect(parsed.origin);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      client.close();
+      fn();
+    };
+
+    timer = setTimeout(() => {
+      finish(() => reject(new Error(`HTTP/2 request timed out after ${timeoutMs}ms`)));
+    }, timeoutMs);
+
+    client.on('error', (err) => {
+      finish(() => reject(err));
+    });
+
+    const req = client.request({
+      ':method': 'GET',
+      ':path': `${parsed.pathname}${parsed.search}`,
+      'user-agent': 'relay-ingest/2.0',
+      accept: 'application/json',
+    });
+
+    let status = 0;
+    const chunks: Buffer[] = [];
+
+    req.setEncoding('utf8');
+    req.on('response', (headers) => {
+      const rawStatus = headers[':status'];
+      status = typeof rawStatus === 'number' ? rawStatus : Number(rawStatus ?? 0);
+    });
+    req.on('data', (chunk) => {
+      chunks.push(Buffer.from(chunk));
+    });
+    req.on('error', (err) => {
+      finish(() => reject(err));
+    });
+    req.on('end', () => {
+      finish(() => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        try {
+          resolve({ status, data: body ? JSON.parse(body) : null });
+        } catch (err) {
+          reject(new Error(`Official registry returned invalid JSON: ${err instanceof Error ? err.message : String(err)}`));
+        }
+      });
+    });
+    req.end();
+  });
+}
+
+async function fetchOfficialJson(url: string, timeoutMs: number): Promise<{ status: number; data: any }> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'relay-ingest/2.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { status: res.status, data: await res.json() };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn(TAG, `fetch failed for ${url}; retrying with HTTP/2`, err instanceof Error ? err : undefined);
+    try {
+      return await fetchJsonWithHttp2(url, timeoutMs);
+    } catch (http2Err) {
+      const http2Message = http2Err instanceof Error ? http2Err.message : String(http2Err);
+      throw new Error(`${message}; HTTP/2 fallback failed: ${http2Message}`);
+    }
+  }
+}
 
 // ── Transport helpers ─────────────────────────────────────────────────────────
 
@@ -157,22 +240,23 @@ function normalizePackageInfo(packages: any[]): PackageInfo[] {
 export async function fetchOfficialServers(): Promise<IngestServer[]> {
   const servers: IngestServer[] = [];
   let apiBase: string | null = null;
+  const timeoutMs = officialRegistryTimeoutMs();
+  const baseErrors: string[] = [];
 
   for (const base of API_BASES) {
     try {
-      const probe = await fetch(`${base}?limit=1`, {
-        headers: { 'User-Agent': 'relay-ingest/2.0', 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (probe.ok) { apiBase = base; break; }
+      const probe = await fetchOfficialJson(`${base}?limit=1`, timeoutMs);
+      if (probe.status >= 200 && probe.status < 300) { apiBase = base; break; }
+      baseErrors.push(`${base}: HTTP ${probe.status}`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      baseErrors.push(`${base}: ${message}`);
       log.warn(TAG, `API base ${base} unreachable`, err instanceof Error ? err : undefined);
     }
   }
 
   if (!apiBase) {
-    log.error(TAG, 'All API bases unreachable — skipping official source');
-    return [];
+    throw new Error(`All official registry API bases unreachable: ${baseErrors.join('; ')}`);
   }
 
   let cursor: string | null = null;
@@ -185,25 +269,21 @@ export async function fetchOfficialServers(): Promise<IngestServer[]> {
       ? `${apiBase}?limit=100&cursor=${encodeURIComponent(cursor)}`
       : `${apiBase}?limit=100`;
 
-    let pageRes: Response;
+    let pageData: any;
+    let pageStatus: number;
     try {
-      pageRes = await fetch(pageUrl, {
-        headers: { 'User-Agent': 'relay-ingest/2.0', 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(15_000),
-      });
+      const page = await fetchOfficialJson(pageUrl, timeoutMs);
+      pageStatus = page.status;
+      pageData = page.data;
     } catch (err) {
       log.error(TAG, `Page ${pageNum} fetch failed`, err);
       break;
     }
 
-    if (!pageRes.ok) {
-      log.warn(TAG, `Page ${pageNum} returned ${pageRes.status} — stopping pagination`);
+    if (pageStatus < 200 || pageStatus >= 300) {
+      log.warn(TAG, `Page ${pageNum} returned ${pageStatus} — stopping pagination`);
       break;
     }
-
-    let pageData: any;
-    try { pageData = await pageRes.json(); }
-    catch (err) { log.error(TAG, `Page ${pageNum} JSON parse failed`, err); break; }
 
     const items: any[] = pageData.servers ?? pageData.items ?? [];
     if (items.length === 0) break;

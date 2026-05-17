@@ -20,7 +20,11 @@ import {
 } from './helpers';
 import { computeTrustScore } from '@/lib/security';
 import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
+import { Semaphore } from './semaphore';
 import { log } from '@/lib/logger';
+
+// Max 3 concurrent sandbox executions to prevent OOM
+const sandboxSemaphore = new Semaphore(3);
 
 const TAG = 'ingest:pipeline';
 
@@ -339,19 +343,15 @@ export async function upsertServers(
             let sandboxSucceeded = false;
             try {
               const sandboxStart = Date.now();
-              const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+              const req = await sandboxSemaphore.run(() => fetch(`${process.env.SANDBOX_URL}/extract`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}`,
                 },
                 body: JSON.stringify(sandboxCommand),
-                // Hard cap: sandbox may cold-start on Render plus spend up to 180s
-                // connecting while npx/uvx downloads the package on a cold container.
-                // Without this, a hung sandbox blocks the entire ingest run indefinitely.
-                // Keep-alives now prevent Render from dropping this connection early!
                 signal: AbortSignal.timeout(Number(process.env.SANDBOX_EXTRACT_TIMEOUT_MS || 240_000)),
-              });
+              }));
               const sandboxMs = Date.now() - sandboxStart;
 
               if (req.ok) {

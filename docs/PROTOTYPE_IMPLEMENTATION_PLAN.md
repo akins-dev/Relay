@@ -311,7 +311,16 @@ For the prototype, ingest should be explicit and observable:
 - run it manually from admin
 - run it manually with `CRON_SECRET`
 - run it locally while improving source parsing
-- avoid background mutations that make search quality hard to reason about
+- run scheduled long jobs from GitHub Actions, where the runner has enough wall-clock time for high-concurrency ingest
+- avoid short-lived serverless cron paths that make search quality hard to reason about
+
+Current scheduled ingest uses `.github/workflows/cron.yml` and runs:
+
+```bash
+bun run src/scripts/run-ingest-local.ts all
+```
+
+The runner sets `LOCAL_INGEST_CONCURRENCY=40`, `LOCAL_INGEST_PROGRESS_EVERY=25`, and `OFFICIAL_REGISTRY_TIMEOUT_MS=60000`. The local ingest script does not use a Postgres queue; it processes servers directly with Node concurrency and relies on an in-memory sandbox semaphore to cap Render sandbox extraction at three concurrent requests.
 
 ## MVP Product Contract
 
@@ -373,6 +382,7 @@ For the prototype, ingest should be explicit and observable:
 - Existing security scan helpers where they are still used by ingest tests or legacy scoring.
 - Existing auth/account routes, because they can support Relay Cloud account/API key control and deleting them is separate product cleanup.
 - Manual ingest routes guarded by `CRON_SECRET`.
+- GitHub Actions scheduled scripts for uptime, schema drift, reset, and full concurrent ingest.
 
 ### Known Legacy References
 

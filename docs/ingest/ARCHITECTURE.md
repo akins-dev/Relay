@@ -1,31 +1,35 @@
 # Ingest Pipeline — Architecture Diagram
 
-> Last updated: May 2026 — partner/vendor removed; is_canonical + use_count added; trust score redesigned.
+> Last updated: May 2026 — GitHub Actions scheduled ingest; local concurrent runner; no active Postgres ingest queue.
 
 ## Full Flow (Mermaid)
 
 ```mermaid
 flowchart TD
     subgraph TRIGGER["Trigger Layer"]
-        CRON["Vercel Cron\n(scheduled)"]
+        GH["GitHub Actions schedule\nrun-ingest-local.ts all\nconcurrency=40"]
+        LOCAL["Local CLI\nnpm run ingest:local -- all"]
         API["POST /api/ingest\n?source=all|official|smithery|\nglama|mcp_directory"]
-        CRON --> ORCH
+        GH --> LOCALRUN
+        LOCAL --> LOCALRUN
         API --> ORCH
     end
 
-    subgraph ORCH["Orchestrator — cron/ingest.ts"]
-        ORCH["runIngest(source)\n• resolves source list\n• sequential per-source\n• writes ingest_runs row"]
+    subgraph ORCH["Orchestrators"]
+        ORCH["cron/ingest.ts\nrunIngest(source, mode)\n• API/admin/manual path\n• sequential per-source\n• writes ingest_runs row\n• upserts inline"]
+        LOCALRUN["scripts/run-ingest-local.ts\n• scheduled GitHub Actions path\n• fetches selected sources\n• processes servers concurrently\n• reports per-source + overall progress"]
     end
 
     subgraph SOURCES["Source Fetchers"]
         direction TB
-        O["official.ts  [PRIMARY]\nregistry.modelcontextprotocol.io\n→ endpoint, env_var_schema\n→ package_info, icon_url, title\nFilter isLatest: true client-side"]
-        S["smithery.ts  [PRIMARY]\nregistry.smithery.ai (= api.smithery.ai)\nPhase 1: seed-based deep pagination\n  → seed param bypasses 500 topK cap\n  → full catalog ~5200 servers, ~2500 deployed\n  → isDeployed:true filter\n  → verified, bySmithery → is_canonical\n  → useCount → use_count\n  ⚠ Listing has NO repository/updatedAt\nPhase 2: detail fetch (rate-limit hardened)\n  → AdaptiveTokenBucket (self-tunes to limit)\n  → 3-tier priority queue:\n    P0: new (not in DB)\n    P1: incomplete (0 tools)\n    P2: stale (>7d since scan)\n    SKIP: fresh + has tools\n  → concurrency=3, queue-based workers\n  → 429 → drain bucket, halve rate, wait\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema\n⚠ Pipeline skips probe/sandbox when\n  smithery_detail has full inputSchema"]
+        O["official.ts  [PRIMARY]\nregistry.modelcontextprotocol.io\n→ endpoint, env_var_schema\n→ package_info, icon_url, title\nFilter isLatest: true client-side\nHTTP/2 fallback for registry fetch"]
+        S["smithery.ts  [PRIMARY]\nregistry.smithery.ai (= api.smithery.ai)\nPhase 1: seed-based deep pagination\n  → seed param bypasses 500 topK cap\n  → full catalog ~5200 servers, ~2500 deployed\n  → isDeployed:true filter\n  → verified, bySmithery → is_canonical\n  → useCount → use_count\n  ⚠ Listing has NO repository/updatedAt\nPhase 2: detail fetch (rate-limit hardened)\n  → AdaptiveTokenBucket (self-tunes to limit)\n  → 3-tier priority queue:\n    P0: new (not in DB)\n    P1: incomplete (0 tools)\n    P2: stale (>7d since scan)\n    SKIP: fresh + has tools\n  → concurrency=3, in-memory workers\n  → 429 → drain bucket, halve rate, wait\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema\n⚠ Pipeline skips probe/sandbox when\n  smithery_detail has full inputSchema"]
         G["glama.ts  [ENRICHMENT]\nglama.ai/api/mcp/v1\n→ env_var_schema (JSON Schema)\n→ SPDX license, attributes[] tags\n→ repository.url (dedup key)\n⚠ Never provides endpoint or tools"]
         D["mcp_directory.ts  [ENRICHMENT]\nmcp.directory/api/v1\n→ verified, icon_url\n→ heuristic github_url\n  (publisher.name/slug)\n→ classification tags\n⚠ Never provides endpoint or tools"]
     end
 
     ORCH --> O & S & G & D
+    LOCALRUN --> O & S & G & D
 
     subgraph PIPELINE["upsertServers() — pipeline.ts"]
         direction TB
@@ -38,7 +42,7 @@ flowchart TD
         ENRICH["6. Enrichment-only path\n   (glama / mcp_directory)\n   Selective patch:\n   • glama → license, env_var_schema,\n     tags, glama_id\n     + auth_type: api_key if env added\n   • mcp_directory → verified,\n     icon_url, tags, mcp_directory_id"]
 
         PROBE["7a. HTTP Probe (proxy-available servers)\n    mcp-probe.ts\n    initialize → initialized\n    tools/list (paginated, cursor)\n    resources/list (paginated)\n    prompts/list (paginated)\n    → toolSchemas, resources, prompts\n    → real transport, protocol_version"]
-        SANDBOX["7b. Sandbox (stdio servers)\n    POST SANDBOX_URL/extract\n    timeout: 60s (cold-start safe)\n    buildSandboxCommand():\n      npm pkg: npx -y {identifier}\n      github: git clone → npx\n    → toolSchemas, resources, prompts"]
+        SANDBOX["7b. Sandbox (stdio servers)\n    POST SANDBOX_URL/extract\n    timeout: SANDBOX_EXTRACT_TIMEOUT_MS\n      default 240s\n    local sandbox semaphore: max 3\n    buildSandboxCommand():\n      npm pkg: npx -y {identifier}\n      github: git clone → npx\n    → toolSchemas, resources, prompts"]
         README["7c. README fallback\n    parseReadmeSchemas(github_url)\n    tool_extraction_source: readme_parsed"]
 
         SYNC["8. Sync tools[] from toolSchemas\n   Always (not just when empty)\n   Recompute schema_hash after sync\n   → matches drift cron inputs exactly"]

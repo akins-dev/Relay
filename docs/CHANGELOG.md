@@ -2,6 +2,17 @@
 
 This file is append-only.
 
+## 2026-05-17
+
+### Updated
+
+- Switched scheduled ingest documentation and GitHub Actions workflow to the local concurrent ingest runner (`src/scripts/run-ingest-local.ts all`) with `LOCAL_INGEST_CONCURRENCY=40`.
+- Removed the un-migrated Postgres ingest queue prototype (`ingest_queue`, queue RPC helper, and `/api/cron/worker`) from the current runtime path.
+- Added local ingest progress reporting for per-source and overall server counts.
+- Added an HTTP/2 fallback for the Official MCP Registry fetcher because the registry can succeed with curl/HTTP2 while Node `fetch` fails.
+- Made Supabase server client configuration read environment variables lazily so CLI scripts can load `.env` before constructing clients.
+- Removed the pre-ingest network diagnostics script and restored startup instrumentation to required environment validation only.
+
 ## 2026-04-23
 
 ### Added

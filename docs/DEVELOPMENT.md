@@ -120,10 +120,10 @@ If a repository is ingested without a configured Sandbox, Relay will safely fall
 
 Ingest has two modes:
 
-- `catalog` — fast MVP path. Fetches upstream registries, normalizes/dedupes rows, stores source metadata, derives auth, writes preliminary trust, and queues expensive post-ingest work.
-- `full` — legacy/deep path. Runs the heavier probe/sandbox/README/CVE work inline.
+- `catalog` — fast path. Fetches upstream registries, normalizes/dedupes rows, stores source metadata, derives auth, and writes preliminary trust without live probe/sandbox extraction.
+- `full` — deep path. Runs probe/sandbox/README extraction inline. This is the current scheduled GitHub Actions ingest mode.
 
-Production cron uses `catalog` mode and then processes queued verification jobs in small batches. This keeps source ingestion consumable even when individual servers are slow, unreachable, rate limited, or require sandbox extraction.
+There is no active Postgres ingest queue in the current prototype. Scheduled ingest runs as a long-lived GitHub Actions job using `src/scripts/run-ingest-local.ts`, which processes servers concurrently and protects the Render sandbox with an in-process semaphore.
 
 ```bash
 cd path-to-repo
@@ -131,7 +131,7 @@ set -a
 source .env
 set +a
 
-# Fast catalog ingest (recommended for MVP)
+# Fast catalog ingest through the local API
 curl -X POST http://localhost:3000/api/ingest \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
@@ -144,24 +144,30 @@ curl -X POST http://localhost:3000/api/ingest \
 # "mcp_directory" — mcp.directory (enrichment source, requires existing rows with github_url)
   -d '{"source": "official"}'
 
-# Deep inline ingest, useful for local debugging but not recommended as the scheduled MVP path
+# Deep inline ingest through the local API
 curl -X POST http://localhost:3000/api/ingest \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"source": "official", "mode": "full"}'
+
+# Scheduled-ingest equivalent used by GitHub Actions:
+LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_PROGRESS_EVERY=25 \
+OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
+npm run ingest:local -- all
 ```
 
 Expected response includes a JSON breakdown of successful indexing and rejections per source.
 
 Important current behavior:
 
-- Manual or admin-triggered ingest calls source-specific catalog routes:
+- Manual or admin-triggered API ingest can still call source-specific catalog routes:
   - `/api/cron/ingest/official`
   - `/api/cron/ingest/smithery`
   - `/api/cron/ingest/glama`
   - `/api/cron/ingest/mcp-directory`
-- There is no scheduled Vercel cron dependency in the prototype path.
-- The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`.
+- There is no scheduled Vercel cron dependency in the prototype path; `.github/workflows/cron.yml` is the scheduled executor.
+- The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`; the proposed `ingest_queue` migration was removed before migration.
 - `catalog` rows can appear in search when they have enough metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
 - Search responses include quality labels:
   - `discovery_only`
@@ -284,14 +290,13 @@ curl http://localhost:3000/api/cron/reset-daily-calls \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-The corresponding script entrypoints live in `src/scripts/cron-*.ts` and are what GitHub Actions should run for long jobs.
+The corresponding script entrypoints live in `src/scripts/cron-*.ts`. The daily ingest job uses `src/scripts/run-ingest-local.ts all` so it can run with high local concurrency inside the GitHub Actions runner.
 
-Actual scheduled cadence from `vercel.json`:
+Actual scheduled cadence from `.github/workflows/cron.yml`:
 
-- Ingest all sources: daily at `02:00 UTC`
 - Uptime check: every `15 minutes`
 - Schema drift: every `6 hours`
-- Daily call reset: `00:00 UTC`
+- Daily call reset + full ingest: `00:00 UTC`
 
 ---
 
@@ -323,6 +328,7 @@ To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effort
 
 > **⚠️ GitHub Actions Setup Required:** Your repository must be **Public** (to unlock unlimited free execution minutes and avoid the 2000-min cap). In your GitHub repository, under **Settings** → (scroll down left sidebar to) **Secrets and variables** → **Actions** → **New repository secret**, explicitly set:
 > - `NEXT_PUBLIC_SUPABASE_URL`
+> - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 > - `SUPABASE_SERVICE_ROLE_KEY`
 > - `SMITHERY_API_KEY` (if ingestion requires it)
 > - `SANDBOX_URL` and `SANDBOX_AUTH_TOKEN` (required for Render Sandbox parsing)
@@ -358,14 +364,11 @@ DELETE FROM public.mcp_connections;
 ### 2. Re-ingest from all sources (fresh)
 
 ```bash
-# Ingest one source at a time to monitor each:
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "official"}'
-
-# Then run remaining sources one at a time:
-# smithery, glama, mcp_directory
+# Full local/GitHub Actions-style ingest with progress logs:
+LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_PROGRESS_EVERY=5 \
+OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
+npm run ingest:local -- all
 ```
 
 ### 3. Deploy the Render Sandbox (Optional but highly recommended)
@@ -376,25 +379,16 @@ If you are scraping sources with `stdio` servers (like Smithery or GitHub offici
 3. If you previously ingested without the sandbox, run `DELETE FROM public.servers;` again to wipe the database cleanly so the Three-Tier optimization algorithm doesn't aggressively skip them. 
 4. Trigger Ingestion. Your logs will now read: `Sandbox extracted X tools for server-name`.
 
-### 4. Pre-Ingest Health Check
-
-Before running the ingest batch, verify that all external systems (Supabase, Sandbox, external APIs, Redis) are healthy and reachable. If the sandbox is down, stdio servers will silently fall back to degraded README parsing.
-
-```bash
-npm run check:connections
-```
-This script will test all dependent APIs and perform a live MCP protocol handshake against a sample server. If any system is down, it will exit with code `1`. Do not proceed with ingestion until all critical systems report `✅`.
-
-### 5. Verify admin dashboard
+### 4. Verify admin dashboard
 
 - Go to `/admin` → Operations tab
 - Confirm all cron jobs show "no data" (they'll populate over time)
 - Trigger a test ingest from the Ingest tab
 - Verify the Operations tab updates
 
-### 6. Environment variables audit
+### 5. Environment variables audit
 
-Ensure all required env vars are set in Vercel:
+Ensure all required env vars are set:
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET` (random, strong)
 - `NEXT_PUBLIC_ADMIN_UID` (your Supabase Auth user ID)

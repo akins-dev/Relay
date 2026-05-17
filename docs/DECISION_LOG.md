@@ -245,3 +245,26 @@ Consequences:
 - `relay info` and local MCP `get_server_manifest` must return the same manifest contract.
 - Cloud MCP remains discovery-only for the prototype and does not expose `invoke_tool`.
 - Users configure Relay once per agent environment; they should not manually connect every downstream MCP server.
+
+## ADR-012
+
+Date: 2026-05-17
+Status: accepted
+
+Decision:
+
+Scheduled ingest runs through GitHub Actions using the same local concurrent ingest script used during development.
+
+Rationale:
+
+- the project is not currently deployed to Vercel, so a Vercel-specific worker queue adds operational complexity without a live runtime need
+- GitHub Actions provides a long-lived runner, so it can run `src/scripts/run-ingest-local.ts all` directly with high Node I/O concurrency
+- the Render sandbox remains protected by an in-process semaphore that caps sandbox extraction at three concurrent requests
+- direct logs from GitHub Actions are easier to inspect than fragmented serverless worker logs during prototype iteration
+
+Consequences:
+
+- no active `ingest_queue` table, Postgres queue RPCs, or `/api/cron/worker` route are part of the current runtime
+- `.github/workflows/cron.yml` sets `LOCAL_INGEST_CONCURRENCY=40` for scheduled ingest
+- API/admin ingest remains available and runs inline through `runIngest()`
+- a durable Postgres queue can be reconsidered later if Relay moves to a short-lived serverless cron environment

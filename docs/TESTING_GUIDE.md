@@ -1,6 +1,6 @@
 # Testing Guide
 
-Last updated: 2026-04-24
+Last updated: 2026-05-17
 
 This guide is the fastest path to testing the MVP without waiting on a huge live ingest before you learn anything.
 
@@ -34,12 +34,11 @@ Expected today:
 
 ## 2. Know the cron cadence
 
-Current scheduled jobs from `vercel.json`:
+Current scheduled jobs from `.github/workflows/cron.yml`:
 
-- ingest all sources: daily at `02:00 UTC`
 - uptime check: every `15 minutes`
 - schema drift: every `6 hours`
-- daily call reset: `00:00 UTC`
+- daily call reset + full concurrent ingest: `00:00 UTC`
 
 If you were thinking of a 5-hour check, that is not the current schedule. The drift check is `6 hours`.
 
@@ -99,6 +98,25 @@ Why this order:
 - enrichment sources (`glama`, `mcp_directory`) need primary rows to exist first to match against
 
 ## 5. Trigger ingest locally
+
+Preferred local/GitHub Actions path:
+
+```bash
+LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_PROGRESS_EVERY=25 \
+OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
+npm run ingest:local -- all
+```
+
+For a smaller first run:
+
+```bash
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
+```
+
+This path does not use a Postgres queue. It fetches sources and calls `upsertServers()` directly with local concurrency. Sandbox extraction is separately capped at 3 concurrent requests inside the ingest pipeline.
+
+API path, useful when testing route auth and admin-triggered behavior:
 
 One source at a time:
 
