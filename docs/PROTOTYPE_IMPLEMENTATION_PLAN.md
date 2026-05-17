@@ -320,7 +320,7 @@ Current scheduled ingest uses `.github/workflows/cron.yml` and runs:
 bun run src/scripts/run-ingest-local.ts all
 ```
 
-The runner sets `LOCAL_INGEST_CONCURRENCY=40`, `LOCAL_INGEST_PROGRESS_EVERY=25`, and `OFFICIAL_REGISTRY_TIMEOUT_MS=60000`. The local ingest script does not use a Postgres queue; it processes servers directly with Node concurrency and relies on an in-memory sandbox semaphore to cap Render sandbox extraction at three concurrent requests.
+The MVP schedule runs weekly on Sundays at 02:00 UTC. The runner sets `LOCAL_INGEST_CONCURRENCY=20`, `LOCAL_INGEST_PROGRESS_EVERY=25`, and `OFFICIAL_REGISTRY_TIMEOUT_MS=60000`. Uptime and schema drift jobs remain manual-dispatch only during MVP to protect free/freemium quotas. The local ingest script accepts `all`, `official`, `smithery`, `enrich`, `glama`, and `mcp_directory` with optional leading `--`. It does not use a Postgres queue; it fetches and processes one source at a time, processes servers directly with Node concurrency, caps local workers at `100`, and relies on an in-memory sandbox semaphore to cap Render sandbox extraction at three concurrent requests.
 
 ## MVP Product Contract
 

@@ -265,6 +265,7 @@ Rationale:
 Consequences:
 
 - no active `ingest_queue` table, Postgres queue RPCs, or `/api/cron/worker` route are part of the current runtime
-- `.github/workflows/cron.yml` sets `LOCAL_INGEST_CONCURRENCY=40` for scheduled ingest
+- `.github/workflows/cron.yml` runs weekly MVP maintenance on Sundays at 02:00 UTC and sets `LOCAL_INGEST_CONCURRENCY=20` for scheduled ingest
+- uptime and schema drift are manual-dispatch only during MVP to protect free/freemium quotas
 - API/admin ingest remains available and runs inline through `runIngest()`
 - a durable Postgres queue can be reconsidered later if Relay moves to a short-lived serverless cron environment

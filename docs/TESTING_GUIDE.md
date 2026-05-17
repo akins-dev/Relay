@@ -36,11 +36,13 @@ Expected today:
 
 Current scheduled jobs from `.github/workflows/cron.yml`:
 
-- uptime check: every `15 minutes`
-- schema drift: every `6 hours`
-- daily call reset + full concurrent ingest: `00:00 UTC`
+- weekly MVP maintenance: Sundays at `02:00 UTC`
+  - reset call counters
+  - run full concurrent ingest
+- uptime check: manual dispatch only during MVP
+- schema drift: manual dispatch only during MVP
 
-If you were thinking of a 5-hour check, that is not the current schedule. The drift check is `6 hours`.
+Manual dispatch remains available for targeted checks when you need fresh operational data.
 
 ## 3. Understand when you need a force reprocess
 
@@ -102,7 +104,7 @@ Why this order:
 Preferred local/GitHub Actions path:
 
 ```bash
-LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=25 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
 npm run ingest:local -- all
@@ -116,31 +118,17 @@ LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
 
 This path does not use a Postgres queue. It fetches sources and calls `upsertServers()` directly with local concurrency. Sandbox extraction is separately capped at 3 concurrent requests inside the ingest pipeline.
 
-API path, useful when testing route auth and admin-triggered behavior:
-
-One source at a time:
+Use source-specific local runs when isolating failures:
 
 ```bash
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"official"}'
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- enrich
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- glama
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
 ```
 
-Then repeat with:
-
-- `smithery` (if key configured)
-- `glama`
-- `mcp_directory`
-
-Full ingest:
-
-```bash
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"all"}'
-```
+The safe default for full local/GitHub Actions runs is `40`. The runner caps `LOCAL_INGEST_CONCURRENCY` at `100`; `1000` concurrent requests is not supported because it can overwhelm Supabase, upstream APIs, and the Node process before it improves throughput. The `enrich` source runs `glama` and `mcp_directory` only.
 
 What to inspect after each source:
 

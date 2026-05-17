@@ -7,9 +7,9 @@
 ```mermaid
 flowchart TD
     subgraph TRIGGER["Trigger Layer"]
-        GH["GitHub Actions schedule\nrun-ingest-local.ts all\nconcurrency=40"]
+        GH["GitHub Actions schedule\nweekly MVP maintenance\nrun-ingest-local.ts all\nconcurrency=20"]
         LOCAL["Local CLI\nnpm run ingest:local -- all"]
-        API["POST /api/ingest\n?source=all|official|smithery|\nglama|mcp_directory"]
+        API["Admin/API trigger\nsource=all|official|smithery|\nenrich|glama|mcp_directory"]
         GH --> LOCALRUN
         LOCAL --> LOCALRUN
         API --> ORCH
@@ -17,7 +17,7 @@ flowchart TD
 
     subgraph ORCH["Orchestrators"]
         ORCH["cron/ingest.ts\nrunIngest(source, mode)\n• API/admin/manual path\n• sequential per-source\n• writes ingest_runs row\n• upserts inline"]
-        LOCALRUN["scripts/run-ingest-local.ts\n• scheduled GitHub Actions path\n• fetches selected sources\n• processes servers concurrently\n• reports per-source + overall progress"]
+        LOCALRUN["scripts/run-ingest-local.ts\n• scheduled GitHub Actions path\n• accepts all/official/smithery/enrich\n• fetches and processes one source at a time\n• processes servers concurrently\n• safe cap: 100 workers\n• reports per-source + overall progress"]
     end
 
     subgraph SOURCES["Source Fetchers"]
@@ -68,8 +68,8 @@ flowchart TD
     SYNC --> CVE --> AUTH --> TRUST --> DB --> SIDE --> HASHFINAL
 
     subgraph CRONS["Maintenance Crons"]
-        UPTIME["uptime.ts (every 15min)\n• skip auth_type=api_key/oauth\n• probeUptime(endpoint)\n• EWMA uptime_pct α=0.01\n• EWMA latency α=0.1\n• recompute trust_score\n• write scan_results"]
-        DRIFT["schema-drift.ts (daily)\n• probeMCPServer(endpoint)\n• hash(tools+version+endpoint+github_url)\n• match == stored → last_scanned_at\n• mismatch → run injection scan\n  → suspend + scan_results"]
+        UPTIME["uptime.ts (manual during MVP)\n• skip auth_type=api_key/oauth\n• probeUptime(endpoint)\n• EWMA uptime_pct α=0.01\n• EWMA latency α=0.1\n• recompute trust_score\n• write scan_results"]
+        DRIFT["schema-drift.ts (manual during MVP)\n• probeMCPServer(endpoint)\n• hash(tools+version+endpoint+github_url)\n• match == stored → last_scanned_at\n• mismatch → run injection scan\n  → suspend + scan_results"]
     end
 
     DB --> UPTIME & DRIFT

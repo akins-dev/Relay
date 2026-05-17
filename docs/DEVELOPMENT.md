@@ -72,6 +72,7 @@ cp .env.example .env.local
 | `UPSTASH_REDIS_REST_URL` | Optional | Production rate limiting (console.upstash.com) |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Required with above |
 | `NEXT_PUBLIC_ADMIN_UID` | Optional | Supabase Auth user ID allowed to open `/admin` and trigger admin-only ingest |
+| `OFFICIAL_REGISTRY_FETCH_MODE` | Optional | Defaults to HTTP/2 for official registry ingest. Set to `fetch` only when debugging Node fetch behavior |
 
 **Startup Validation:** The application uses Zod to automatically validate `.env` files upon boot. If any required variables are missing (e.g. `SUPABASE_SERVICE_ROLE_KEY` or `CRON_SECRET`), the Next.js process will instantly gracefully crash with a detailed error log indicating exactly which fields you forgot to set!
 
@@ -131,33 +132,23 @@ set -a
 source .env
 set +a
 
-# Fast catalog ingest through the local API
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "all", "mode": "catalog"}'
-
-# Or trigger individual sources:
-# "official"      — MCP official registry
-# "smithery"      — Smithery registry (SMITHERY_API_KEY required)
-# "glama"         — Glama directory (enrichment source, requires existing rows with github_url)
-# "mcp_directory" — mcp.directory (enrichment source, requires existing rows with github_url)
-  -d '{"source": "official"}'
-
-# Deep inline ingest through the local API
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "official", "mode": "full"}'
-
 # Scheduled-ingest equivalent used by GitHub Actions:
-LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=25 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
 npm run ingest:local -- all
+
+# Smaller isolated runs:
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- enrich
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- glama
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
 ```
 
-Expected response includes a JSON breakdown of successful indexing and rejections per source.
+Expected output includes a JSON breakdown of successful indexing and rejections per source.
+
+Use `LOCAL_INGEST_CONCURRENCY=20` for scheduled MVP runs and `40` for local full runs when your quotas can tolerate it. The local runner caps this value at `100`; do not attempt `1000` concurrent requests because it can saturate Supabase connections, upstream registries, and the local Node process. Sandbox extraction remains separately capped at three concurrent requests. The `enrich` source runs `glama` and `mcp_directory` only.
 
 Important current behavior:
 
@@ -266,37 +257,33 @@ Notes:
 - **Redis (Upstash)**: analytics are not stored in Redis, but rate-limit/cache state is. Flush the Upstash DB if you want *zero* residual limiter/cached state.
 - **Sentry** (or other telemetry): stored outside Postgres; purge there separately if needed.
 
-### Manual cron routes
+### Manual cron jobs
 
-These are the cron-backed routes exposed by the app:
+Prefer the script entrypoints for local/manual operations:
 
 ```bash
 # ingest
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"all"}'
+npm run ingest:local -- all
 
 # uptime
-curl http://localhost:3000/api/cron/uptime-check \
-  -H "Authorization: Bearer $CRON_SECRET"
+npx tsx src/scripts/cron-uptime.ts
 
 # schema drift
-curl http://localhost:3000/api/cron/schema-drift \
-  -H "Authorization: Bearer $CRON_SECRET"
+npx tsx src/scripts/cron-schema-drift.ts
 
 # daily call reset
-curl http://localhost:3000/api/cron/reset-daily-calls \
-  -H "Authorization: Bearer $CRON_SECRET"
+npx tsx src/scripts/cron-reset-calls.ts
 ```
 
-The corresponding script entrypoints live in `src/scripts/cron-*.ts`. The daily ingest job uses `src/scripts/run-ingest-local.ts all` so it can run with high local concurrency inside the GitHub Actions runner.
+The daily ingest job uses `src/scripts/run-ingest-local.ts all` so it can run with controlled local concurrency inside the GitHub Actions runner.
 
 Actual scheduled cadence from `.github/workflows/cron.yml`:
 
-- Uptime check: every `15 minutes`
-- Schema drift: every `6 hours`
-- Daily call reset + full ingest: `00:00 UTC`
+- Weekly MVP maintenance: Sundays at `02:00 UTC`
+  - reset daily call counters
+  - run full local ingest with `LOCAL_INGEST_CONCURRENCY=20`
+- Uptime check: manual dispatch only during MVP
+- Schema drift: manual dispatch only during MVP
 
 ---
 
@@ -321,10 +308,8 @@ Set all environment variables in Vercel dashboard.
 By default, Vercel Hobby has a 10s-60s max execution limit. This means heavy cron jobs like Ingestion, Schema Drift checking (which polls thousands of active endpoints), and Uptime checks *will* fail if running strictly on Hobby via API routes.
 To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effortlessly hit the Supabase database and bypass any serverless wall-clocks infinitely for zero cost! (Check `.github/workflows`).
 
-- Schema drift check: every 6h
-- Uptime check: every 15min
-- Daily call reset: midnight UTC
-- Ingest all sources: 2am UTC
+- Weekly MVP maintenance: Sundays at 02:00 UTC
+- Manual dispatch remains available for uptime, schema drift, reset, full ingest, and enrichment-only ingest
 
 > **⚠️ GitHub Actions Setup Required:** Your repository must be **Public** (to unlock unlimited free execution minutes and avoid the 2000-min cap). In your GitHub repository, under **Settings** → (scroll down left sidebar to) **Secrets and variables** → **Actions** → **New repository secret**, explicitly set:
 > - `NEXT_PUBLIC_SUPABASE_URL`
@@ -365,7 +350,7 @@ DELETE FROM public.mcp_connections;
 
 ```bash
 # Full local/GitHub Actions-style ingest with progress logs:
-LOCAL_INGEST_CONCURRENCY=40 \
+LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=5 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
 npm run ingest:local -- all

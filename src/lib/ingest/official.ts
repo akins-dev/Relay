@@ -41,6 +41,18 @@ function officialRegistryTimeoutMs(): number {
   return Number.isFinite(value) && value > 0 ? value : 30_000;
 }
 
+function preferNodeFetchForOfficialRegistry(): boolean {
+  return process.env.OFFICIAL_REGISTRY_FETCH_MODE === 'fetch';
+}
+
+async function fetchJsonWithNodeFetch(url: string, timeoutMs: number): Promise<{ status: number; data: any }> {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'relay-ingest/2.0', 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  return { status: res.status, data: await res.json() };
+}
+
 async function fetchJsonWithHttp2(url: string, timeoutMs: number): Promise<{ status: number; data: any }> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -100,12 +112,23 @@ async function fetchJsonWithHttp2(url: string, timeoutMs: number): Promise<{ sta
 }
 
 async function fetchOfficialJson(url: string, timeoutMs: number): Promise<{ status: number; data: any }> {
+  if (!preferNodeFetchForOfficialRegistry()) {
+    try {
+      return await fetchJsonWithHttp2(url, timeoutMs);
+    } catch (http2Err) {
+      const http2Message = http2Err instanceof Error ? http2Err.message : String(http2Err);
+      log.warn(TAG, `HTTP/2 fetch failed for ${url}; retrying with Node fetch`, http2Err instanceof Error ? http2Err : undefined);
+      try {
+        return await fetchJsonWithNodeFetch(url, timeoutMs);
+      } catch (fetchErr) {
+        const fetchMessage = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        throw new Error(`HTTP/2 failed: ${http2Message}; Node fetch failed: ${fetchMessage}`);
+      }
+    }
+  }
+
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'relay-ingest/2.0', 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    return { status: res.status, data: await res.json() };
+    return await fetchJsonWithNodeFetch(url, timeoutMs);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn(TAG, `fetch failed for ${url}; retrying with HTTP/2`, err instanceof Error ? err : undefined);

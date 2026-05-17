@@ -7,13 +7,19 @@ import { Semaphore } from '@/lib/ingest/semaphore';
 import { log } from '@/lib/logger';
 import { compactIngestResults, summarizeIngestResults } from '@/lib/ingest-response';
 
-const WORKER_CONCURRENCY = Number(process.env.LOCAL_INGEST_CONCURRENCY || 40);
-const PROGRESS_EVERY = Number(process.env.LOCAL_INGEST_PROGRESS_EVERY || 25);
-
-type FetchedSource = {
-  source: string;
-  servers: any[];
-};
+const DEFAULT_WORKER_CONCURRENCY = 40;
+const MAX_WORKER_CONCURRENCY = 100;
+const requestedConcurrency = Number(process.env.LOCAL_INGEST_CONCURRENCY || DEFAULT_WORKER_CONCURRENCY);
+const WORKER_CONCURRENCY = Math.min(
+  MAX_WORKER_CONCURRENCY,
+  Number.isFinite(requestedConcurrency) && requestedConcurrency > 0
+    ? Math.floor(requestedConcurrency)
+    : DEFAULT_WORKER_CONCURRENCY
+);
+const requestedProgressEvery = Number(process.env.LOCAL_INGEST_PROGRESS_EVERY || 25);
+const PROGRESS_EVERY = Number.isFinite(requestedProgressEvery) && requestedProgressEvery > 0
+  ? Math.floor(requestedProgressEvery)
+  : 25;
 
 const fetchers: Record<string, (svc?: any) => Promise<any[]>> = {
   official: fetchOfficialServers,
@@ -22,10 +28,20 @@ const fetchers: Record<string, (svc?: any) => Promise<any[]>> = {
   mcp_directory: fetchMcpDirectoryServers,
 };
 
+const sourceGroups: Record<string, string[]> = {
+  all: Object.keys(fetchers),
+  enrich: ['glama', 'mcp_directory'],
+};
+
+function normalizeSourceArg(arg: string | undefined): string {
+  const raw = arg || 'all';
+  return raw.replace(/^--/, '');
+}
+
 async function runLocalIngest() {
-  const source = process.argv[2] || 'all';
-  if (source !== 'all' && !fetchers[source]) {
-    throw new Error(`Unknown source "${source}". Use all, official, smithery, glama, or mcp_directory.`);
+  const source = normalizeSourceArg(process.argv[2]);
+  if (!sourceGroups[source] && !fetchers[source]) {
+    throw new Error(`Unknown source "${process.argv[2]}". Use all, official, smithery, enrich, glama, or mcp_directory.`);
   }
 
   const svc = createServiceClient();
@@ -33,13 +49,19 @@ async function runLocalIngest() {
 
   log.section('LOCAL INGEST PIPELINE');
   log.info('local', `Target: ${source} | Concurrency: ${WORKER_CONCURRENCY} (Sandbox protected at 3)`);
+  if (requestedConcurrency > MAX_WORKER_CONCURRENCY) {
+    log.warn('local', `LOCAL_INGEST_CONCURRENCY=${requestedConcurrency} is above the safe cap; using ${MAX_WORKER_CONCURRENCY}`);
+  }
 
-  const sourcesToRun = source === 'all' ? Object.keys(fetchers) : [source];
+  const sourcesToRun = sourceGroups[source] ?? [source];
 
   const globalResults: Record<string, any> = {};
-  const fetchedSources: FetchedSource[] = [];
   let totalServers = 0;
+  let totalStarted = 0;
+  let totalCompleted = 0;
 
+  // Fetch and process each source immediately. In all-mode this keeps the
+  // official registry payload from being retained while later sources run.
   for (const src of sourcesToRun) {
     log.section(`Fetching ${src}...`);
     const fetcher = fetchers[src];
@@ -66,16 +88,8 @@ async function runLocalIngest() {
     }
 
     log.info('local', `Fetched ${servers.length} servers from ${src}`);
-    fetchedSources.push({ source: src, servers });
     totalServers += servers.length;
-  }
 
-  log.info('local', `Total fetched across selected sources: ${totalServers}`);
-
-  let totalStarted = 0;
-  let totalCompleted = 0;
-
-  for (const { source: src, servers } of fetchedSources) {
     log.info('local', `[${src}] Processing ${servers.length} servers with concurrency=${WORKER_CONCURRENCY}`);
 
     // Process concurrently
