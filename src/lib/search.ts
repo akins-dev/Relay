@@ -121,6 +121,7 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
     .rpc('search_servers', {
       query_text:    intent,
       result_limit:  limit,
+      include_stdio: true,
       p_intent_hash: intentHash,   // S12: intent-boost LATERAL inside the function
     });
   const searchLatencyMs = Date.now() - searchStart;

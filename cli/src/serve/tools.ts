@@ -6,8 +6,48 @@
  * execution happens locally through the shared runtime.
  */
 
-import { searchServers, getServerManifest } from '../runtime/relay-client.js';
+import { searchServers, getServerManifest, reportInvokeOutcome } from '../runtime/relay-client.js';
 import { invokeTool } from '../runtime/invoke-tool.js';
+
+type RecentIntent = {
+  intentHash: string;
+  intentText: string;
+  seenAt: number;
+};
+
+const recentIntentByServerTool = new Map<string, RecentIntent>();
+const RECENT_INTENT_TTL_MS = 30 * 60 * 1000;
+
+function recentKey(server: string, tool: string) {
+  return `${server}\u0000${tool}`;
+}
+
+function rememberSearchIntent(intentText: string, intentHash: string | undefined, response: Awaited<ReturnType<typeof searchServers>>) {
+  if (!intentHash) return;
+  const now = Date.now();
+
+  for (const [key, value] of recentIntentByServerTool) {
+    if (now - value.seenAt > RECENT_INTENT_TTL_MS) recentIntentByServerTool.delete(key);
+  }
+
+  for (const server of response.results ?? []) {
+    for (const tool of server.tools ?? []) {
+      recentIntentByServerTool.set(recentKey(server.name, tool.name), {
+        intentHash,
+        intentText,
+        seenAt: now,
+      });
+    }
+  }
+}
+
+function classifyLocalError(err: unknown): 'auth' | 'policy' | 'dlp' | 'upstream' | 'timeout' | null {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (message.includes('timeout') || message.includes('timed out')) return 'timeout';
+  if (message.includes('missing required environment') || message.includes('unauthorized') || message.includes('forbidden')) return 'auth';
+  if (message.includes('rate limit') || message.includes('policy')) return 'policy';
+  return 'upstream';
+}
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
@@ -101,9 +141,11 @@ export async function handleSearchTools(args: Record<string, unknown>): Promise<
 
   const limit = Math.min(20, Math.max(1, Number(args.limit ?? 5)));
   const response = await searchServers(intent, limit);
+  rememberSearchIntent(intent, response.intent_hash, response);
 
   return {
     intent,
+    intent_hash: response.intent_hash,
     result_count: response.results?.length ?? 0,
     results: (response.results ?? []).map((s) => ({
       name: s.name,
@@ -138,6 +180,7 @@ export async function handleGetServerManifest(args: Record<string, unknown>): Pr
 }
 
 export async function handleInvokeTool(args: Record<string, unknown>): Promise<unknown> {
+  const start = Date.now();
   const server = String(args.server ?? '').trim();
   const tool = String(args.tool ?? '').trim();
   const toolArgs = (args.arguments ?? {}) as Record<string, unknown>;
@@ -145,11 +188,42 @@ export async function handleInvokeTool(args: Record<string, unknown>): Promise<u
   if (!server) throw new Error('server is required');
   if (!tool) throw new Error('tool is required');
 
-  const result = await invokeTool({
-    serverName: server,
-    toolName: tool,
-    args: toolArgs,
-  });
+  const recent = recentIntentByServerTool.get(recentKey(server, tool));
 
-  return result;
+  try {
+    const result = await invokeTool({
+      serverName: server,
+      toolName: tool,
+      args: toolArgs,
+    });
+
+    if (recent) {
+      void reportInvokeOutcome({
+        serverName: server,
+        toolName: tool,
+        intentHash: recent.intentHash,
+        intentText: recent.intentText,
+        success: result.success,
+        latencyMs: result.latencyMs,
+        statusCode: result.success ? 200 : 500,
+        errorType: result.success ? null : 'upstream',
+      });
+    }
+
+    return result;
+  } catch (err) {
+    if (recent) {
+      void reportInvokeOutcome({
+        serverName: server,
+        toolName: tool,
+        intentHash: recent.intentHash,
+        intentText: recent.intentText,
+        success: false,
+        latencyMs: Date.now() - start,
+        statusCode: 500,
+        errorType: classifyLocalError(err),
+      });
+    }
+    throw err;
+  }
 }
