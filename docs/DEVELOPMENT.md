@@ -148,7 +148,37 @@ LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
 
 Expected output includes a JSON breakdown of successful indexing and rejections per source.
 
-Use `LOCAL_INGEST_CONCURRENCY=20` for scheduled MVP runs and `40` for local full runs when your quotas can tolerate it. The local runner caps this value at `100`; do not attempt `1000` concurrent requests because it can saturate Supabase connections, upstream registries, and the local Node process. Sandbox extraction remains separately capped at three concurrent requests. The `enrich` source runs `glama` and `mcp_directory` only.
+Use `LOCAL_INGEST_CONCURRENCY=20` for scheduled MVP runs and `50` for local full runs. The local runner caps this value at `100`. Sandbox extraction is separately capped at 3 concurrent requests (hard limit in the pipeline semaphore). The `enrich` source runs `glama` and `mcp_directory` only.
+
+**Performance note:** The local runner pre-fetches all existing server records from the DB **once** before starting workers, then shares the lookup across all concurrent workers. This means 50 concurrent workers do **zero** redundant DB queries to check if a server exists — all dedup is O(1) Map lookups in memory. Before this fix, each worker did its own full-table scan, causing DB saturation and slowdown over long runs.
+
+### CLI Flags
+
+| Flag | Values | Default | Description |
+|---|---|---|---|
+| Source | `all` `official` `smithery` `enrich` `glama` `mcp_directory` | `all` | Which registry source(s) to ingest |
+| `--mode` | `full` \| `catalog` | `full` | `full` runs probe/sandbox/README extraction; `catalog` is metadata-only |
+| `--reverse` | flag | off | Process servers back-to-front |
+| `--offset=N` | number | 0 | Skip first N servers |
+| `--limit=N` | number | none | Only process N servers |
+| `LOCAL_INGEST_CONCURRENCY` | 1–100 | 40 | Worker concurrency (env var) |
+| `LOCAL_INGEST_PROGRESS_EVERY` | number | 25 | Log progress every N completions (env var) |
+| `OFFICIAL_REGISTRY_TIMEOUT_MS` | ms | 30000 | Official registry API timeout (env var) |
+
+### Resume patterns
+
+```bash
+# Normal resume — already-ingested servers skip in milliseconds (7-day hash window)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official
+
+# Process unvisited tail first (useful after a failed partial run)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --reverse
+
+# Split across multiple terminals for parallel coverage
+npm run ingest:local -- official --limit=3000                # terminal 1: 0-2999
+npm run ingest:local -- official --offset=3000 --limit=3000  # terminal 2: 3000-5999
+npm run ingest:local -- official --offset=6000               # terminal 3: 6000+
+```
 
 Important current behavior:
 
@@ -192,7 +222,7 @@ Those are useful later, but they are not required to validate catalog ingest, se
 Ingest uses three layers before doing expensive work:
 
 1. Tier 1: skip when `upstream_updated_at <= last_scanned_at`
-2. Tier 2: skip when `schema_hash` matches and the row was scanned in the last 24 hours
+2. Tier 2: skip when `schema_hash` matches and the row was scanned in the last **7 days** (168 hours)
 3. Tier 3: full extraction, CVE scan, trust recompute, and upsert
 
 This matters operationally:

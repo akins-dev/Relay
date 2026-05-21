@@ -103,10 +103,84 @@ function deriveAuthType(
   return 'managed';
 }
 
+// ── Shared pre-fetch (call once, share across workers) ────────────────────────
+
+export interface ExistingLookup {
+  byName:     Map<string, any>;
+  bySmithery: Map<string, any>;
+  byOfficial: Map<string, any>;
+  byGlama:    Map<string, any>;
+  byGithub:   Map<string, any>;
+  byEndpoint: Map<string, any>;
+}
+
+/**
+ * Pre-fetch ALL existing servers into memory and build O(1) lookup Maps.
+ * 
+ * Why this is critical:
+ * 1. Eliminates N+1 DB Queries: In concurrent local runs, 50 workers would otherwise
+ *    each do a full-table `SELECT *` to check for existence, crashing the DB.
+ * 2. Powers "Resume" Capability: By having the full existing dataset in memory,
+ *    the pipeline can instantly feed the 3-Tier Skip Algorithm (timestamp/hash).
+ *    This allows a run of 8,000+ servers to skip already-ingested ones in milliseconds.
+ *
+ * IMPORTANT: Supabase silently caps .select() at 1000 rows by default.
+ * We paginate with .range() until an empty page is returned to guarantee
+ * the full table is loaded — without this, resume would fail after 1000 servers!
+ */
+export async function prefetchExistingServers(svc: any): Promise<ExistingLookup> {
+  const PAGE_SIZE = 1000;
+  const SELECT_COLS = 'id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at, status, scan_status, scan_issues, cve_issues, cve_scan_at';
+
+  const lookup: ExistingLookup = {
+    byName:     new Map(),
+    bySmithery: new Map(),
+    byOfficial: new Map(),
+    byGlama:    new Map(),
+    byGithub:   new Map(),
+    byEndpoint: new Map(),
+  };
+
+  let offset = 0;
+  let pageNum = 0;
+
+  while (true) {
+    pageNum++;
+    const { data: page, error } = await svc
+      .from('servers')
+      .select(SELECT_COLS)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) {
+      log.error(TAG, `Pre-fetch page ${pageNum} failed — stopping early`, error);
+      break;
+    }
+
+    if (!page || page.length === 0) break;
+
+    for (const row of page) {
+      if (row.name)        lookup.byName.set(row.name, row);
+      if (row.smithery_id) lookup.bySmithery.set(row.smithery_id, row);
+      if (row.official_id) lookup.byOfficial.set(row.official_id, row);
+      if (row.glama_id)    lookup.byGlama.set(row.glama_id, row);
+      if (row.github_url)  lookup.byGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
+      if (row.endpoint)    lookup.byEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
+    }
+
+    offset += PAGE_SIZE;
+
+    // If the page was smaller than PAGE_SIZE, we've reached the end
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  log.info(TAG, `Pre-fetched ${lookup.byName.size} existing servers into shared lookup (${pageNum} pages)`);
+  return lookup;
+}
+
 export async function upsertServers(
   servers: IngestServer[],
   svc: any,
-  options: { mode?: IngestMode } = {}
+  options: { mode?: IngestMode; existingLookup?: ExistingLookup } = {}
 ): Promise<IngestResult> {
   const mode = options.mode ?? 'full';
   const runHeavyChecks = mode === 'full';
@@ -148,35 +222,32 @@ export async function upsertServers(
   log.info(TAG, `  │  Sandbox:      ${runHeavyChecks && process.env.SANDBOX_URL ? 'ENABLED' : 'DISABLED'}`);
   log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 
-  // Batch pre-fetch existing servers (eliminates N+1 lookups)
-  // NOTE: transport is included so the enrichment-path deriveAuthType call at line ~451
-  // receives the real transport value, not undefined.
-  const { data: allExisting, error: prefetchErr } = await svc
-    .from('servers')
-    .select('id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at, status, scan_status, scan_issues, cve_issues, cve_scan_at');
+  // Use pre-supplied lookup maps (from concurrent local runner) or fetch inline (cron path).
+  let existingByName:     Map<string, any>;
+  let existingBySmithery: Map<string, any>;
+  let existingByOfficial: Map<string, any>;
+  let existingByGlama:    Map<string, any>;
+  let existingByGithub:   Map<string, any>;
+  let existingByEndpoint: Map<string, any>;
 
-  if (prefetchErr) {
-    log.error(TAG, 'Pre-fetch failed — treating all as new', prefetchErr);
+  if (options.existingLookup) {
+    existingByName     = options.existingLookup.byName;
+    existingBySmithery = options.existingLookup.bySmithery;
+    existingByOfficial = options.existingLookup.byOfficial;
+    existingByGlama    = options.existingLookup.byGlama;
+    existingByGithub   = options.existingLookup.byGithub;
+    existingByEndpoint = options.existingLookup.byEndpoint;
+    log.info(TAG, `Using shared lookup (${existingByName.size} existing). Processing ${servers.length} incoming.`);
+  } else {
+    const lookup = await prefetchExistingServers(svc);
+    existingByName     = lookup.byName;
+    existingBySmithery = lookup.bySmithery;
+    existingByOfficial = lookup.byOfficial;
+    existingByGlama    = lookup.byGlama;
+    existingByGithub   = lookup.byGithub;
+    existingByEndpoint = lookup.byEndpoint;
+    log.info(TAG, `Processing ${servers.length} incoming servers.`);
   }
-
-  // Build lookup indexes
-  const existingByName     = new Map<string, any>();
-  const existingBySmithery = new Map<string, any>();
-  const existingByOfficial = new Map<string, any>();
-  const existingByGlama    = new Map<string, any>();
-  const existingByGithub   = new Map<string, any>();
-  const existingByEndpoint = new Map<string, any>();
-
-  for (const row of allExisting ?? []) {
-    if (row.name)        existingByName.set(row.name, row);
-    if (row.smithery_id) existingBySmithery.set(row.smithery_id, row);
-    if (row.official_id) existingByOfficial.set(row.official_id, row);
-    if (row.glama_id)    existingByGlama.set(row.glama_id, row);
-    if (row.github_url)  existingByGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
-    if (row.endpoint)    existingByEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
-  }
-
-  log.info(TAG, `Pre-fetched ${existingByName.size} existing. Processing ${servers.length} incoming.`);
 
   for (let idx = 0; idx < servers.length; idx++) {
     const s = servers[idx];
@@ -247,7 +318,7 @@ export async function upsertServers(
         ? (Date.now() - new Date(existing.last_scanned_at).getTime()) / 3_600_000
         : Infinity;
 
-      if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
+      if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 168) {
         result.skipped++;
         skipReasons['unchanged'] = (skipReasons['unchanged'] ?? 0) + 1;
         continue;

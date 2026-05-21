@@ -1,6 +1,6 @@
 # Ingest Pipeline — Architecture Diagram
 
-> Last updated: May 2026 — GitHub Actions scheduled ingest; local concurrent runner; no active Postgres ingest queue.
+> Last updated: May 2026 — GitHub Actions scheduled ingest; local concurrent runner with shared pre-fetch (N+1 eliminated); 7-day hash skip window; CLI flags --reverse/--offset/--limit restored.
 
 ## Full Flow (Mermaid)
 
@@ -17,7 +17,7 @@ flowchart TD
 
     subgraph ORCH["Orchestrators"]
         ORCH["cron/ingest.ts\nrunIngest(source, mode)\n• API/admin/manual path\n• sequential per-source\n• writes ingest_runs row\n• upserts inline"]
-        LOCALRUN["scripts/run-ingest-local.ts\n• scheduled GitHub Actions path\n• accepts all/official/smithery/enrich\n• fetches and processes one source at a time\n• processes servers concurrently\n• safe cap: 100 workers\n• reports per-source + overall progress"]
+        LOCALRUN["scripts/run-ingest-local.ts\n• scheduled GitHub Actions path\n• accepts all/official/smithery/enrich/glama/mcp_directory\n• CLI flags: --mode --reverse --offset --limit\n• prefetchExistingServers() ONCE → shared Maps\n  (eliminates N+1 full-table scans per worker)\n• processes servers concurrently via Semaphore\n• workerSemaphore: default 40, cap 100\n• sandboxSemaphore: hard cap 3 (OOM protection)\n• reports per-source + overall progress"]
     end
 
     subgraph SOURCES["Source Fetchers"]
@@ -33,12 +33,12 @@ flowchart TD
 
     subgraph PIPELINE["upsertServers() — pipeline.ts"]
         direction TB
-        PRE["1. Batch pre-fetch all existing rows\n   Build 6 lookup Maps:\n   smithery_id / official_id / glama_id\n   github_url / endpoint / name"]
+        PRE["1. Lookup Maps (6 Maps, O(1) per lookup)\n   Source: options.existingLookup (shared, local runner)\n        OR inline DB fetch (cron/batch path)\n   bySmithery / byOfficial / byGlama\n   byGithub / byEndpoint / byName\n   ⚡ Local runner: fetched ONCE before workers start\n   ⚡ Cron path: fetched once per batch call"]
         LOOP["2. Per-server loop"]
         GUARD["3. Guards\n   • name regex [a-z0-9-]+\n   • isSafeUrl (SSRF)\n   • SSRF on endpoint"]
         LOOKUP["4. Dedup lookup (priority)\n   smithery_id → official_id\n   → glama_id → github_url\n   → endpoint → name"]
         SKIP1["5a. Timestamp skip\n   upstream_updated_at ≤ last_scanned_at"]
-        SKIP2["5b. Hash skip\n   sha256(tools+version+endpoint+github_url)\n   unchanged + scanned within 24h"]
+        SKIP2["5b. Hash skip\n   sha256(tools+version+endpoint+github_url)\n   unchanged + scanned within 168h (7 days)"]
         ENRICH["6. Enrichment-only path\n   (glama / mcp_directory)\n   Selective patch:\n   • glama → license, env_var_schema,\n     tags, glama_id\n     + auth_type: api_key if env added\n   • mcp_directory → verified,\n     icon_url, tags, mcp_directory_id"]
 
         PROBE["7a. HTTP Probe (proxy-available servers)\n    mcp-probe.ts\n    initialize → initialized\n    tools/list (paginated, cursor)\n    resources/list (paginated)\n    prompts/list (paginated)\n    → toolSchemas, resources, prompts\n    → real transport, protocol_version"]
@@ -290,6 +290,88 @@ Enrichment patch (Glama adds env_var_schema):
 
 ---
 
+## Semaphore — Concurrency Control
+
+Two `Semaphore` instances (from `src/lib/ingest/semaphore.ts`) gate concurrent async work:
+
+| Instance | Limit | Where | Purpose |
+|---|---|---|---|
+| `workerSemaphore` | Default 40 (max 100) | `run-ingest-local.ts` | Controls how many servers are processed simultaneously by the local runner. Set via `LOCAL_INGEST_CONCURRENCY`. |
+| `sandboxSemaphore` | Hard cap 3 | `pipeline.ts` | Prevents more than 3 concurrent stdio sandbox extractions. Protects the Render container from OOM crashes regardless of `workerSemaphore` size. |
+
+The Semaphore works as a **queue gate**: tasks that exceed the cap wait in-memory until a running task releases. It uses a Promise resolve callback queue — no polling.
+
+---
+
+## `prefetchExistingServers()` — Shared Lookup
+
+**File:** `src/lib/ingest/pipeline.ts`  
+**Exported via:** `src/lib/ingest/index.ts`
+
+Queries the entire `servers` table **once** and builds 6 in-memory Maps for O(1) dedup lookups:
+
+```
+byName / bySmithery / byOfficial / byGlama / byGithub / byEndpoint
+```
+
+### When it's called
+
+| Path | Who calls it | When |
+|---|---|---|
+| **Local runner** | `run-ingest-local.ts` | Once at startup, before any workers start. Passed to every `upsertServers([server])` call via `options.existingLookup`. Workers do **zero DB queries** to check existence. |
+| **Cron / batch** | `pipeline.ts` internally | When `options.existingLookup` is not supplied, `upsertServers()` fetches inline once for the whole batch. |
+
+### Why this matters
+
+The old architecture called `upsertServers([singleServer])` per worker, which triggered a full `SELECT *` of all existing servers **inside each worker call**. With 50 concurrent workers, that was 50 simultaneous full-table scans, causing DB saturation and cascading slowdown over time.
+
+Now: **1 query total** for the entire run, regardless of concurrency level.
+
+---
+
+## CLI Flags — `run-ingest-local.ts`
+
+```bash
+npm run ingest:local -- [source] [flags]
+
+# Sources
+all               # official + smithery + glama + mcp_directory
+official          # Official MCP Registry only
+smithery          # Smithery only
+enrich            # glama + mcp_directory only
+glama             # Glama only
+mcp_directory     # mcp.directory only
+
+# Flags
+--mode catalog    # fast path: no probe/sandbox
+--mode full       # full extraction (default)
+--reverse         # process servers back-to-front (resume from tail)
+--offset=N        # skip first N servers
+--limit=N         # only process N servers
+
+# Environment
+LOCAL_INGEST_CONCURRENCY=N   # worker concurrency (default 40, max 100)
+LOCAL_INGEST_PROGRESS_EVERY=N # log every N completions (default 25)
+OFFICIAL_REGISTRY_TIMEOUT_MS=N # official API timeout (default 30000)
+```
+
+### Resume patterns
+
+```bash
+# Normal resume — already-ingested servers skip in milliseconds (7-day hash window)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official
+
+# Process unvisited tail first (servers at end of list that were never reached)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --reverse
+
+# Split across 3 terminals for parallel coverage
+npm run ingest:local -- official --limit=3000               # terminal 1: servers 0-2999
+npm run ingest:local -- official --offset=3000 --limit=3000 # terminal 2: servers 3000-5999
+npm run ingest:local -- official --offset=6000              # terminal 3: servers 6000+
+```
+
+---
+
 ## "Safe to go" Checklist
 
 - [x] All 10 integration faults fixed
@@ -313,6 +395,10 @@ Enrichment patch (Glama adds env_var_schema):
 - [x] mcp_directory heuristic github_url for dedup
 - [x] extraction_metrics aligned pipeline ↔ response builder
 - [x] ToolExtractionSource type has 'readme_parsed'
-- [x] Sandbox fetch has 60s AbortSignal timeout
+- [x] Sandbox fetch has 240s AbortSignal timeout (SANDBOX_EXTRACT_TIMEOUT_MS)
 - [x] Subprocess SIGTERM + SIGKILL cleanup in sandbox
 - [x] resources/prompts paginated in mcp-probe.ts
+- [x] Hash skip window extended from 24h → 168h (7 days)
+- [x] prefetchExistingServers() shared lookup — eliminates N+1 full-table scans per concurrent worker
+- [x] CLI flags restored: --reverse, --offset, --limit
+- [x] Semaphore documented: workerSemaphore (default 40) + sandboxSemaphore (hard cap 3)

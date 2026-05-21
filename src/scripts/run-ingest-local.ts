@@ -1,7 +1,8 @@
 import { loadEnvConfig } from '@next/env';
 loadEnvConfig(process.cwd());
 
-import { fetchOfficialServers, fetchSmitheryServers, fetchGlamaServers, fetchMcpDirectoryServers, upsertServers } from '@/lib/ingest';
+import { fetchOfficialServers, fetchSmitheryServers, fetchGlamaServers, fetchMcpDirectoryServers, upsertServers, prefetchExistingServers } from '@/lib/ingest';
+import type { ExistingLookup, IngestMode } from '@/lib/ingest';
 import { createServiceClient } from '@/lib/supabase/server';
 import { Semaphore } from '@/lib/ingest/semaphore';
 import { log } from '@/lib/logger';
@@ -33,35 +34,108 @@ const sourceGroups: Record<string, string[]> = {
   enrich: ['glama', 'mcp_directory'],
 };
 
-function normalizeSourceArg(arg: string | undefined): string {
-  const raw = arg || 'all';
-  return raw.replace(/^--/, '');
+const sourceNames = new Set([...Object.keys(fetchers), ...Object.keys(sourceGroups)]);
+
+// ── CLI parsing ─────────────────────────────────────────────────────────────
+
+interface CliOptions {
+  source: string;
+  mode: IngestMode;
+  reverse: boolean;
+  offset: number;
+  limit: number | null;
 }
 
+function readNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+
+function parseCliOptions(argv: string[]): CliOptions {
+  let source = 'all';
+  let mode = (process.env.LOCAL_INGEST_MODE === 'catalog' ? 'catalog' : 'full') as IngestMode;
+  let reverse = process.env.LOCAL_INGEST_REVERSE === 'true';
+  let offset = readNumber(process.env.LOCAL_INGEST_OFFSET, 0);
+  let limit: number | null = process.env.LOCAL_INGEST_LIMIT
+    ? readNumber(process.env.LOCAL_INGEST_LIMIT, 0)
+    : null;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const normalized = arg.replace(/^--/, '');
+
+    if (sourceNames.has(normalized)) {
+      source = normalized;
+      continue;
+    }
+
+    if (arg === '--reverse') { reverse = true; continue; }
+    if (arg === '--catalog') { mode = 'catalog'; continue; }
+    if (arg === '--full')    { mode = 'full'; continue; }
+
+    if (arg === '--mode') {
+      const next = argv[++i];
+      if (next !== 'catalog' && next !== 'full') throw new Error('--mode must be catalog or full');
+      mode = next;
+      continue;
+    }
+    if (arg.startsWith('--mode=')) {
+      const value = arg.slice('--mode='.length);
+      if (value !== 'catalog' && value !== 'full') throw new Error('--mode must be catalog or full');
+      mode = value;
+      continue;
+    }
+
+    if (arg === '--offset') { offset = readNumber(argv[++i], 0); continue; }
+    if (arg.startsWith('--offset=')) { offset = readNumber(arg.slice('--offset='.length), 0); continue; }
+
+    if (arg === '--limit') { limit = readNumber(argv[++i], 0); continue; }
+    if (arg.startsWith('--limit=')) { limit = readNumber(arg.slice('--limit='.length), 0); continue; }
+
+    throw new Error(
+      `Unknown argument "${arg}". Use: all, official, smithery, enrich, glama, mcp_directory, --mode, --reverse, --offset, --limit.`
+    );
+  }
+
+  return { source, mode, reverse, offset, limit };
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+
 async function runLocalIngest() {
-  const source = normalizeSourceArg(process.argv[2]);
+  const options = parseCliOptions(process.argv.slice(2));
+  const { source } = options;
+
   if (!sourceGroups[source] && !fetchers[source]) {
-    throw new Error(`Unknown source "${process.argv[2]}". Use all, official, smithery, enrich, glama, or mcp_directory.`);
+    throw new Error(`Unknown source "${source}". Use all, official, smithery, enrich, glama, or mcp_directory.`);
   }
 
   const svc = createServiceClient();
   const workerSemaphore = new Semaphore(WORKER_CONCURRENCY);
 
   log.section('LOCAL INGEST PIPELINE');
-  log.info('local', `Target: ${source} | Concurrency: ${WORKER_CONCURRENCY} (Sandbox protected at 3)`);
+  log.info('local', `Target: ${source} | Mode: ${options.mode} | Concurrency: ${WORKER_CONCURRENCY} (Sandbox protected at 3)`);
+  if (options.reverse) log.info('local', 'Processing order: REVERSE');
+  if (options.offset > 0 || options.limit !== null) {
+    log.info('local', `Slice: offset=${options.offset} limit=${options.limit ?? 'none'}`);
+  }
   if (requestedConcurrency > MAX_WORKER_CONCURRENCY) {
     log.warn('local', `LOCAL_INGEST_CONCURRENCY=${requestedConcurrency} is above the safe cap; using ${MAX_WORKER_CONCURRENCY}`);
   }
 
   const sourcesToRun = sourceGroups[source] ?? [source];
 
+  // ── PRE-FETCH ONCE: shared across all workers ─────────────────────────────
+  // This eliminates the N+1 full-table scan problem where each concurrent
+  // worker was independently querying ALL existing servers from the DB.
+  log.info('local', 'Pre-fetching existing servers (one-time shared lookup)...');
+  const existingLookup: ExistingLookup = await prefetchExistingServers(svc);
+
   const globalResults: Record<string, any> = {};
   let totalServers = 0;
   let totalStarted = 0;
   let totalCompleted = 0;
 
-  // Fetch and process each source immediately. In all-mode this keeps the
-  // official registry payload from being retained while later sources run.
   for (const src of sourcesToRun) {
     log.section(`Fetching ${src}...`);
     const fetcher = fetchers[src];
@@ -71,28 +145,36 @@ async function runLocalIngest() {
     }
 
     let servers: any[];
+    let fetchedCount = 0;
     try {
       servers = await fetcher(svc);
+      fetchedCount = servers.length;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error('local', `Fetch failed for ${src}`, err);
       globalResults[src] = {
         fetched: 0,
-        added: 0,
-        updated: 0,
-        skipped: 0,
-        rejected: 0,
+        added: 0, updated: 0, skipped: 0, rejected: 0,
         errors: [message],
       };
       continue;
     }
 
-    log.info('local', `Fetched ${servers.length} servers from ${src}`);
+    // Apply --reverse
+    if (options.reverse) servers = [...servers].reverse();
+
+    // Apply --offset / --limit slicing
+    if (options.offset > 0 || options.limit !== null) {
+      const end = options.limit === null ? undefined : options.offset + options.limit;
+      servers = servers.slice(options.offset, end);
+    }
+
+    log.info('local', `Fetched ${fetchedCount} from ${src}; selected ${servers.length} for processing`);
     totalServers += servers.length;
 
     log.info('local', `[${src}] Processing ${servers.length} servers with concurrency=${WORKER_CONCURRENCY}`);
 
-    // Process concurrently
+    // Process concurrently — passing shared existingLookup to each worker
     let started = 0;
     let completed = 0;
     const srcResult = { fetched: servers.length, added: 0, updated: 0, skipped: 0, rejected: 0, errors: [] as string[] };
@@ -105,7 +187,10 @@ async function runLocalIngest() {
       }
 
       try {
-        const res = await upsertServers([server], svc, { mode: 'full' });
+        const res = await upsertServers([server], svc, {
+          mode: options.mode,
+          existingLookup,  // shared — no DB query per worker
+        });
         srcResult.added += res.added;
         srcResult.updated += res.updated;
         srcResult.skipped += res.skipped;
