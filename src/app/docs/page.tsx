@@ -526,7 +526,7 @@ export default function DocsPage() {
             </P>
             <P>
               <strong className="text-white">Cloud transports supported:</strong> StreamableHTTP (POST — primary)
-              and SSE (GET — for older clients). Cloud MCP is discovery-only in the prototype. Local Relay MCP
+              and SSE (GET — for older clients). Cloud MCP is discovery-only in the MVP. Local Relay MCP
               is the planned invocation path for MCP-native agents.
             </P>
             <H3>search_tools</H3>
@@ -640,12 +640,12 @@ export default function DocsPage() {
               {[
                 [`Is ${BRAND.name} really free?`, `Yes. The core registry, intent search, and manifests are available without a paid plan. No credit card, no freemium trap, and transparent limits. We may introduce optional paid features in future, but the core discovery layer remains accessible.`],
                 ['Do I need to register to use it?', 'No for public discovery. Registration is useful for publishing, API keys, higher limits, and later account-level policy, Vault, and audit features.'],
-                [`How do credentials work if my MCP needs an API key?`, `For the prototype, credentials should stay in the local agent environment. Relay manifests describe required env vars, and Relay Local validates them before invoking. Vault can be added later as an optional secret source for Relay Local.`],
+                [`How do credentials work if my MCP needs an API key?`, `For the MVP, credentials should stay in the local agent environment. Relay manifests describe required env vars, and Relay Local validates them before invoking. Vault can be added later as an optional secret source for Relay Local.`],
                 [`What is the difference between ${BRAND.name} and Smithery?`, `Smithery is a developer marketplace for MCP discovery. ${BRAND.name} is designed for agents to use autonomously at runtime: search by intent, fetch a manifest, then invoke through Relay Local without manually configuring every downstream MCP server.`],
                 [`Can I use ${BRAND.name} with Antigravity?`, `If the agent host supports remote MCP, use the Cloud MCP config for discovery: { "mcpServers": { "${BRAND.name}": { "url": "${SITE_URL}/api/mcp-server" } } }. If it supports local stdio MCP, Relay Local should be configured with command "${BRAND.slug}" and args ["serve"].`],
                 [`How does ${BRAND.name} compare to Arcade or Composio?`, `Arcade and Composio are gateway platforms focused heavily on credential management and OAuth. ${BRAND.name} focuses on agent-centric MCP discovery and a Relay Local runtime that can later attach policy, Vault, audit, and outcome learning at invocation time.`],
                 [`Does ${BRAND.name} support stdio or local MCP servers today?`, `The current cloud app returns discovery results and manifests. Relay Local is the next runtime slice: it will run as CLI commands and as a local MCP server that can spawn package-backed stdio servers on demand.`],
-                [`What does the security stack actually do?`, `For the prototype, security is split by responsibility. Relay Cloud handles catalog quality, provenance, and manifests. Relay Local is where argument validation, subprocess limits, response bounds, DLP, policy, audit, and outcome reporting belong.`],
+                [`What does the security stack actually do?`, `For the MVP, security is split by responsibility. Relay Cloud handles catalog quality, provenance, and manifests. Relay Local is where argument validation, subprocess limits, response bounds, DLP, policy, audit, and outcome reporting belong.`],
               ].map(([q, a], i) => (
                 <div key={q as string} className={cn('pb-6', i !== 7 && 'border-b border-white/5')}>
                   <div className="mb-2 font-display text-[15px] font-semibold text-white">{q as string}</div>

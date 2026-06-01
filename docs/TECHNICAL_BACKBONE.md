@@ -1,11 +1,11 @@
 # Relay Technical Backbone
 
-Last updated: 2026-05-09 (Prototype scope reset)
-Status: Historical technical backbone. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
+Last updated: 2026-05-09 (MVP scope reset)
+Status: Historical technical backbone. Current MVP scope lives in `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md`.
 
 ## 0. Current MVP Override
 
-As of 2026-05-09, Relay's prototype path is:
+As of 2026-05-09, Relay's MVP path is:
 
 1. ingest MCP server metadata
 2. search by intent
@@ -16,7 +16,7 @@ Hosted cloud invocation, `/api/proxy/*`, Cloud MCP `invoke_tool`, Vault injectio
 
 Local Relay MCP may expose `invoke_tool` later because that execution happens inside Relay Local, not Relay Cloud.
 
-The rest of this file preserves broader architecture history and deferred production ideas. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
+The rest of this file preserves broader architecture history and deferred production ideas. When it conflicts with current MVP docs, `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md` win.
 
 ## 1. Purpose
 
@@ -47,7 +47,7 @@ The problem decomposes into:
 - much of the ecosystem is `stdio`-only, so discovery and invocation are not the same problem
 - public directory data is noisy, duplicative, incomplete, or operationally uneven
 
-Relay's thesis is that the winning system is not another directory page and not merely another gateway. For the prototype, it is an agent-centric runtime discovery layer that:
+Relay's thesis is that the winning system is not another directory page and not merely another gateway. For the MVP, it is an agent-centric runtime discovery layer that:
 
 - lets the agent discover capability by intent at runtime
 - reduces the need for explicit pre-configuration
@@ -105,7 +105,7 @@ This works well for bounded environments. It weakens as the number of desirable 
 
 Relay changes the model from "preload a bounded tool universe" to "query a runtime discovery layer when needed".
 
-The current Relay prototype does this with:
+The current Relay MVP does this with:
 
 - `search_tools(intent)` for runtime capability resolution
 - `get_server_manifest(server)` for local/remote execution instructions
@@ -385,7 +385,7 @@ Important fields:
 | `resources` | MCP resources | added in migration 014 |
 | `prompts` | MCP prompts | added in migration 014 |
 | `transport` | `stdio`, `sse`, `streamable_http`, or `unknown` | transport classification is still partly heuristic |
-| `proxy_available` | legacy hosted-proxy eligibility flag | superseded by manifest `run_mode` for the prototype |
+| `proxy_available` | legacy hosted-proxy eligibility flag | superseded by manifest `run_mode` for the MVP |
 | `protocol_version` | MCP protocol version seen during probe | null when not probed |
 | `mcp_compliant` | whether handshake/probe succeeded | best-effort flag |
 | `source` | upstream provenance | used in weighting and overwrite protection |
@@ -804,7 +804,7 @@ Important current state:
 - Relay Local should report invocation outcome metadata once implemented.
 - `record_intent_outcome(...)` / `intent_server_mappings` remain the future learning path.
 
-This means the search -> local invoke -> outcome learning loop remains the intended architecture, but the prototype no longer relies on hosted proxy execution.
+This means the search -> local invoke -> outcome learning loop remains the intended architecture, but the MVP no longer relies on hosted proxy execution.
 
 ## 12. Story Constraint And Roadmap Alignment
 

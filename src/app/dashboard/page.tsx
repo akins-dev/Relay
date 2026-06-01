@@ -435,7 +435,7 @@ function DashboardContent() {
               <div>
                 <h3 className="mb-2 text-xl font-bold text-foreground">Stored Credentials</h3>
                 <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground/90">
-                  Store provider API keys as a future Relay Local secret source. The prototype prefers local
+                  Store provider API keys as a future Relay Local secret source. The MVP prefers local
                   environment variables first; Cloud Vault should return only through a deliberate Relay Local
                   secret-fetch and audit flow.
                 </p>

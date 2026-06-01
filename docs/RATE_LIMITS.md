@@ -26,7 +26,7 @@ These contexts exist in `public.rate_limit_config`, are seeded by migration `023
 |---|---:|---|---|
 | `search` | 60/min | IP | anonymous `GET /api/servers/search`, anonymous MCP `search_tools` |
 | `browse` | 120/min | IP | `GET /api/servers` |
-| `proxy` | 30/min | IP | legacy hosted proxy context; not on the prototype invocation path |
+| `proxy` | 30/min | IP | legacy hosted proxy context; not on the MVP invocation path |
 | `proxyAuth` | 200/min | user | authenticated high-limit context currently reused by MCP `search_tools`, manifest lookup, and REST search with API key |
 | `auth` | 10/min | IP | `POST /api/auth/login`, `POST /api/auth/register` |
 | `publish` | 10/min | user | `POST /api/servers` |
@@ -57,7 +57,7 @@ The following contexts are seeded in `rate_limit_config`, but are not currently 
 ### Anonymous callers
 
 - Search and browse use IP-based buckets.
-- Hosted REST proxy invocation is retired from the prototype path.
+- Hosted REST proxy invocation is retired from the MVP path.
 - MCP falls back to a fingerprint bucket when IP is unavailable.
 
 ### Authenticated callers

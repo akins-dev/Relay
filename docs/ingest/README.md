@@ -41,7 +41,7 @@ The score is a weighted sum of six independent signals, plus runtime penalties.
 
 ### The Solution: Bayesian-Smoothed Runtime Evidence
 
-This model originally consumed hosted proxy `invoke_tool` outcomes. In the current prototype, hosted proxy invocation is retired. The same Bayesian reliability model can become useful again when Relay Local intentionally reports invocation outcomes.
+This model originally consumed hosted proxy `invoke_tool` outcomes. In the current MVP, hosted proxy invocation is retired. The same Bayesian reliability model becomes useful when Relay Local intentionally reports invocation outcomes.
 
 When Relay Local outcome reporting is enabled, `recordInvokeOutcome()` in `search-analytics.ts` can perform an atomic upsert on `intent_server_mappings`:
 

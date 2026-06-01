@@ -1,6 +1,6 @@
 # Testing Guide
 
-Last updated: 2026-05-17
+Last updated: 2026-05-22
 
 This guide is the fastest path to testing the MVP without waiting on a huge live ingest before you learn anything.
 
@@ -25,12 +25,13 @@ Run the baseline checks first:
 ```bash
 npx tsc --noEmit
 npm test -- --runInBand
+npm run test:benchmark
 ```
 
 Expected today:
 
-- `4` test suites passed
-- Tests passed (run `npm test` to see current count — increased from Sprint 2 baseline of ~90 with behavioral trust suite added in migration 032)
+- All `__tests__` suites pass (including `search-quality` and `benchmark-score`)
+- `test:benchmark` runs without Supabase (pure scoring, trim, classifier, manifest)
 
 ## 2. Know the cron cadence
 
@@ -255,7 +256,7 @@ Expected:
 
 ### F. Relay Local invocation
 
-Cloud MCP does not expose `invoke_tool` in the prototype. Local invocation belongs to Relay Local:
+Cloud MCP does not expose `invoke_tool` in the MVP. Local invocation belongs to Relay Local:
 
 ```bash
 relay info sendgrid-mail
@@ -279,21 +280,46 @@ Use `source="all"` only when you want one of these:
 
 For daily development, targeted source ingest is faster and gives clearer failure isolation.
 
-## 9. Recommended MVP testing sequence
+## 9. Search benchmark (precision)
+
+Offline (CI-safe):
+
+```bash
+npm run test:benchmark
+```
+
+Live catalog (requires Supabase env + ingest):
+
+```bash
+npm run benchmark:eval
+# writes benchmark/reports/latest.md
+```
+
+Metrics: Server-P@1, Server-P@3, Tool-P@1, Runnable-P@1, knowledge deflection. See `docs/SEARCH_PIPELINE.md`.
+
+Optional CI gate:
+
+```bash
+BENCHMARK_MIN_SERVER_P1=0.5 npm run benchmark:eval
+```
+
+## 10. Recommended MVP testing sequence
 
 Use this exact order:
 
 1. `npx tsc --noEmit`
 2. `npm test -- --runInBand`
-3. start local app
-4. ingest `official`
-5. ingest `smithery` if key configured (exercises sandbox path)
-6. ingest `glama` (enrichment — depends on step 4/5 rows)
-7. run manual uptime check (validates trust recomputation with behavioral ISM data)
-8. run manual schema drift
-9. test `search_tools`
-10. test `get_server_manifest`
-11. test Relay Local `relay info` / `relay invoke` once implemented
-12. only then run `source="all"` if you want scale validation
+3. `npm run test:benchmark`
+4. start local app
+5. ingest `official`
+6. ingest `smithery` if key configured (exercises sandbox path)
+7. ingest `glama` (enrichment — depends on step 4/5 rows)
+8. `npm run benchmark:eval` — record Server-P@1 in report
+9. run manual uptime check (validates trust recomputation with behavioral ISM data)
+10. run manual schema drift
+11. test `search_tools`
+12. test `get_server_manifest`
+13. test Relay Local `relay info` / `relay invoke`
+14. only then run `source="all"` if you want scale validation
 
 That is the fastest path to confidence without paying the full cost of a live full-registry ingest on every iteration.

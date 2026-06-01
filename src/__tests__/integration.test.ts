@@ -267,6 +267,35 @@ describe('Auth guards', () => {
   });
 });
 
+// ── MCP knowledge gate ───────────────────────────────────────────────────────
+describe('MCP search_tools knowledge gate', () => {
+  test('knowledge intent returns no_tool_needed without search_servers', async () => {
+    mockResolveApiKey.mockResolvedValue({ userId: null, keyId: null });
+    const rpcBefore = mockRpc.mock.calls.length;
+
+    const { POST } = await import('../app/api/mcp-server/route');
+    const req = makeRequest('POST', 'http://localhost/api/mcp-server', {
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'tools/call',
+      params: {
+        name: 'search_tools',
+        arguments: { intent: 'what is the model context protocol', limit: 5 },
+      },
+    });
+
+    const res = await POST(req);
+    const body = await toJson(res);
+    const payload = JSON.parse(body.result.content[0].text);
+
+    expect(res.status).toBe(200);
+    expect(payload.no_tool_needed).toBe(true);
+    expect(payload.results ?? []).toEqual([]);
+    const searchRpcCalls = mockRpc.mock.calls.slice(rpcBefore).filter(c => c[0] === 'search_servers');
+    expect(searchRpcCalls.length).toBe(0);
+  });
+});
+
 // ── Search contract hardening ────────────────────────────────────────────────
 describe('Search RPC contract', () => {
   test('servers/search returns explicit contract error when search_servers RPC mismatches', async () => {

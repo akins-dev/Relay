@@ -1,218 +1,147 @@
 # Relay Delivery Roadmap
 
-Last updated: 2026-05-09
+Last updated: 2026-05-22  
 Status: Canonical sprint-by-sprint delivery plan
 
-This roadmap follows the prototype decision recorded in `PROTOTYPE_IMPLEMENTATION_PLAN.md`: Relay Cloud is the control plane, and Relay Local is one agent runtime exposed through CLI and local MCP adapters.
+MVP model: **Relay Cloud** (discovery, manifests, search) + **Relay Local** (CLI + `relay serve` invoke).
 
-## Current Delivery State
+Detailed search tasks: `SEARCH_IMPLEMENTATION_PLAN.md`. Pipeline reference: `SEARCH_PIPELINE.md`. Launch: `LAUNCH_AND_PUBLIC_TESTING.md`.
 
-Relay has moved away from the previous hosted proxy platform plan.
+---
 
-Current prototype loop:
+## Current delivery state
 
-1. ingest MCP server metadata
-2. search by intent
-3. return relevant tools and schemas
-4. return a local or remote run manifest
-5. execute through Relay Local, either by CLI-capable agent commands or local MCP `invoke_tool`
+| Area | Status |
+|------|--------|
+| Catalog ingest | Active — weekly GitHub Actions + manual `ingest:local` |
+| Search pipeline | Active — `runSearch`, migration `040` tool-level RRF |
+| Benchmark & metrics | **Phase A done** — `benchmark/`, `test:benchmark`, `benchmark:eval` |
+| Relay Local CLI | Implemented — `cli/` package |
+| Hybrid semantic search | Deferred — Sprint 6 |
+| Hosted cloud invoke | Retired — out of scope |
 
-The previous `search -> invoke -> learn` cloud loop is no longer the MVP path.
+---
 
-## MVP Gate
+## MVP gate (P0)
 
-The MVP is launchable when these P0 gates are green.
+### Catalog
 
-### P0 Gates
+- Official + at least one community ingest succeeds
+- Rows have names, tools/schemas, transport, provenance
+- Package-backed stdio preserves package metadata
 
-- Catalog quality
-  - official ingest succeeds
-  - at least one community source succeeds
-  - active rows have stable names, descriptions, tools or tool hints, transport, source, and provenance
-  - package-backed stdio rows preserve package metadata when available
-- Search quality
-  - one canonical `search_servers(query_text, result_limit, include_stdio)` contract works in all environments
-  - REST and MCP search responses both include `manifest` and `next`
-  - top-3 relevance is acceptable on the fixed prototype benchmark set
-  - knowledge-only MCP intents return `no_tool_needed`
-- Manifest quality
-  - `local_stdio`, `remote_mcp`, and `discovery_only` modes are deterministic
-  - Relay never guesses runnable commands from a plain GitHub URL
-  - env vars are normalized and marked as required/secret where source metadata supports it
-- Relay Local agent-runtime proof
-  - `relay search` can query Relay
-  - `relay info` can fetch a manifest
-  - `relay invoke` can run at least one package-backed stdio MCP server locally
-  - `relay serve` can expose the same runtime as a local MCP server for MCP-native agents
-  - child processes are cleaned up on timeout or exit
-- Scope discipline
-  - no hosted proxy execution surface
-  - no scheduled Vercel cron dependency
-  - no sandbox/CVE/processing queue on the MVP path
-  - migration ledger is current
+### Search
 
-## Completed Prototype Cleanup
+- Single `search_servers` contract; `SEARCH_RPC_CONTRACT_ERROR` on mismatch
+- REST and MCP share `runSearch` (manifest + `next` on every result)
+- Benchmark run documented (`benchmark/reports/latest.md`)
+- Knowledge MCP intents → `no_tool_needed`
 
-- Removed scheduled Vercel crons.
-- Kept cron/admin auth on `Authorization: Bearer $CRON_SECRET` only.
-- Removed `invoke_tool` from the Cloud MCP server.
-- Added `get_server_manifest`.
-- Added Relay manifest generation.
-- Simplified REST search around `runSearch`.
-- Removed post-ingest processing job runtime.
-- Added migration `037` to retire the processing queue table/view.
-- Removed hosted proxy route files and proxy execution core.
+### Manifest & invoke
 
-## Sprint 0 - Scope Lock
+- `local_stdio` / `remote_mcp` / `discovery_only` deterministic
+- `relay invoke` + `relay serve` + outcome reporting path documented
 
-Goal: stop the repo from pulling the product back into production-platform mode.
+### Scope
 
-Tasks:
+- No `/api/proxy` execution; no Vercel cron on MVP path
+- `MIGRATION_LEDGER` current through `040`
 
-- Align README, agents docs, MCP metadata, roadmap, decision log, changelog, and migration ledger.
-- Remove or rewrite public references to Cloud `invoke_tool` and `/api/proxy`.
-- Mark old security/trust/proxy docs as legacy where they remain.
-- Keep old ideas only as explicitly deferred modules.
+---
 
-Exit criteria:
+## Sprint 0 — Scope lock ✅
 
-- A new contributor can read the docs and understand that Relay is Cloud control plane + Local agent runtime for MVP.
-- No active docs promise hosted cloud invocation.
+Aligned docs to Cloud control plane + Local runtime. Removed cloud `invoke_tool` and proxy routes.
 
-## Sprint 1 - Catalog Ingest
+---
 
-Goal: build enough reliable data for useful search.
+## Sprint 1 — Catalog ingest (in progress)
 
-Tasks:
+**Goal:** Enough reliable data for useful search.
 
-- Treat `catalog` mode as the default prototype path.
-- Keep source fetchers small and predictable.
-- Prefer official/package metadata over README guesses.
-- Preserve existing failure/security fields without letting catalog ingest erase them.
-- Remove async post-ingest queue assumptions from docs and UI.
+- Default `catalog` ingest path; observable `ingest_runs`
+- Package metadata over README guesses where possible
 
-Exit criteria:
+**Exit:** Manual ingest produces searchable rows; stdio rows can become `local_stdio`.
 
-- A manual ingest run produces searchable rows.
-- Ingest output explains added/updated/skipped/rejected rows.
-- Package-backed stdio servers can become `local_stdio` manifests.
+---
 
-## Sprint 2 - Search Relevance
+## Sprint 2 — Search relevance (in progress)
 
-Goal: make `search_tools` feel useful to agents.
+**Goal:** Intent → tool discovery feels sharp in demos.
 
-Tasks:
+### Phase A — Measurement ✅ (2026-05-22)
 
-- Create a fixed benchmark set of common intents.
-- Score top-1 and top-3 results manually at first.
-- Add manifest-aware ranking features: run mode, package-backed runnable status, tool schema coverage, and env completeness.
-- Add tool-level matching so the best matching tool influences the server rank.
-- Trim result payloads around prototype needs.
-- Keep manifest and tool schema parity between cache-hit and cold-path responses.
-- Add tests for REST/MCP response parity.
+- `benchmark/intents.jsonl`
+- `src/benchmark/score.ts` + `npm run test:benchmark`
+- `npm run benchmark:eval` live scorer
+- `docs/SEARCH_PIPELINE.md`, `SEARCH_IMPLEMENTATION_PLAN.md`
 
-Exit criteria:
+### Phase B — Ranking (next)
 
-- Search is good enough for realistic agent tasks and demos.
-- Search failures are contract errors, not silent bad responses.
+- [ ] Apply migration `040` on all DBs
+- [ ] Manifest-aware SQL ranking
+- [ ] REST/MCP/cache parity tests
+- [ ] Baseline Server-P@1 recorded on production catalog
 
-## Sprint 3 - Manifest Hardening
+**Exit:** Top-3 acceptable on benchmark; runnable top hits for common action intents.
 
-Goal: make `get_server_manifest` the bridge between discovery and execution.
+---
 
-Tasks:
+## Sprint 3 — Manifest hardening
 
-- Add focused manifest unit tests.
-- Improve package command normalization.
-- Normalize env var schema from all sources.
-- Make `discovery_only` explanations clearer.
-- Add source/provenance hints so agents understand confidence.
+**Goal:** `get_server_manifest` is the reliable invoke bridge.
 
-Exit criteria:
+- Manifest unit tests (npm, pypi, remote, discovery_only)
+- Clear `discovery_only` reasons; env schema normalization
 
-- Agents can reliably tell whether a result is locally runnable, remotely connectable, or discovery-only.
+**Exit:** Agents can tell runnable vs remote vs catalog-only.
 
-## Sprint 4 - Relay Local MVP — IMPLEMENTED
+---
 
-Goal: make local invocation real through one runtime with CLI and MCP agent adapters.
+## Sprint 4 — Relay Local MVP ✅
 
-Status: Implemented 2026-05-11 as `cli/` package (`@relay/cli`).
+Implemented `cli/`: `search`, `info`, `invoke`, `serve`, `bootstrap`.
 
-Completed:
+**Remaining:** Documented E2E invoke against production Cloud URL.
 
-- Scaffolded Relay Local as a standalone Node.js package in `cli/`.
-- Implemented `relay search` — calls Relay Cloud REST API, formats results with manifests.
-- Implemented `relay info` — fetches server manifest via Cloud MCP.
-- Implemented `relay invoke` — shared `invokeTool()` runtime, supports `local_stdio` and `remote_mcp`.
-- Implemented `relay serve` — local stdio MCP server with `search_tools`, `get_server_manifest`, `invoke_tool`.
-- Implemented `relay bootstrap` — outputs compact agent instruction blocks for CLI agents and MCP config snippets.
-- Added subprocess lifecycle cleanup (SIGTERM → SIGKILL, parent exit cleanup, timeout handling).
-- Added required env var validation before subprocess spawn.
-- MCP-over-stdio client speaks JSON-RPC to child MCP server processes.
-- Shared `invokeTool()` function called by both CLI `relay invoke` and local MCP `invoke_tool`.
+---
 
-Build verified:
+## Sprint 5 — MVP review & public testing
 
-- `npx tsc` compiles with zero errors.
-- `relay --help` shows all commands.
-- `relay bootstrap` outputs CLI prompt, MCP config, and env docs.
-- `relay serve` passes MCP smoke test (initialize → tools/list → ping).
+**Goal:** Externally testable MVP.
 
-Remaining for exit criteria:
+- [ ] Publish `@relay/cli` to npm
+- [ ] Production deploy + API keys
+- [ ] `LAUNCH_AND_PUBLIC_TESTING.md` checklist complete
+- [ ] Benchmark report committed after ingest stable
+- [ ] CLI README for configuration
 
-- End-to-end invocation of a package-backed server needs live Relay Cloud or local dev server.
+**Exit:** `npx -y @relay/cli search` works against public URL; limitations published.
 
-## Sprint 5 - Prototype Review
+---
 
-Goal: ship a small usable prototype.
+## Sprint 6 — Hybrid semantic search (deferred)
 
-Tasks:
+**Goal:** +15% Server-P@1 on conversational stratum vs FTS baseline.
 
-- Run typecheck and tests.
-- Run manual REST and MCP smoke tests.
-- Run CLI and local MCP smoke tests.
-- Review docs for stale production-platform claims.
-- Document known limitations.
-- Build intent benchmark (20-40 intents) and measure Precision@1/3 on current FTS search.
-- Create user-facing README for @relay/cli with API key and configuration docs.
+- pgvector + ingest embeddings + `search_servers_hybrid`
+- Re-run benchmark; compare to Phase A baseline
 
-Exit criteria:
+**Exit:** Documented lift on `conversational` stratum in `benchmark/reports/`.
 
-- The prototype demonstrates the core Relay magic without hiding behind future features.
-- Search Precision@1 is measured and documented.
+---
 
-## Sprint 6 - Hybrid Semantic Search
+## Sprint 7+ — Learned routing (deferred)
 
-Goal: upgrade search from pure lexical (FTS + trigram) to hybrid (FTS + pgvector) for conversational intent matching.
+- Classifier on `intent_server_mappings` volume
+- Speculative invoke only at high confidence + Runnable-P@1
+- Warm stdio pool (`relay serve --warm`)
 
-Current gap: FTS cannot match "notify my team about the deployment" to Slack/Discord/email servers because it matches words, not meaning.
+See `TECHNICAL_BACKBONE.md` § 3.4.
 
-Tasks:
+---
 
-- Enable pgvector extension in Supabase.
-- Add embedding column to servers table (vector(1536) or vector(384)).
-- Generate embeddings at ingest time (name + description + tool names + tool descriptions).
-- Embed user intent at search time (one API call per cache miss).
-- Create search_servers_hybrid() SQL function combining FTS + vector with Reciprocal Rank Fusion.
-- Re-run intent benchmark and compare Precision@1/3 against FTS baseline.
+## Deferred (explicit)
 
-Exit criteria:
-
-- Precision@1 improves by at least 15% over FTS baseline on the intent benchmark.
-- Conversational intents ("check if my site is up", "notify my team") return correct servers.
-
-## Deferred Ideas
-
-These ideas remain valuable but are explicitly outside the prototype:
-
-- hosted proxy invocation
-- Vault credential injection
-- OAuth connection management
-- DLP/policy/audit runtime stack
-- sandbox extraction
-- CVE scanning as a gate
-- production trust scoring
-- cloud stdio bridge
-- learned routing from invoke outcomes
-
-They should only return after the prototype proves that discovery + manifests + local invocation are useful.
+Hosted proxy, Vault injection, OAuth product, DLP/audit stack, sandbox/CVE gates, cloud stdio bridge, learned routing **before** benchmark baseline.

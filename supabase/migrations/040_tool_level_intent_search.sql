@@ -17,7 +17,15 @@
 -- heterogeneous rankers, and does not require calibrated score scales.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+-- Prerequisite columns (safe if already applied from earlier migrations)
+ALTER TABLE public.servers ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.servers ADD COLUMN IF NOT EXISTS is_canonical BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.servers ADD COLUMN IF NOT EXISTS tool_schemas JSONB;
+ALTER TABLE public.servers ADD COLUMN IF NOT EXISTS env_var_schema JSONB;
+ALTER TABLE public.servers ADD COLUMN IF NOT EXISTS package_info JSONB;
 
 -- ── 1. Tool-level search table ────────────────────────────────────────────────
 
@@ -160,7 +168,7 @@ BEGIN
         setweight(to_tsvector('english', coalesce(v_schema_text, '')), 'C') ||
         setweight(to_tsvector('english', concat_ws(' ', s.name, s.display_name, s.description, array_to_string(s.tags, ' '))), 'D')
       )
-      ON CONFLICT ON CONSTRAINT server_tools_server_name_tool_name_key DO UPDATE SET
+      ON CONFLICT (server_name, tool_name) DO UPDATE SET
         server_id = EXCLUDED.server_id,
         description = EXCLUDED.description,
         input_schema_text = EXCLUDED.input_schema_text,
@@ -190,7 +198,7 @@ BEGIN
         setweight(to_tsvector('english', v_tool_name), 'A') ||
         setweight(to_tsvector('english', concat_ws(' ', s.name, s.display_name, s.description, array_to_string(s.tags, ' '))), 'D')
       )
-      ON CONFLICT ON CONSTRAINT server_tools_server_name_tool_name_key DO UPDATE SET
+      ON CONFLICT (server_name, tool_name) DO UPDATE SET
         server_id = EXCLUDED.server_id,
         description = EXCLUDED.description,
         input_schema_text = EXCLUDED.input_schema_text,
@@ -227,19 +235,11 @@ CREATE TRIGGER servers_sync_tools_search
   ON public.servers
   FOR EACH ROW EXECUTE FUNCTION public.sync_server_tools_trigger();
 
--- Backfill side table.
-DO $$
-DECLARE
-  sid UUID;
-BEGIN
-  FOR sid IN SELECT id FROM public.servers LOOP
-    PERFORM public.sync_server_tools_for_server(sid);
-  END LOOP;
-END;
-$$;
+-- Backfill: run separately in 041_backfill_server_tools.sql (avoids SQL Editor timeout).
 
 -- ── 4. Tool-level RRF search RPC ──────────────────────────────────────────────
 
+DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER);
 DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN);
 DROP FUNCTION IF EXISTS public.search_servers(TEXT, INTEGER, BOOLEAN, TEXT);
 
@@ -329,11 +329,12 @@ AS $$
     SELECT
       st.server_name,
       max(ts_rank_cd(st.search_vector, q.tsq, 32)) AS tool_rank,
-      max(GREATEST(similarity(st.tool_name, q.raw), similarity(st.search_text, q.raw))) AS tool_sim,
+      max(similarity(st.tool_name, q.raw))
+        + CASE WHEN bool_or(st.search_text % q.raw) THEN 0.05 ELSE 0 END AS tool_sim,
       row_number() OVER (
         ORDER BY
           max(ts_rank_cd(st.search_vector, q.tsq, 32)) DESC,
-          max(GREATEST(similarity(st.tool_name, q.raw), similarity(st.search_text, q.raw))) DESC
+          max(similarity(st.tool_name, q.raw)) DESC
       ) AS tool_pos
     FROM public.server_tools st
     JOIN public.servers s ON s.id = st.server_id
@@ -345,7 +346,7 @@ AS $$
         q.raw = ''
         OR st.search_vector @@ q.tsq
         OR similarity(st.tool_name, q.raw) > 0.12
-        OR similarity(st.search_text, q.raw) > 0.18
+        OR st.search_text % q.raw
       )
     GROUP BY st.server_name
     LIMIT GREATEST(result_limit * 40, 200)
@@ -461,4 +462,5 @@ COMMENT ON TABLE public.server_tools IS
 COMMENT ON FUNCTION public.search_servers IS
   '040: Tool-level intent search using server FTS, tool FTS, trigram similarity, RRF rank fusion, trust, and intent outcome boosts. include_stdio defaults to true for Relay Local.';
 
-NOTIFY pgrst, 'reload schema';
+-- Optional: uncomment after apply if PostgREST schema cache is stale.
+-- NOTIFY pgrst, 'reload schema';

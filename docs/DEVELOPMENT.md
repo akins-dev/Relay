@@ -124,7 +124,7 @@ Ingest has two modes:
 - `catalog` — fast path. Fetches upstream registries, normalizes/dedupes rows, stores source metadata, derives auth, and writes preliminary trust without live probe/sandbox extraction.
 - `full` — deep path. Runs probe/sandbox/README extraction inline. This is the current scheduled GitHub Actions ingest mode.
 
-There is no active Postgres ingest queue in the current prototype. Scheduled ingest runs as a long-lived GitHub Actions job using `src/scripts/run-ingest-local.ts`, which processes servers concurrently and protects the Render sandbox with an in-process semaphore.
+There is no active Postgres ingest queue in the current MVP. Scheduled ingest runs as a long-lived GitHub Actions job using `src/scripts/run-ingest-local.ts`, which processes servers concurrently and protects the Render sandbox with an in-process semaphore.
 
 ```bash
 cd path-to-repo
@@ -187,7 +187,7 @@ Important current behavior:
   - `/api/cron/ingest/smithery`
   - `/api/cron/ingest/glama`
   - `/api/cron/ingest/mcp-directory`
-- There is no scheduled Vercel cron dependency in the prototype path; `.github/workflows/cron.yml` is the scheduled executor.
+- There is no scheduled Vercel cron dependency in the MVP path; `.github/workflows/cron.yml` is the scheduled executor.
 - The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`; the proposed `ingest_queue` migration was removed before migration.
 - `catalog` rows can appear in search when they have enough metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
 - Search responses include quality labels:
@@ -206,7 +206,7 @@ Important current behavior:
 ### Retired post-ingest processing queue
 
 Migration `036_processing_jobs_and_mvp_ingest.sql` added `server_processing_jobs`.
-Migration `037_drop_processing_jobs_queue.sql` retires it for the prototype.
+Migration `037_drop_processing_jobs_queue.sql` retires it for the MVP.
 
 The queue used to model production-style enrichment jobs:
 

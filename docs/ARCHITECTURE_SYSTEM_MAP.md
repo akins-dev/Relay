@@ -1,14 +1,15 @@
 # Relay Architecture System Map
 
 Last updated: 2026-05-11 (Agent-centric Relay Local clarification)
-Status: Historical deep architecture overview. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
+Status: Historical deep architecture overview. Current MVP scope lives in `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md`.
 
-Canonical MVP reference: [`PROTOTYPE_IMPLEMENTATION_PLAN.md`](PROTOTYPE_IMPLEMENTATION_PLAN.md)
+Canonical MVP references: [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md), [`RUNTIME_INVOKE_ARCHITECTURE.md`](RUNTIME_INVOKE_ARCHITECTURE.md)
+Canonical search reference: [`SEARCH_PIPELINE.md`](SEARCH_PIPELINE.md)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Presentation-oriented flow view: [`ARCHITECTURE_FLOWS.md`](ARCHITECTURE_FLOWS.md)
 Companion Excalidraw starter scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw) (importable into Excalidraw and usable as the base canvas in Obsidian)
 
-This file preserves the broader hosted-proxy architecture history. It is designed to support review, diagramming, and visual modeling work. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
+This file preserves the broader hosted-proxy architecture history. It is designed to support review, diagramming, and visual modeling work. When it conflicts with current MVP docs, `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md` win.
 
 ## 1. Scope
 
@@ -36,7 +37,7 @@ Clients / agents / admins / cron
   -> rate limits + cache
   -> one of:
        A. runtime search
-       B. Relay Local invocation (prototype) or guarded hosted invocation (legacy)
+       B. Relay Local invocation (MVP) or guarded hosted invocation (legacy)
        C. ingest / maintenance job
   -> Supabase-backed state changes
   -> analytics / audit / trust updates
@@ -55,7 +56,7 @@ What it does:
 
 - exposes Relay itself as a standard MCP server
 - supports `initialize`, `tools/list`, `tools/call`, `ping`
-- Cloud MCP exposes only two model-facing tools in the prototype:
+- Cloud MCP exposes only two model-facing tools in the MVP:
   - `search_tools`
   - `get_server_manifest`
 

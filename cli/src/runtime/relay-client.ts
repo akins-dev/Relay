@@ -195,7 +195,14 @@ export async function getServerDetail(name: string): Promise<ServerDetailRespons
 /**
  * Get server manifest via MCP endpoint (JSON-RPC).
  */
+const manifestCache = new Map<string, { expiresAt: number; value: ManifestResponse }>();
+const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function getServerManifest(serverName: string): Promise<ManifestResponse> {
+  const cacheKey = serverName.toLowerCase();
+  const cached = manifestCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const config = getConfig();
   const rpcBody = {
     jsonrpc: '2.0',
@@ -225,7 +232,12 @@ export async function getServerManifest(serverName: string): Promise<ManifestRes
     throw new NetworkError('Empty manifest response', { server: serverName });
   }
 
-  return JSON.parse(text) as ManifestResponse;
+  const manifest = JSON.parse(text) as ManifestResponse;
+  manifestCache.set(cacheKey, {
+    expiresAt: Date.now() + MANIFEST_CACHE_TTL_MS,
+    value: manifest,
+  });
+  return manifest;
 }
 
 /**

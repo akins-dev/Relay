@@ -42,6 +42,19 @@ export interface InvokeResult {
   error?: string;
 }
 
+const SAFE_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USER',
+  'USERNAME',
+  'SHELL',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'SystemRoot',
+  'ComSpec',
+] as const;
+
 // ── Core function ──────────────────────────────────────────────────────────────
 
 export async function invokeTool(params: InvokeParams): Promise<InvokeResult> {
@@ -55,7 +68,8 @@ export async function invokeTool(params: InvokeParams): Promise<InvokeResult> {
 
   // 2. Validate tool exists
   const toolExists = tools.some((t) => t.name === params.toolName);
-  if (!toolExists) {
+  const selectedTool = tools.find((t) => t.name === params.toolName);
+  if (!selectedTool) {
     const available = tools.map((t) => t.name).join(', ');
     throw new RelayError(
       `Tool '${params.toolName}' not found on server '${params.serverName}'. Available: ${available || 'none'}`,
@@ -63,6 +77,8 @@ export async function invokeTool(params: InvokeParams): Promise<InvokeResult> {
       { server: params.serverName, tool: params.toolName, available_tools: tools.map((t) => t.name) },
     );
   }
+
+  validateInputSchema(selectedTool.inputSchema, params.args, params.serverName, params.toolName);
 
   // 3. Check required env vars
   const missingEnv = manifest.env
@@ -108,6 +124,73 @@ export async function invokeTool(params: InvokeParams): Promise<InvokeResult> {
   }
 }
 
+function validateInputSchema(
+  schema: Record<string, unknown> | undefined,
+  args: Record<string, unknown>,
+  serverName: string,
+  toolName: string,
+): void {
+  if (!schema || typeof schema !== 'object') return;
+  if ((schema as any).type && (schema as any).type !== 'object') return;
+
+  const required = Array.isArray((schema as any).required) ? (schema as any).required as string[] : [];
+  const properties = ((schema as any).properties && typeof (schema as any).properties === 'object')
+    ? (schema as any).properties as Record<string, any>
+    : {};
+
+  const missing = required.filter((key) => args[key] === undefined || args[key] === null);
+  if (missing.length > 0) {
+    throw new RelayError(
+      `Missing required arguments for ${serverName}.${toolName}: ${missing.join(', ')}`,
+      'USAGE',
+      { server: serverName, tool: toolName, missing_arguments: missing },
+    );
+  }
+
+  const typeErrors: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    const expected = properties[key]?.type;
+    if (!expected || value === null) continue;
+    const accepted = Array.isArray(expected) ? expected : [expected];
+    if (!accepted.some((type) => jsonSchemaTypeMatches(type, value))) {
+      typeErrors.push(`${key} expected ${accepted.join('|')}`);
+    }
+  }
+
+  if (typeErrors.length > 0) {
+    throw new RelayError(
+      `Invalid arguments for ${serverName}.${toolName}: ${typeErrors.join(', ')}`,
+      'USAGE',
+      { server: serverName, tool: toolName, argument_errors: typeErrors },
+    );
+  }
+}
+
+function jsonSchemaTypeMatches(type: string, value: unknown): boolean {
+  switch (type) {
+    case 'string': return typeof value === 'string';
+    case 'number': return typeof value === 'number' && Number.isFinite(value);
+    case 'integer': return Number.isInteger(value);
+    case 'boolean': return typeof value === 'boolean';
+    case 'array': return Array.isArray(value);
+    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);
+    case 'null': return value === null;
+    default: return true;
+  }
+}
+
+function buildChildEnv(manifest: ServerManifest): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const key of SAFE_ENV_ALLOWLIST) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  for (const item of manifest.env) {
+    if (process.env[item.name]) env[item.name] = process.env[item.name];
+    else if (item.default !== null && item.default !== undefined) env[item.name] = item.default;
+  }
+  return env;
+}
+
 // ── Local stdio invocation ─────────────────────────────────────────────────────
 
 async function invokeLocalStdio(
@@ -129,6 +212,7 @@ async function invokeLocalStdio(
   // Spawn the downstream MCP server as a child process
   const sub = spawnMcpServer({
     command: launch.command,
+    env: buildChildEnv(manifest),
     timeoutMs: timeoutMs + 5_000, // subprocess timeout slightly longer than tool timeout
   });
 

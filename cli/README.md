@@ -11,6 +11,11 @@ npm i -g @relay/cli
 ## Quick Start
 
 ```bash
+# No global install required
+npx -y @relay/cli search "send a transactional email"
+npx -y @relay/cli info sendgrid-mail
+npx -y @relay/cli invoke sendgrid-mail send_email --json '{"to":"user@example.com","subject":"Hello"}'
+
 # Find servers for a task
 relay search "send a transactional email"
 
@@ -29,8 +34,8 @@ Add to your agent host config:
 {
   "mcpServers": {
     "relay": {
-      "command": "relay",
-      "args": ["serve"]
+      "command": "npx",
+      "args": ["-y", "@relay/cli", "serve"]
     }
   }
 }
@@ -44,7 +49,7 @@ The agent automatically receives three tools:
 | `get_server_manifest` | Get the full manifest for a server |
 | `invoke_tool` | Execute a tool — Relay handles subprocess lifecycle |
 
-The agent learns when to search via the `instructions` field in the MCP handshake. No extra system prompt needed.
+The agent learns when to search via the `instructions` field in the MCP handshake. MCP clients may add those instructions to the model context, so no extra system prompt should be required for compliant hosts.
 
 ## For CLI-Capable Agents (Codex, Aider, custom)
 
@@ -103,7 +108,9 @@ export RELAY_API_KEY=sk_your_key
 
 ### Downstream Server Credentials
 
-Relay does **not** manage downstream server credentials (GITHUB_TOKEN, SENDGRID_API_KEY, etc.). These live in your environment and are passed through to child processes automatically.
+Relay does **not** manage downstream server credentials (GITHUB_TOKEN, SENDGRID_API_KEY, etc.). These live in your environment.
+
+Relay Local passes only a minimal runtime env allowlist plus the env vars declared in the server manifest. It does not forward your entire shell environment to arbitrary downstream MCP servers.
 
 If a tool call fails because a credential is missing, Relay returns a structured error telling the agent exactly which env var to set.
 
@@ -141,6 +148,16 @@ relay invoke github create_pull_request --json '{"owner":"org","repo":"app","tit
 - `--json '{}'` — Tool arguments as JSON
 - `--timeout N` — Timeout in milliseconds (default 30000)
 
+Invoke behavior:
+
+- fetches and briefly caches the server manifest
+- verifies the tool exists
+- validates required arguments and basic JSON Schema types
+- checks required environment variables before launch
+- spawns stdio servers locally or calls remote MCP endpoints
+- cleans up subprocesses after each call
+- reports best-effort outcome telemetry when `RELAY_API_KEY` is set
+
 ### `relay serve`
 
 Start Relay as a local stdio MCP server. Agent hosts connect here.
@@ -170,6 +187,17 @@ MCP Agent  →  invoke_tool   →  invokeTool()  →  Child MCP Server (subproce
 ```
 
 Both `relay invoke` and `invoke_tool` call the same `invokeTool()` function. No logic duplication.
+
+## Testing
+
+From the monorepo root:
+
+```bash
+npm run test:benchmark          # search scoring unit tests
+node cli/smoke-test-e2e.mjs     # live serve smoke (needs running Cloud URL)
+```
+
+Search quality metrics and launch checklist: `docs/SEARCH_PIPELINE.md`, `docs/LAUNCH_AND_PUBLIC_TESTING.md`.
 
 ## License
 

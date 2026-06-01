@@ -2,12 +2,42 @@
 
 This file is append-only.
 
+## 2026-05-22
+
+### Fixed
+
+- Hardened `040_tool_level_intent_search.sql`: split backfill to `041_backfill_server_tools.sql` to avoid SQL Editor timeouts; portable `ON CONFLICT (server_name, tool_name)`; optional `NOTIFY pgrst`.
+- `search-quality.test.ts`: `RelayManifestServer` test uses `package_info` / `endpoint` only (no `github_url`).
+
+### Added
+
+- `docs/migrations/APPLY_040.md` — apply 040 then 041 in Supabase SQL Editor.
+- `supabase/migrations/041_backfill_server_tools.sql`.
+
+- `docs/SEARCH_PIPELINE.md` — canonical search pipeline, metrics, and technology stack.
+- `docs/SEARCH_IMPLEMENTATION_PLAN.md` — phased search quality and launch tasks.
+- `docs/LAUNCH_AND_PUBLIC_TESTING.md` — deploy and public testing checklist.
+- `docs/articles/SEARCH_INTENT_AND_MEASUREMENT.md` — external article on intent mapping and precision.
+- `benchmark/intents.jsonl` — live catalog golden intent set.
+- `src/benchmark/score.ts` — Server-P@k, Tool-P@1, Runnable-P@1, knowledge precision scorer.
+- `src/lib/intent-classifier.ts` — shared knowledge-vs-action gate for MCP search.
+- `src/scripts/run-benchmark-eval.ts` — live benchmark evaluator.
+- `npm run test:benchmark` and `npm run benchmark:eval` scripts.
+- Tests: `search-quality.test.ts`, `benchmark-score.test.ts`.
+
+### Updated
+
+- `docs/DELIVERY_ROADMAP.md` — Sprint 2 Phase A complete; launch sprint 5 checklist.
+- `docs/MIGRATION_LEDGER.md` — migration `040` registered as active.
+- `docs/README.md`, `TESTING_GUIDE.md`, positioning article for Local-first MVP.
+- MCP route uses `classifyIntent()` from shared module.
+
 ## 2026-05-17
 
 ### Updated
 
 - Switched scheduled ingest documentation and GitHub Actions workflow to weekly MVP maintenance (`src/scripts/run-ingest-local.ts all`) with `LOCAL_INGEST_CONCURRENCY=20`; uptime and schema drift are manual-dispatch only during MVP.
-- Removed the un-migrated Postgres ingest queue prototype (`ingest_queue`, queue RPC helper, and `/api/cron/worker`) from the current runtime path.
+- Removed the un-migrated Postgres ingest queue (`ingest_queue`, queue RPC helper, and `/api/cron/worker`) from the current runtime path.
 - Added local ingest progress reporting for per-source and overall server counts.
 - Added an HTTP/2 fallback for the Official MCP Registry fetcher because the registry can succeed with curl/HTTP2 while Node `fetch` fails.
 - Made Supabase server client configuration read environment variables lazily so CLI scripts can load `.env` before constructing clients.
@@ -121,7 +151,7 @@ This file is append-only.
 
 ## 2026-05-09
 
-### Prototype Scope Reset
+### MVP Scope Reset
 
 - Reframed Relay's MVP as runtime discovery plus local/remote run manifests.
 - Removed hosted `invoke_tool` from the Cloud MCP server.
@@ -129,8 +159,8 @@ This file is append-only.
 - Removed `src/lib/proxy-execute.ts`.
 - Removed the post-ingest processing job route and `src/lib/processing-jobs.ts`.
 - Added migration `037_drop_processing_jobs_queue.sql` to retire `server_processing_jobs` and `processing_job_health`.
-- Kept manual/admin ingest, but removed scheduled Vercel cron dependency from the prototype path.
-- Added `docs/PROTOTYPE_IMPLEMENTATION_PLAN.md` as the current MVP source of truth.
+- Kept manual/admin ingest, but removed scheduled Vercel cron dependency from the MVP path.
+- Promoted `docs/DELIVERY_ROADMAP.md` and `docs/RUNTIME_INVOKE_ARCHITECTURE.md` as the current MVP source of truth.
 - Added `docs/MIGRATION_LEDGER.md` to track numbered migrations and retired schema objects.
 - Rewrote `docs/DELIVERY_ROADMAP.md` around catalog ingest, search quality, manifests, and CLI invocation.
 - Added ADR-009 and ADR-010 for the local-execution pivot and cron decision.

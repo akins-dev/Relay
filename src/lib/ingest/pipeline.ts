@@ -705,6 +705,14 @@ export async function upsertServers(
         }
         result.updated++;
       } else {
+        // Enrichment-only sources (glama, mcp_directory) must only enrich existing primary records.
+        // They should NEVER create new standalone server records.
+        if (isEnrichmentOnly) {
+          result.skipped++;
+          skipReasons['enrichment_only_new_record'] = (skipReasons['enrichment_only_new_record'] ?? 0) + 1;
+          continue;
+        }
+
         const insertData: Record<string, any> = { ...serverData };
         if (systemAuthorId) insertData.author_id = systemAuthorId;
 
