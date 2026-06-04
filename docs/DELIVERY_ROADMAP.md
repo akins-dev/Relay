@@ -13,8 +13,8 @@ Detailed search tasks: `SEARCH_IMPLEMENTATION_PLAN.md`. Pipeline reference: `SEA
 
 | Area | Status |
 |------|--------|
-| Catalog ingest | Active — weekly GitHub Actions + manual `ingest:local` |
-| Search pipeline | Active — `runSearch`, migration `040` tool-level RRF |
+| Catalog ingest | Active — manual `ingest:local`; automatic cron paused |
+| Search pipeline | Active — `runSearch`, tool-level RRF, migrations `040`-`044` |
 | Benchmark & metrics | **Phase A done** — `benchmark/`, `test:benchmark`, `benchmark:eval` |
 | Relay Local CLI | Implemented — `cli/` package |
 | Hybrid semantic search | Deferred — Sprint 6 |
@@ -28,6 +28,7 @@ Detailed search tasks: `SEARCH_IMPLEMENTATION_PLAN.md`. Pipeline reference: `SEA
 
 - Official + at least one community ingest succeeds
 - Rows have names, tools/schemas, transport, provenance
+- Primary-source ingest skips rows with no tools after extraction
 - Package-backed stdio preserves package metadata
 
 ### Search
@@ -45,7 +46,8 @@ Detailed search tasks: `SEARCH_IMPLEMENTATION_PLAN.md`. Pipeline reference: `SEA
 ### Scope
 
 - No `/api/proxy` execution; no Vercel cron on MVP path
-- `MIGRATION_LEDGER` current through `040`
+- No scheduled GitHub Actions cron while storage/search quality are being stabilized
+- `MIGRATION_LEDGER` current through `044`
 
 ---
 

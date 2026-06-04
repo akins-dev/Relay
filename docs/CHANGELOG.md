@@ -2,6 +2,29 @@
 
 This file is append-only.
 
+## 2026-06-04
+
+### Updated
+
+- Paused automatic GitHub Actions cron by removing the `.github/workflows/cron.yml` `schedule` block; manual `workflow_dispatch` remains available for uptime, drift, ingest, enrich, and reset jobs.
+- Documented the cron pause across testing, development, launch, architecture, roadmap, and decision docs.
+- Hardened primary-source ingest so candidates with no tool names and no tool schemas after upstream metadata, probe, sandbox, and README fallback are skipped instead of inserted or overwritten into the catalog.
+- Fixed `benchmark:eval` to inject a service Supabase client so it can run outside a Next.js request scope.
+- Added `BENCHMARK_CASE` support for focused live benchmark debugging.
+- Restored the tool text trigram search path after the temporary `042` experiment by adding forward migration `043`.
+- Added migration `044` to prune derived `server_tools` rows for non-active servers without dropping search indexes.
+
+### Removed
+
+- Removed the production migration that created temporary catalog cleanup helper functions. One-off DB cleanup should be run as direct SQL, not committed as a schema migration.
+- Removed prototype/fixture runtime paths and benchmark fixture scripts from the MVP path.
+
+### Operations
+
+- Cleaned no-tool catalog rows directly in Supabase, reducing database usage below the free-plan limit.
+- Kept `idx_server_tools_text_trgm`; no search index was dropped.
+- Recommended normal `VACUUM (ANALYZE)` over `VACUUM FULL` while database usage remains below quota.
+
 ## 2026-05-22
 
 ### Fixed

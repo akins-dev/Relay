@@ -1,11 +1,8 @@
 name: "Cron Jobs"
 
 on:
-  schedule:
-    # ── MVP weekly maintenance: reset counters + full ingest ──
-    # Sundays at 02:00 UTC. Uptime and schema drift remain manual-only
-    # while the project is on free/freemium quotas.
-    - cron: "0 2 * * 0"
+  # Automatic cron is paused for the MVP while Supabase storage and search
+  # quality are being validated. Keep manual dispatch for targeted operations.
   workflow_dispatch:
     inputs:
       job:
@@ -63,8 +60,4 @@ jobs:
             fi
           fi
 
-          # Scheduled executions
-          if [ "${{ github.event.schedule }}" == "0 2 * * 0" ]; then
-             echo "Running weekly MVP maintenance: Reset Calls & Ingest..."
-             bun run src/scripts/cron-reset-calls.ts && bun run src/scripts/run-ingest-local.ts all
-          fi
+          echo "Manual cron workflow complete."

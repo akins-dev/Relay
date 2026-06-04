@@ -33,17 +33,18 @@ Expected today:
 - All `__tests__` suites pass (including `search-quality` and `benchmark-score`)
 - `test:benchmark` runs without Supabase (pure scoring, trim, classifier, manifest)
 
-## 2. Know the cron cadence
+## 2. Know the cron state
 
-Current scheduled jobs from `.github/workflows/cron.yml`:
+Automatic cron is paused for the MVP.
 
-- weekly MVP maintenance: Sundays at `02:00 UTC`
-  - reset call counters
-  - run full concurrent ingest
-- uptime check: manual dispatch only during MVP
-- schema drift: manual dispatch only during MVP
+Current state:
 
-Manual dispatch remains available for targeted checks when you need fresh operational data.
+- `vercel.json` has no `crons` block.
+- `.github/workflows/cron.yml` has no `schedule` block.
+- Cron API routes and CLI scripts still exist for manual testing.
+- Cron route auth requires `Authorization: Bearer <CRON_SECRET>`.
+
+Use GitHub Actions `workflow_dispatch` or the local scripts when you intentionally want ingest, uptime, schema drift, or counter reset work to run.
 
 ## 3. Understand when you need a force reprocess
 
@@ -108,22 +109,24 @@ Preferred local/GitHub Actions path:
 LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=25 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
-npm run ingest:local -- all
+npm run ingest:local -- all --full
 ```
 
 For a smaller first run:
 
 ```bash
-LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official --full
 ```
 
 This path does not use a Postgres queue. It fetches sources and calls `upsertServers()` directly with local concurrency. Sandbox extraction is separately capped at 3 concurrent requests inside the ingest pipeline.
 
+Use `--full` for primary-source population. Under the no-tool guard, `catalog` mode will skip Official rows unless another source already provided tool names or schemas.
+
 Use source-specific local runs when isolating failures:
 
 ```bash
-LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
-LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official --full
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery --full
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- enrich
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- glama
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
@@ -137,10 +140,11 @@ What to inspect after each source:
 - `/admin` operations
 - row counts in `servers`
 - whether `transport`, `proxy_available`, `tools`, `tool_schemas`, `description_quality`, `scan_status`, and `trust_score` look sane
+- confirm new primary-source rows have at least one tool name or tool schema
 
 ## 6. Trigger the operational jobs manually
 
-After ingest, run the cron-backed jobs manually once so you are not waiting on the real schedule.
+After ingest, run the cron-backed jobs manually once only when you want to validate them. There is no automatic schedule right now.
 
 ```bash
 curl http://localhost:3000/api/cron/uptime-check \
@@ -166,7 +170,7 @@ This validates:
 
 ## 7. MVP manual product test
 
-After you have ingested at least `official` and `github`, test the MVP in this order.
+After you have ingested at least `official` and `smithery` if your key is configured, test the MVP in this order.
 
 ### A. MCP initialize
 
@@ -313,10 +317,10 @@ Use this exact order:
 4. start local app
 5. ingest `official`
 6. ingest `smithery` if key configured (exercises sandbox path)
-7. ingest `glama` (enrichment — depends on step 4/5 rows)
+7. ingest `glama` (enrichment — depends on step 5/6 rows)
 8. `npm run benchmark:eval` — record Server-P@1 in report
-9. run manual uptime check (validates trust recomputation with behavioral ISM data)
-10. run manual schema drift
+9. run manual uptime check only if you want to validate trust recomputation with behavioral ISM data
+10. run manual schema drift only if you want to validate suspension behavior
 11. test `search_tools`
 12. test `get_server_manifest`
 13. test Relay Local `relay info` / `relay invoke`

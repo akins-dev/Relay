@@ -103,7 +103,8 @@ What it does:
 
 - triggers ingest and maintenance jobs
 - records operational runs into database tracking tables
-- authenticates cron execution via `Authorization: Bearer <CRON_SECRET>` or Vercel's `x-vercel-cron: 1`
+- authenticates cron execution via `Authorization: Bearer <CRON_SECRET>`
+- automatic Vercel and GitHub Actions schedules are paused for the MVP; manual dispatch remains available
 
 ## 4. Identity, Auth, And Caller Resolution
 
@@ -179,8 +180,7 @@ Flow:
 
 1. cron routes call `isCronAuthorized(req)`
 2. manual or local callers can use `Authorization: Bearer <CRON_SECRET>`
-3. Vercel scheduled invocations can use `x-vercel-cron: 1`
-4. unauthorized job triggers are rejected before ingest or maintenance work starts
+3. unauthorized job triggers are rejected before ingest or maintenance work starts
 
 ## 5. Rate Limiting And Cache Layers
 
@@ -527,7 +527,7 @@ Primary code:
 
 ### 11.1 Trigger flow
 
-1. cron or admin triggers ingest
+1. manual cron, local script, or admin route triggers ingest
 2. `runIngest(source)` creates an `ingest_runs` row
 3. source-specific fetchers collect upstream metadata
 4. `upsertServers(...)` processes each candidate
@@ -578,8 +578,9 @@ Per server:
 9. enrich weak descriptions from README if needed
 10. compute trust score using `computeTrustScore()` with `invokeCount: 0, successCount: 0` at ingest time — Bayesian prior gives a ~8pt floor ("unproven"), not zero ("broken"). Score grows as the uptime cron integrates real invoke data from `intent_server_mappings`
 11. derive server status (`active` or `pending_review` for high-severity CVEs)
-12. insert or update canonical `servers` row
-13. write `scan_results` if needed
+12. skip primary-source candidates that still have no tool names and no tool schemas
+13. insert or update canonical `servers` row
+14. write `scan_results` if needed
 
 ### 11.4 Why ingest matters architecturally
 
@@ -682,7 +683,7 @@ Primary tables / code:
 
 Purpose:
 
-- allow hosted cron and GitHub Actions execution
+- allow manual cron and GitHub Actions workflow-dispatch execution
 - persist operational outcomes for the admin surface
 - keep maintenance jobs observable
 

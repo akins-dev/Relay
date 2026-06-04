@@ -122,9 +122,9 @@ If a repository is ingested without a configured Sandbox, Relay will safely fall
 Ingest has two modes:
 
 - `catalog` — fast path. Fetches upstream registries, normalizes/dedupes rows, stores source metadata, derives auth, and writes preliminary trust without live probe/sandbox extraction.
-- `full` — deep path. Runs probe/sandbox/README extraction inline. This is the current scheduled GitHub Actions ingest mode.
+- `full` — deep path. Runs probe/sandbox/README extraction inline. Use this for deliberate manual ingest runs.
 
-There is no active Postgres ingest queue in the current MVP. Scheduled ingest runs as a long-lived GitHub Actions job using `src/scripts/run-ingest-local.ts`, which processes servers concurrently and protects the Render sandbox with an in-process semaphore.
+There is no active Postgres ingest queue in the current MVP. Automatic cron is paused; manual ingest uses `src/scripts/run-ingest-local.ts`, which processes servers concurrently and protects the Render sandbox with an in-process semaphore.
 
 ```bash
 cd path-to-repo
@@ -132,15 +132,15 @@ set -a
 source .env
 set +a
 
-# Scheduled-ingest equivalent used by GitHub Actions:
+# Full manual ingest:
 LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=25 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
-npm run ingest:local -- all
+npm run ingest:local -- all --full
 
 # Smaller isolated runs:
-LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official
-LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official --full
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery --full
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- enrich
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- glama
 LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
@@ -148,7 +148,7 @@ LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
 
 Expected output includes a JSON breakdown of successful indexing and rejections per source.
 
-Use `LOCAL_INGEST_CONCURRENCY=20` for scheduled MVP runs and `50` for local full runs. The local runner caps this value at `100`. Sandbox extraction is separately capped at 3 concurrent requests (hard limit in the pipeline semaphore). The `enrich` source runs `glama` and `mcp_directory` only.
+Use `LOCAL_INGEST_CONCURRENCY=20` for conservative manual MVP runs and `50` for local full runs when Supabase has headroom. The local runner caps this value at `100`. Sandbox extraction is separately capped at 3 concurrent requests (hard limit in the pipeline semaphore). The `enrich` source runs `glama` and `mcp_directory` only.
 
 **Performance note:** The local runner pre-fetches all existing server records from the DB **once** before starting workers, then shares the lookup across all concurrent workers. This means 50 concurrent workers do **zero** redundant DB queries to check if a server exists — all dedup is O(1) Map lookups in memory. Before this fix, each worker did its own full-table scan, causing DB saturation and slowdown over long runs.
 
@@ -169,15 +169,15 @@ Use `LOCAL_INGEST_CONCURRENCY=20` for scheduled MVP runs and `50` for local full
 
 ```bash
 # Normal resume — already-ingested servers skip in milliseconds (7-day hash window)
-LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full
 
 # Process unvisited tail first (useful after a failed partial run)
-LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --reverse
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full --reverse
 
 # Split across multiple terminals for parallel coverage
-npm run ingest:local -- official --limit=3000                # terminal 1: 0-2999
-npm run ingest:local -- official --offset=3000 --limit=3000  # terminal 2: 3000-5999
-npm run ingest:local -- official --offset=6000               # terminal 3: 6000+
+npm run ingest:local -- official --full --limit=3000                # terminal 1: 0-2999
+npm run ingest:local -- official --full --offset=3000 --limit=3000  # terminal 2: 3000-5999
+npm run ingest:local -- official --full --offset=6000               # terminal 3: 6000+
 ```
 
 Important current behavior:
@@ -187,9 +187,11 @@ Important current behavior:
   - `/api/cron/ingest/smithery`
   - `/api/cron/ingest/glama`
   - `/api/cron/ingest/mcp-directory`
-- There is no scheduled Vercel cron dependency in the MVP path; `.github/workflows/cron.yml` is the scheduled executor.
+- There is no scheduled Vercel cron dependency in the MVP path, and `.github/workflows/cron.yml` is manual-dispatch only right now.
 - The post-ingest processing queue was retired by migration `037_drop_processing_jobs_queue.sql`; the proposed `ingest_queue` migration was removed before migration.
-- `catalog` rows can appear in search when they have enough metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
+- Primary-source candidates are skipped if they still have no tool names and no tool schemas after extraction/fallback. Enrichment-only sources may update existing rows but cannot create standalone no-tool rows.
+- Use `--full` for primary-source population; `catalog` mode can skip Official rows because the Official normalizer does not provide tool schemas directly.
+- `catalog` rows can appear in search when they have tool metadata. Relay Local invocation should rely on manifests, not hosted proxy eligibility.
 - Search responses include quality labels:
   - `discovery_only`
   - `manifest_ready`
@@ -200,7 +202,7 @@ Important current behavior:
 - Relay does not guess an execution command from a plain GitHub repo URL; repo-backed stdio rows fall back to README parsing unless a concrete launcher is known.
 - If a `stdio` server is a GitHub subdirectory/monorepo URL, ingest does not guess an execution command; it falls back to README parsing and description enrichment.
 - In `full` mode, if sandbox extraction is unavailable or fails, ingest falls back to README parsing for descriptions and tool hints.
-- If neither sandbox nor README yields useful metadata, the server can still be stored if provenance is strong enough, but quality will be limited.
+- If neither upstream metadata, sandbox, probe, nor README yields tools, primary-source ingest skips the server.
 - **Trust score cold start:** all newly ingested servers start with `invokeCount: 0, successCount: 0`. The Bayesian prior in `computeTrustScore()` gives a floor of ~8 pts in the behavioral reliability slot rather than 0. Future Relay Local outcome reports can feed this signal.
 
 ### Retired post-ingest processing queue
@@ -293,7 +295,7 @@ Prefer the script entrypoints for local/manual operations:
 
 ```bash
 # ingest
-npm run ingest:local -- all
+npm run ingest:local -- all --full
 
 # uptime
 npx tsx src/scripts/cron-uptime.ts
@@ -305,15 +307,7 @@ npx tsx src/scripts/cron-schema-drift.ts
 npx tsx src/scripts/cron-reset-calls.ts
 ```
 
-The daily ingest job uses `src/scripts/run-ingest-local.ts all` so it can run with controlled local concurrency inside the GitHub Actions runner.
-
-Actual scheduled cadence from `.github/workflows/cron.yml`:
-
-- Weekly MVP maintenance: Sundays at `02:00 UTC`
-  - reset daily call counters
-  - run full local ingest with `LOCAL_INGEST_CONCURRENCY=20`
-- Uptime check: manual dispatch only during MVP
-- Schema drift: manual dispatch only during MVP
+There is no daily or weekly automatic ingest right now. `.github/workflows/cron.yml` keeps `workflow_dispatch` only, so all cron-backed work is deliberate.
 
 ---
 
@@ -334,12 +328,11 @@ vercel --prod
 
 Set all environment variables in Vercel dashboard.
 
-**Cron Job Notice (Vercel Hobby vs Pro):**
-By default, Vercel Hobby has a 10s-60s max execution limit. This means heavy cron jobs like Ingestion, Schema Drift checking (which polls thousands of active endpoints), and Uptime checks *will* fail if running strictly on Hobby via API routes.
-To bypass this, Relay runs perfectly on **GitHub Actions CLI scripts** to effortlessly hit the Supabase database and bypass any serverless wall-clocks infinitely for zero cost! (Check `.github/workflows`).
+**Cron Job Notice:**
+Automatic cron is paused for the MVP. `vercel.json` has no scheduled jobs, and `.github/workflows/cron.yml` is manual-dispatch only. Keep it this way until the catalog cleanup, benchmark run, and local smoke tests are stable.
 
-- Weekly MVP maintenance: Sundays at 02:00 UTC
 - Manual dispatch remains available for uptime, schema drift, reset, full ingest, and enrichment-only ingest
+- Re-enable automation later by adding a deliberate `schedule` block back to `.github/workflows/cron.yml`
 
 > **⚠️ GitHub Actions Setup Required:** Your repository must be **Public** (to unlock unlimited free execution minutes and avoid the 2000-min cap). In your GitHub repository, under **Settings** → (scroll down left sidebar to) **Secrets and variables** → **Actions** → **New repository secret**, explicitly set:
 > - `NEXT_PUBLIC_SUPABASE_URL`
@@ -383,7 +376,7 @@ DELETE FROM public.mcp_connections;
 LOCAL_INGEST_CONCURRENCY=20 \
 LOCAL_INGEST_PROGRESS_EVERY=5 \
 OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
-npm run ingest:local -- all
+npm run ingest:local -- all --full
 ```
 
 ### 3. Deploy the Render Sandbox (Optional but highly recommended)

@@ -269,3 +269,27 @@ Consequences:
 - uptime and schema drift are manual-dispatch only during MVP to protect free/freemium quotas
 - API/admin ingest remains available and runs inline through `runIngest()`
 - a durable Postgres queue can be reconsidered later if Relay moves to a short-lived serverless cron environment
+
+## ADR-013
+
+Date: 2026-06-04
+Status: accepted
+
+Decision:
+
+Automatic GitHub Actions cron is paused while the MVP catalog is cleaned, benchmarked, and tested locally. The workflow remains manual-dispatch only.
+
+Rationale:
+
+- the Supabase free-plan database size recently exceeded the included quota
+- thousands of no-tool rows inflated storage and weakened search quality
+- ingest/search changes should be tested deliberately before another full scheduled run adds more catalog noise
+- manual runs give clearer control over source order, concurrency, and cleanup verification
+
+Consequences:
+
+- `.github/workflows/cron.yml` has no `schedule` block
+- `vercel.json` still has no scheduled cron jobs
+- cron API routes and CLI scripts remain available behind `CRON_SECRET` or GitHub Actions `workflow_dispatch`
+- primary-source ingest now skips candidates that still have no tool names and no tool schemas after extraction/fallback
+- no production cleanup helper migration is kept; one-off catalog cleanup should be direct SQL

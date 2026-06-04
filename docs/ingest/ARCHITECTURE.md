@@ -1,6 +1,6 @@
 # Ingest Pipeline — Architecture Diagram
 
-> Last updated: May 2026 — GitHub Actions scheduled ingest; local concurrent runner with shared pre-fetch (N+1 eliminated); 7-day hash skip window; CLI flags --reverse/--offset/--limit restored.
+> Last updated: June 2026 — automatic cron paused; local/manual concurrent runner with shared pre-fetch (N+1 eliminated); 7-day hash skip window; CLI flags --reverse/--offset/--limit restored; primary-source rows without tools are skipped.
 
 ## Data Structures
 
@@ -245,6 +245,10 @@ The old architecture called `upsertServers([singleServer])` per worker, which tr
 
 Now: **1 query total** for the entire run, regardless of concurrency level.
 
+Primary-source candidates are not inserted or updated unless they resolve to at least one tool name or tool schema after upstream metadata, probe/sandbox extraction, and README fallback. Enrichment-only sources can update existing rows, but they cannot create standalone no-tool servers.
+
+Use `--full` for primary-source population. `catalog` mode is intentionally conservative under this rule and can skip sources whose listing APIs do not expose tools directly.
+
 ---
 
 ## CLI Flags — `run-ingest-local.ts`
@@ -277,15 +281,15 @@ OFFICIAL_REGISTRY_TIMEOUT_MS=N # official API timeout (default 30000)
 
 ```bash
 # Normal resume — already-ingested servers skip in milliseconds (7-day hash window)
-LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full
 
 # Process unvisited tail first (servers at end of list that were never reached)
-LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --reverse
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full --reverse
 
 # Split across 3 terminals for parallel coverage
-npm run ingest:local -- official --limit=3000               # terminal 1: servers 0-2999
-npm run ingest:local -- official --offset=3000 --limit=3000 # terminal 2: servers 3000-5999
-npm run ingest:local -- official --offset=6000              # terminal 3: servers 6000+
+npm run ingest:local -- official --full --limit=3000               # terminal 1: servers 0-2999
+npm run ingest:local -- official --full --offset=3000 --limit=3000 # terminal 2: servers 3000-5999
+npm run ingest:local -- official --full --offset=6000              # terminal 3: servers 6000+
 ```
 
 ---
@@ -307,6 +311,7 @@ npm run ingest:local -- official --offset=6000              # terminal 3: server
 - [x] mcp/route.ts corrected (no Anthropic attribution, no hallucinated sources)
 - [x] schema_hash computed post-probe (matches drift cron)
 - [x] tools[] always synced from probe/sandbox result
+- [x] primary-source candidates with no tools after extraction are skipped
 - [x] auth_type updated in enrichment patch path
 - [x] env_var_schema + package_info in search response
 - [x] api_key servers exempt from uptime probe

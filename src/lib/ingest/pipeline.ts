@@ -503,6 +503,15 @@ export async function upsertServers(
         resolvedTools = toolSchemas.map(t => t.name);
       }
 
+      const hasResolvedTools = toolSchemas.some(t => t.name.trim().length > 0)
+        || resolvedTools.some(name => typeof name === 'string' && name.trim().length > 0);
+
+      if (!isEnrichmentOnly && !hasResolvedTools) {
+        result.skipped++;
+        skipReasons['no_tools_after_extraction'] = (skipReasons['no_tools_after_extraction'] ?? 0) + 1;
+        continue;
+      }
+
       // FAULT-05 fix: recompute hash AFTER tools are synced from probe/sandbox.
       // The schema-drift cron also hashes live-probed tool names — they must match.
       // If we stored the pre-probe hash, any probe-reordered tool list would trigger
