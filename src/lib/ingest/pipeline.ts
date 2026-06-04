@@ -284,6 +284,22 @@ export async function upsertServers(
         continue;
       }
 
+      const hasPackageInfo = Array.isArray(s.package_info) && s.package_info.length > 0;
+      const hasTools = Array.isArray(s.tools) && s.tools.length > 0;
+      if (
+        !isEnrichmentOnly &&
+        !s.endpoint &&
+        !s.github_url &&
+        !s.homepage_url &&
+        !hasPackageInfo &&
+        !hasTools &&
+        transport === 'unknown'
+      ) {
+        result.skipped++;
+        skipReasons['unresolvable_empty_server'] = (skipReasons['unresolvable_empty_server'] ?? 0) + 1;
+        continue;
+      }
+
       // ── Lookup existing record ────────────────────────────────────────────
       let existing: any = null;
       if (s.smithery_id)  existing = existingBySmithery.get(s.smithery_id);

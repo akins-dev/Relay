@@ -10,19 +10,32 @@
 
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { loadEnvConfig } from '@next/env';
 
 import { parseBenchmarkJsonl, scoreBenchmarkCase, summarizeBenchmarkScores, formatBenchmarkSummary } from '../benchmark/score';
 import type { BenchmarkCase } from '../benchmark/types';
 import { classifyIntent } from '../lib/intent-classifier';
 import { runSearch } from '../lib/search';
+import { createServiceClient } from '../lib/supabase/server';
 
 const BENCHMARK_FILE = process.env.BENCHMARK_FILE ?? 'benchmark/intents.jsonl';
 const LIMIT = Number(process.env.BENCHMARK_LIMIT ?? '5');
+const CASE_FILTER = process.env.BENCHMARK_CASE ?? '';
 const REPORT_DIR = join(process.cwd(), 'benchmark', 'reports');
+
+loadEnvConfig(process.cwd());
 
 async function main() {
   const raw = readFileSync(join(process.cwd(), BENCHMARK_FILE), 'utf8');
-  const cases: BenchmarkCase[] = parseBenchmarkJsonl(raw);
+  const allCases: BenchmarkCase[] = parseBenchmarkJsonl(raw);
+  const cases = CASE_FILTER
+    ? allCases.filter(c => c.id === CASE_FILTER)
+    : allCases;
+
+  if (CASE_FILTER && cases.length === 0) {
+    console.error(`No benchmark case found for BENCHMARK_CASE=${CASE_FILTER}`);
+    process.exit(1);
+  }
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.error('Missing NEXT_PUBLIC_SUPABASE_URL. Set Supabase env vars before live eval.');
@@ -32,6 +45,7 @@ async function main() {
   mkdirSync(REPORT_DIR, { recursive: true });
 
   const caseDetails: Array<Record<string, unknown>> = [];
+  const supabase = createServiceClient();
 
   for (const benchCase of cases) {
     if (benchCase.class === 'knowledge') {
@@ -41,11 +55,18 @@ async function main() {
       continue;
     }
 
-    const { results } = await runSearch({
-      intent: benchCase.intent,
-      limit: LIMIT,
-      surface: 'rest',
-    });
+    let results;
+    try {
+      ({ results } = await runSearch({
+        intent: benchCase.intent,
+        limit: LIMIT,
+        surface: 'rest',
+        supabaseClient: supabase,
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Benchmark case ${benchCase.id} failed: ${message}`);
+    }
 
     const mapped = results.map(r => ({
       name: r.name,

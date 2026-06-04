@@ -28,7 +28,10 @@ git add \
   src/lib/intent-classifier.ts \
   src/scripts/run-benchmark-eval.ts \
   supabase/migrations/040_tool_level_intent_search.sql \
-  supabase/migrations/041_optimize_search_rpc_timeout.sql
+  supabase/migrations/041_optimize_search_rpc_timeout.sql \
+  supabase/migrations/042_remove_tool_text_trigram_from_search.sql \
+  supabase/migrations/043_restore_tool_text_trigram_search.sql \
+  supabase/migrations/044_prune_inactive_server_tools.sql
 
 git commit -m "$(cat <<'EOF'
 Ship tool-level intent search with benchmark harness and migrations 040/041.

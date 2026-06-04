@@ -62,6 +62,9 @@ Rules:
 | `037_drop_processing_jobs_queue.sql` | active | Drops `server_processing_jobs` and `processing_job_health`. |
 | `040_tool_level_intent_search.sql` | active | `server_tools` table, triggers, and RRF `search_servers()`. Self-contained schema populated automatically via triggers at initial ingest time. |
 | `041_optimize_search_rpc_timeout.sql` | active | Replaces `search_servers()` with a timeout-resistant version that avoids broad trigram similarity scoring over large tool documents. |
+| `042_remove_tool_text_trigram_from_search.sql` | superseded | Temporarily removed full-document tool trigram matching from `search_servers()`. Superseded by `043` after deciding to preserve the existing search/index strategy. |
+| `043_restore_tool_text_trigram_search.sql` | active | Restores `search_servers()` to the `041` tool text trigram behavior while preserving forward-only migration history. |
+| `044_prune_inactive_server_tools.sql` | active | Deletes derived `server_tools` rows for non-active servers and updates sync so only active servers populate the tool search table. |
 
 
 ## Current MVP Schema Owner Map
