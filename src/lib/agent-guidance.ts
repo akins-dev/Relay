@@ -22,6 +22,26 @@ export const SEARCH_DEFLECTION_CASES = [
 export const SEARCH_DECISION_RULE =
   'If the task requires an external capability, search first. If it only requires knowledge, answer directly.';
 
+export const INTENT_CONSTRUCTION_RULES = [
+  'Write the intent as the concrete external action the user wants completed.',
+  'Use only provider, product, protocol, or system names that came from the user or task context. Do not invent a provider.',
+  'Include the exact provider/product when the user named one, such as GitHub, Slack, Notion, Postgres, Docker, Stripe, Linear, or Brave.',
+  'Include the target resource and object type, such as issue, pull request, channel message, database records, file, container, calendar event, or bucket object.',
+  'Include the operation verb, such as create, send, post, query, list, upload, write, schedule, fetch, or update.',
+  'Preserve domain words from the user instead of replacing them with generic terms. For example, keep "Postgres" instead of only "database" when the user said Postgres.',
+  'When the user did not name a provider, describe the capability and resource plainly rather than guessing a brand.',
+  'Do not search for vague phrases like "email tool", "database tool", or "integration"; search for the action, resource, and known system.',
+] as const;
+
+export const INTENT_EXAMPLES = [
+  'create a GitHub issue from a feature branch',
+  'post a message to a Slack channel',
+  'query a Postgres database for user records',
+  'write a file to the local filesystem',
+  'list running Docker containers',
+  'search the web with Brave',
+] as const;
+
 export const SCHEMA_GUIDANCE = 'Use the returned inputSchema exactly. Do not guess arguments.';
 export const SECRET_GUIDANCE = 'Never put credentials, API keys, or tokens in tool arguments.';
 export const STDIO_GUIDANCE =
@@ -56,6 +76,9 @@ export function getMcpInitializeInstructions() {
     '6. Use get_server_manifest when you need the full package, endpoint, env, and schema details.',
     `7. ${SCHEMA_GUIDANCE}`,
     `8. ${STDIO_GUIDANCE}`,
+    '9. Construct search intent with provider/product + operation + resource when those details are known.',
+    '10. Use provider/product names only when the user or task context named them. Do not invent provider names.',
+    `11. Good search intents: ${INTENT_EXAMPLES.join('; ')}.`,
     '',
     `Full documentation: ${getAgentDocsUrl()}`,
   ].join('\n');
@@ -68,6 +91,8 @@ export function getAgentBootstrapPrompt() {
     `Otherwise read ${getAgentDocsUrl()} once before your first tool call and use the REST fallback below.`,
     'Before taking any action that affects an external system, search first.',
     'For knowledge-only questions, answer directly without searching.',
+    'When searching, include the named provider/product, operation verb, and resource/object from the user request.',
+    'Use provider/product names only when the user or task context named them. Do not invent provider names.',
     SECRET_GUIDANCE,
     `Search: GET ${getSearchUrlExample()}`,
     `Run locally: ${getInvokeUrlExample()}`,

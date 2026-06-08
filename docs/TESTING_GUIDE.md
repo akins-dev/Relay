@@ -1,6 +1,6 @@
 # Testing Guide
 
-Last updated: 2026-05-22
+Last updated: 2026-06-08
 
 This guide is the fastest path to testing the MVP without waiting on a huge live ingest before you learn anything.
 
@@ -223,18 +223,52 @@ Keep:
 - `search_event_id`
 - `intent`
 
+If this returns `SEARCH_RPC_CONTRACT_ERROR` with a statement timeout, apply the latest search migration. The current hot-path migration is:
+
+```text
+supabase/migrations/051_restore_capability_verbs_in_search.sql
+```
+
+This migration keeps the bounded provider-aware search path, guards short generic intents from broad loose-OR timeout paths, and restores registry-relevant capability verbs in trigram matching.
+
 ### D. REST search sanity check
 
 ```bash
 curl -s 'http://localhost:3000/api/servers/search?q=email&limit=5'
 ```
 
+### E. Relay Local MCP lifecycle
+
+Build the CLI, then run a direct stdio JSON-RPC lifecycle check:
+
+```bash
+cd cli && npm run build && cd ..
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n{"jsonrpc":"2.0","id":3,"method":"ping"}\n' \
+  | node cli/bin/relay.mjs serve
+```
+
 Expected:
 
-- no RPC/signature crash
-- usable results
+- `initialize` returns instructions
+- `tools/list` returns `search_tools`, `get_server_manifest`, and `invoke_tool`
+- `ping` returns an empty result
 
-### E. Manifest lookup
+### F. Relay Local against local Cloud
+
+After the Next app is running:
+
+```bash
+RELAY_API_URL=http://localhost:3000 \
+node cli/bin/relay.mjs search "create a GitHub issue from a feature branch" --limit 3
+```
+
+Expected:
+
+- results are returned from local Cloud
+- explicit named-provider intents prefer the named provider when available
+- no `SEARCH_RPC_CONTRACT_ERROR`
+
+### G. Manifest lookup
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -258,7 +292,7 @@ Expected:
 - env requirements if available
 - tool schemas or tool names
 
-### F. Relay Local invocation
+### H. Relay Local invocation
 
 Cloud MCP does not expose `invoke_tool` in the MVP. Local invocation belongs to Relay Local:
 
@@ -307,7 +341,21 @@ Optional CI gate:
 BENCHMARK_MIN_SERVER_P1=0.5 npm run benchmark:eval
 ```
 
-## 10. Recommended MVP testing sequence
+## 10. Search evaluation reporting
+
+Professional evaluation reports should include more than aggregate accuracy:
+
+- dataset version and catalog snapshot
+- migration/search version
+- action versus knowledge split
+- strata such as lexical easy, lexical hard, conversational, and multi-valid
+- P@1, P@3, tool precision, runnable precision, and knowledge deflection
+- top-result miss lists
+- known limitations and product tradeoffs
+
+Use `benchmark/reports/latest.md` as the local evaluation card and keep per-run JSON files for auditability.
+
+## 11. Recommended MVP testing sequence
 
 Use this exact order:
 

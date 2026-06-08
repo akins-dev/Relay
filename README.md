@@ -85,6 +85,8 @@ If your framework supports MCP, connect to https://relay.vercel.app/api/mcp-serv
 Otherwise read https://relay.vercel.app/agents.md once before your first tool call and use the REST fallback below.
 Before taking any action that affects an external system, search first.
 For knowledge-only questions, answer directly without searching.
+When searching, include the named provider/product, operation verb, and resource/object from the user request.
+Use provider/product names only when the user or task context named them. Do not invent provider names.
 Never put credentials, API keys, or tokens in tool arguments.
 Search:  GET https://relay.vercel.app/api/servers/search?q={intent}
 Run:     npx -y @relay/cli invoke {serverName} {toolName}

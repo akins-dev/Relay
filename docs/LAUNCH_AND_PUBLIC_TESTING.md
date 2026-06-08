@@ -24,13 +24,14 @@ Third-party tools are **never** executed on Cloud in the MVP. Public testing val
 
 ### 1. Database & search
 
-- [ ] All migrations through `044_prune_inactive_server_tools.sql` applied as needed
-- [ ] `MIGRATION_LEDGER.md` includes `040` through `044`
+- [ ] All migrations through `051_restore_capability_verbs_in_search.sql` applied as needed
+- [ ] `MIGRATION_LEDGER.md` includes `040` through `051`
 - [ ] `search_servers` RPC exists (`ensureSearchContracts` passes on deploy)
 - [ ] Manual ingest: `npm run ingest:local -- official --full` (then smithery/glama as needed)
 - [ ] Automatic cron remains paused unless intentionally re-enabled
 - [ ] Direct SQL cleanup has removed no-tool servers; no helper cleanup migration is required
 - [ ] `npm run benchmark:eval` — record Server-P@1 in `benchmark/reports/latest.md`
+- [ ] Explicit provider smoke tests prefer named providers when available, e.g. GitHub, Slack, Notion, Brave
 
 ### 2. Cloud app (Vercel)
 
@@ -42,6 +43,7 @@ Third-party tools are **never** executed on Cloud in the MVP. Public testing val
   - `GET /.well-known/mcp.json`
   - `POST /api/mcp-server` (MCP initialize + tools/list)
   - `GET /api/servers/search?q=send+email&limit=5`
+  - `GET /api/servers/search?q=create+a+GitHub+issue+from+a+feature+branch&limit=5`
   - GitHub Actions cron workflow remains manual-only unless you intentionally restore a `schedule` block
 
 ### 3. Relay CLI (npm)

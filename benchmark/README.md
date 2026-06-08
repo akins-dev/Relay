@@ -1,4 +1,4 @@
-# Search relevance benchmark
+# Search Relevance Benchmark
 
 Golden intents for measuring how well Relay maps **intent → server → tool → runnable manifest**.
 
@@ -19,6 +19,7 @@ See [docs/SEARCH_PIPELINE.md](../docs/SEARCH_PIPELINE.md) § Measurement.
 | **Tool-P@1** | Expected tool in top server's trimmed tools (max 3) |
 | **Runnable-P@1** | Top result `run_mode` is `local_stdio` or `remote_mcp` |
 | **Knowledge precision** | Knowledge intents deflected without search (MCP only) |
+| **Provider preference** | Explicit provider names should prefer the named/official provider over generic/community wrappers |
 
 ## Run
 
@@ -31,6 +32,21 @@ npm run benchmark:eval
 ```
 
 Output: `benchmark/reports/latest.md` and per-case JSON in `benchmark/reports/`.
+
+## Publishing Results
+
+Treat the benchmark report like an evaluation card, not a leaderboard.
+
+Include:
+
+- catalog snapshot/date and migration version
+- total action and knowledge cases
+- primary metrics plus stratum-level breakdown
+- P@1 misses with top results
+- known limitations and regressions
+- examples where product judgment differs from raw relevance, such as provider preference
+
+Do not claim the benchmark proves all searches are correct. It is a regression suite for representative intents and a guide for where to inspect failures.
 
 ## Updating labels
 

@@ -45,6 +45,8 @@ const INSTRUCTIONS = [
   '4. Never put credentials in tool arguments. They are resolved from the local environment.',
   '5. Use the inputSchema from search results exactly. Do not guess tool names or arguments.',
   '6. If invoke_tool fails with missing env vars, tell the user which variables to set.',
+  '7. Construct search intent with provider/product + operation + resource when those details are known.',
+  '8. Use provider/product names only when the user or task context named them. Do not invent provider names.',
 ].join('\n');
 
 // ── Request handling ───────────────────────────────────────────────────────────

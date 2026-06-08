@@ -11,8 +11,9 @@ import type {
 } from './types';
 
 export function serverNameMatches(resultName: string, expected: string): boolean {
-  const r = resultName.toLowerCase();
-  const e = expected.toLowerCase();
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const r = normalize(resultName);
+  const e = normalize(expected);
   return r === e || r.includes(e) || e.includes(r);
 }
 

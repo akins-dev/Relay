@@ -69,10 +69,16 @@ export const LOCAL_MCP_TOOLS = [
         intent: {
           type: 'string',
           description: [
-            'Describe what you need to do in plain language.',
-            'Good: "send a transactional email with an order confirmation"',
-            'Good: "create a GitHub pull request from a feature branch"',
+            'Describe the concrete external action, not just the tool category.',
+            'Include provider/product, operation verb, and resource/object when known.',
+            'Use provider/product names only when the user or task context named them. Do not invent a provider.',
+            'Preserve user domain words such as GitHub, Slack, Postgres, Docker, Brave, file, issue, channel, bucket, or database.',
+            'If no provider is known, describe the capability and resource plainly.',
+            'Good: "create a GitHub issue from a feature branch"',
+            'Good: "query a Postgres database for user records"',
+            'Good: "write a file to the local filesystem"',
             'Bad: "email tool" (too vague)',
+            'Bad: "use S3" when the user only said "store a file" and did not name S3',
           ].join(' '),
         },
         limit: {

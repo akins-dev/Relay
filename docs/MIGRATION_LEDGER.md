@@ -65,6 +65,13 @@ Rules:
 | `042_remove_tool_text_trigram_from_search.sql` | superseded | Temporarily removed full-document tool trigram matching from `search_servers()`. Superseded by `043` after deciding to preserve the existing search/index strategy. |
 | `043_restore_tool_text_trigram_search.sql` | active | Restores `search_servers()` to the `041` tool text trigram behavior while preserving forward-only migration history. |
 | `044_prune_inactive_server_tools.sql` | active | Deletes derived `server_tools` rows for non-active servers and updates sync so only active servers populate the tool search table. |
+| `045_bound_search_rpc_candidates.sql` | active | Bounds tool-level candidate generation inside `search_servers()` so FTS, tool-name trigram, and full text trigram matching stay under Supabase statement timeouts. |
+| `046_compact_search_text.sql` | active | Compacts derived `server_tools.search_text` to high-signal fields so trigram matching does not scan oversized JSON/text blobs. |
+| `047_unified_search.sql` | active | Adds `server_search_docs`, one compact materialized row per active server, and replaces hot-path multi-tool scans with relevance-gated unified RRF search. |
+| `048_search_rrf_lane_gating.sql` | active | Forward patch for applied `047` databases: gates RRF lane credit to real matches, caps metadata boosts, and enables RLS on derived search tables. |
+| `049_bounded_unified_search_provider_preference.sql` | active | Replaces broad unified-search OR scans with bounded candidate lanes and adds exact named-provider preference for explicit provider intents. |
+| `050_short_generic_search_timeout_guard.sql` | active | Tightens short generic intents by disabling loose OR FTS for one/two-token queries and filtering generic verbs from trigram lanes without adding new tables or indexes. |
+| `051_restore_capability_verbs_in_search.sql` | active | Restores registry-relevant capability verbs in trigram lanes while preserving the short generic loose-OR timeout guard. |
 
 
 ## Current MVP Schema Owner Map
@@ -72,7 +79,7 @@ Rules:
 | Area | Primary Objects | MVP Role |
 |---|---|---|
 | Registry | `servers` | Canonical server catalog. |
-| Search | `search_servers(...)`, `server_tools` | Agent-facing intent search; per-tool FTS index (040). |
+| Search | `search_servers(...)`, `server_search_docs`, `server_tools` | Agent-facing intent search; compact unified hot-path index plus per-tool derived index for tool-level coverage/backcompat. |
 | Ingest tracking | `ingest_runs` | Observable manual ingest history. |
 | Search analytics | `search_events` | Search quality review and future ranking. |
 | Source/provenance | source fields, provenance fields, quality views | Helps rank and debug catalog quality. |

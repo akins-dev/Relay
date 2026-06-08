@@ -81,6 +81,11 @@ async function main() {
       stratum: benchCase.stratum,
       score,
       top: mapped[0]?.name ?? null,
+      top_results: mapped.slice(0, LIMIT).map(r => ({
+        name: r.name,
+        run_mode: r.manifest?.run_mode ?? null,
+        tools: r.tools?.map((t: { name: string }) => t.name).slice(0, 3) ?? [],
+      })),
       tools: mapped[0]?.tools?.map((t: { name: string }) => t.name) ?? [],
       run_mode: mapped[0]?.manifest?.run_mode ?? null,
     });
@@ -88,7 +93,10 @@ async function main() {
 
   const scores = caseDetails.map(d => (d as { score: import('../benchmark/types').CaseScore }).score);
   const summary = summarizeBenchmarkScores(scores);
-  const markdown = formatBenchmarkSummary(summary);
+  const markdown = [
+    formatBenchmarkSummary(summary),
+    formatFailureDetails(caseDetails),
+  ].filter(Boolean).join('\n\n');
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   writeFileSync(join(REPORT_DIR, 'latest.md'), markdown);
@@ -105,6 +113,36 @@ async function main() {
       process.exit(1);
     }
   }
+}
+
+function formatFailureDetails(caseDetails: Array<Record<string, unknown>>): string {
+  const misses = caseDetails.filter(d => {
+    const score = d.score as import('../benchmark/types').CaseScore | undefined;
+    return score?.class === 'action' && !score.server_p1;
+  });
+
+  if (misses.length === 0) return '';
+
+  const lines = [
+    '## Server-P@1 misses',
+  ];
+
+  for (const detail of misses) {
+    const score = detail.score as import('../benchmark/types').CaseScore;
+    const topResults = (detail.top_results ?? []) as Array<{
+      name: string;
+      run_mode: string | null;
+      tools: string[];
+    }>;
+    lines.push(
+      `- **${score.id}** (${score.stratum}): top=${score.top_server ?? 'none'}, P@3=${score.server_p3 ? 'yes' : 'no'}`
+    );
+    if (topResults.length > 0) {
+      lines.push(`  - Top ${topResults.length}: ${topResults.map(r => r.name).join(', ')}`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
 main().catch(err => {

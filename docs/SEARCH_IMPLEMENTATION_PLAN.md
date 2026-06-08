@@ -1,6 +1,6 @@
 # Search & Intent Implementation Plan
 
-Last updated: 2026-05-22  
+Last updated: 2026-06-08  
 Status: Active execution plan for search quality, benchmarks, and launch readiness
 
 Parent docs: `SEARCH_PIPELINE.md`, `DELIVERY_ROADMAP.md`, `RUNTIME_INVOKE_ARCHITECTURE.md`.
@@ -43,8 +43,8 @@ Parent docs: `SEARCH_PIPELINE.md`, `DELIVERY_ROADMAP.md`, `RUNTIME_INVOKE_ARCHIT
 
 | Task | Priority | Notes |
 |------|----------|-------|
-| Apply migration `040` on all environments | P0 | Update `MIGRATION_LEDGER.md` |
-| Manifest-aware ranking in `search_servers` | P0 | Boost `local_stdio`/`remote_mcp`; soft-penalty `discovery_only` |
+| Apply migrations through `051` on all environments | P0 | `051` is the current bounded unified-search hot path |
+| Named-provider preference in `search_servers` | P0 | Explicit provider intents should prefer exact provider servers over community wrappers |
 | Package-backed stdio boost for action intents | P1 | When `websearch_to_tsquery` matches action verbs |
 | REST/MCP/cache parity tests | P0 | Same shape and tool trim on hit vs miss |
 | Reduce stale `proxy_available` in public payloads | P2 | Prefer `manifest.run_mode` |
@@ -54,7 +54,7 @@ Parent docs: `SEARCH_PIPELINE.md`, `DELIVERY_ROADMAP.md`, `RUNTIME_INVOKE_ARCHIT
 
 - Server-P@3 acceptable on benchmark (team-defined threshold, e.g. ≥70% on `lexical_easy`).
 - Runnable-P@1 improves for `requires_runnable` cases after manifest ranking.
-- Search RPC mismatch returns `SEARCH_RPC_CONTRACT_ERROR`.
+- Search RPC mismatch returns `SEARCH_RPC_CONTRACT_ERROR`; statement timeouts require inspecting the latest migration and candidate-lane bounds.
 
 ---
 

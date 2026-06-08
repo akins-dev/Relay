@@ -13,6 +13,13 @@ This file is append-only.
 - Added `BENCHMARK_CASE` support for focused live benchmark debugging.
 - Restored the tool text trigram search path after the temporary `042` experiment by adding forward migration `043`.
 - Added migration `044` to prune derived `server_tools` rows for non-active servers without dropping search indexes.
+- Added migration `045` to bound `search_servers()` tool candidate lanes and prevent broad action intents from timing out while preserving the text trigram index path.
+- Added migration `046` to compact derived tool search text and reduce trigram bloat.
+- Added migration `047` to introduce one compact `server_search_docs` row per active server and use relevance-gated RRF for faster unified search.
+- Added migration `048` as a forward patch for existing `047` deployments, gating RRF lane credit and capping non-relevance boosts.
+- Added migration `049` to bound unified search candidate lanes and prefer exact named-provider matches without broad OR scans.
+- Added migration `050` to guard short generic search intents such as `send email` from broad loose-OR and generic verb trigram timeout paths without adding new tables or indexes.
+- Added migration `051` to restore capability verbs such as `fetch`, `search`, `query`, `read`, `write`, `post`, and `check` in trigram lanes after `050` proved too broad for benchmark coverage.
 
 ### Removed
 

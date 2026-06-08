@@ -4,7 +4,7 @@ import { BRAND } from '@/lib/brand';
 import { resolveApiKey } from '@/lib/auth-server';
 import { corsHeaders } from '@/lib/utils';
 import { after } from '@/lib/after';
-import { getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
+import { INTENT_EXAMPLES, getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
 import { ensureSearchContracts } from '@/lib/runtime-contracts';
 import { hashIntent, recordSearchEvent } from '@/lib/search-analytics';
 import { classifyIntent } from '@/lib/intent-classifier';
@@ -35,11 +35,15 @@ const TOOLS = [
         intent: {
           type: 'string',
           description: [
-            'Describe what you need to do in plain language, not what tool you want.',
-            'Good: "send a transactional email with an order confirmation"',
-            'Good: "create a GitHub pull request from a feature branch"',
-            'Good: "query a postgres database to get user records"',
+            'Describe the concrete external action, not just the tool category.',
+            'Include provider/product, operation verb, and resource/object when known.',
+            'Use provider/product names only when the user or task context named them. Do not invent a provider.',
+            'Preserve user domain words such as GitHub, Slack, Postgres, Docker, Brave, file, issue, channel, bucket, or database.',
+            'If no provider is known, describe the capability and resource plainly.',
+            `Good: ${INTENT_EXAMPLES.map(example => `"${example}"`).join('; ')}`,
             'Bad: "email tool" (too vague)',
+            'Bad: "use S3" when the user only said "store a file" and did not name S3',
+            'Bad: "integration for this" (too vague)',
           ].join(' '),
         },
         limit: {

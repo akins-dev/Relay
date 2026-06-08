@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 
 function getSupabaseConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,14 +13,15 @@ function getSupabaseConfig() {
 /** Standard server client — respects RLS, uses cookie session */
 export function createClient() {
   const { url, anonKey } = getSupabaseConfig();
+  const { cookies } = require('next/headers');
   const cookieStore = cookies();
   return createServerClient(url, anonKey, {
     cookies: {
       getAll() {
-        return cookieStore.then((store) => store.getAll());
+        return cookieStore.then((store: any) => store.getAll());
       },
       setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-        return cookieStore.then((store) => {
+        return cookieStore.then((store: any) => {
           cookiesToSet.forEach(({ name, value, options }) =>
             store.set(name, value, options)
           );
