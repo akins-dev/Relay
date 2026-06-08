@@ -4,9 +4,10 @@ import { BRAND } from '@/lib/brand';
 import { resolveApiKey } from '@/lib/auth-server';
 import { corsHeaders } from '@/lib/utils';
 import { after } from '@/lib/after';
-import { getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
+import { INTENT_EXAMPLES, getMcpInitializeInstructions, getRateLimitAuthHint } from '@/lib/agent-guidance';
 import { ensureSearchContracts } from '@/lib/runtime-contracts';
 import { hashIntent, recordSearchEvent } from '@/lib/search-analytics';
+import { classifyIntent } from '@/lib/intent-classifier';
 import { runSearch, MAX_TOOLS_PER_RESULT } from '@/lib/search';
 import { createClient } from '@/lib/supabase/server';
 import { buildRelayManifest } from '@/lib/relay-manifest';
@@ -34,11 +35,15 @@ const TOOLS = [
         intent: {
           type: 'string',
           description: [
-            'Describe what you need to do in plain language, not what tool you want.',
-            'Good: "send a transactional email with an order confirmation"',
-            'Good: "create a GitHub pull request from a feature branch"',
-            'Good: "query a postgres database to get user records"',
+            'Describe the concrete external action, not just the tool category.',
+            'Include provider/product, operation verb, and resource/object when known.',
+            'Use provider/product names only when the user or task context named them. Do not invent a provider.',
+            'Preserve user domain words such as GitHub, Slack, Postgres, Docker, Brave, file, issue, channel, bucket, or database.',
+            'If no provider is known, describe the capability and resource plainly.',
+            `Good: ${INTENT_EXAMPLES.map(example => `"${example}"`).join('; ')}`,
             'Bad: "email tool" (too vague)',
+            'Bad: "use S3" when the user only said "store a file" and did not name S3',
+            'Bad: "integration for this" (too vague)',
           ].join(' '),
         },
         limit: {
@@ -83,21 +88,6 @@ function resolveIp(req: NextRequest) {
   return `fp:${Buffer.from((req.headers.get('user-agent') ?? '') + (req.headers.get('accept-language') ?? '')).toString('base64').slice(0, 16)}`;
 }
 
-function looksLikeKnowledgeOnly(intent: string) {
-  const knowledgePatterns = [
-    /(what|who|when|where|why|how)\s+(is|are|was|were|does|do|did|has|have|can|could|would|should|will)\b/i,
-    /(explain|define|describe|tell me about|what does .+ mean|what is the difference)\b/i,
-    /(compare|vs\.?|versus|difference between|which is better)\b/i,
-    /(calculate|compute|solve|what is \d|convert \d)/i,
-    /(history of|background on|overview of|introduction to)\b/i,
-  ];
-  const actionPatterns = [
-    /\b(send|create|delete|update|fetch|get|post|push|pull|deploy|run|execute|invoke|call|trigger|schedule|notify|email|message|upload|download|save|store|insert|query)\b/i,
-  ];
-
-  return knowledgePatterns.some(p => p.test(intent)) && !actionPatterns.some(p => p.test(intent));
-}
-
 async function handleInitialize(id: any) {
   return mcpResponse(id, {
     protocolVersion: MCP_VERSION,
@@ -127,7 +117,7 @@ async function handleSearchTools(id: any, args: any, ip: string, auth?: { userId
   const searchEventId = crypto.randomUUID();
   const sessionId = `${ip.slice(0, 8)}:${Date.now().toString(36)}`;
 
-  if (looksLikeKnowledgeOnly(intent)) {
+  if (classifyIntent(intent) === 'knowledge') {
     after(() => recordSearchEvent({
       searchEventId,
       userId: auth?.userId ?? null,

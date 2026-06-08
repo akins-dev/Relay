@@ -182,7 +182,7 @@ Relay's MVP is runtime discovery plus Relay Local execution, not hosted cloud in
 
 Rationale:
 
-- the product needs a working prototype before production-only hardening
+- the product needs a working MVP before production-only hardening
 - hosted execution, proxy security, sandboxing, Vault injection, OAuth, and cron maintenance kept expanding the scope
 - much of the MCP ecosystem is local `stdio`, and executing arbitrary third-party processes in shared cloud infrastructure is not the right MVP boundary
 - a local Relay runtime can execute with the user's local env and secrets without Relay Cloud hosting untrusted third-party processes
@@ -194,7 +194,7 @@ Consequences:
 - Relay Cloud returns manifests and schemas
 - Relay Local executes through either CLI commands or local MCP server mode
 - local Relay MCP may expose `invoke_tool` because execution happens in Relay Local, not Relay Cloud
-- `/api/proxy/*` is retired from the prototype runtime
+- `/api/proxy/*` is retired from the MVP runtime
 - CLI/local MCP subprocess management becomes the next execution slice
 - old proxy/security/trust ideas are deferred unless they directly improve discovery quality
 
@@ -205,14 +205,14 @@ Status: accepted
 
 Decision:
 
-Scheduled Vercel crons are not part of the prototype runtime. Manual/admin ingest remains available behind `CRON_SECRET`.
+Scheduled Vercel crons are not part of the MVP runtime. Manual/admin ingest remains available behind `CRON_SECRET`.
 
 Rationale:
 
 - the MVP should not depend on background jobs to become useful
-- scheduled probe, drift, reset, sandbox, and CVE work makes the prototype harder to reason about
+- scheduled probe, drift, reset, sandbox, and CVE work makes the MVP harder to reason about
 - Vercel cron header auth should not be trusted as a public authorization mechanism
-- explicit ingest runs make data changes easier to inspect during prototype iteration
+- explicit ingest runs make data changes easier to inspect during MVP iteration
 
 Consequences:
 
@@ -243,5 +243,53 @@ Consequences:
 - `relay invoke(...)` and local MCP `invoke_tool(...)` must call the same internal runtime function.
 - `relay search` and local MCP `search_tools` must share search/manifest formatting semantics.
 - `relay info` and local MCP `get_server_manifest` must return the same manifest contract.
-- Cloud MCP remains discovery-only for the prototype and does not expose `invoke_tool`.
+- Cloud MCP remains discovery-only for the MVP and does not expose `invoke_tool`.
 - Users configure Relay once per agent environment; they should not manually connect every downstream MCP server.
+
+## ADR-012
+
+Date: 2026-05-17
+Status: accepted
+
+Decision:
+
+Scheduled ingest runs through GitHub Actions using the same local concurrent ingest script used during development.
+
+Rationale:
+
+- the project is not currently deployed to Vercel, so a Vercel-specific worker queue adds operational complexity without a live runtime need
+- GitHub Actions provides a long-lived runner, so it can run `src/scripts/run-ingest-local.ts all` directly with high Node I/O concurrency
+- the Render sandbox remains protected by an in-process semaphore that caps sandbox extraction at three concurrent requests
+- direct logs from GitHub Actions are easier to inspect than fragmented serverless worker logs during MVP iteration
+
+Consequences:
+
+- no active `ingest_queue` table, Postgres queue RPCs, or `/api/cron/worker` route are part of the current runtime
+- `.github/workflows/cron.yml` runs weekly MVP maintenance on Sundays at 02:00 UTC and sets `LOCAL_INGEST_CONCURRENCY=20` for scheduled ingest
+- uptime and schema drift are manual-dispatch only during MVP to protect free/freemium quotas
+- API/admin ingest remains available and runs inline through `runIngest()`
+- a durable Postgres queue can be reconsidered later if Relay moves to a short-lived serverless cron environment
+
+## ADR-013
+
+Date: 2026-06-04
+Status: accepted
+
+Decision:
+
+Automatic GitHub Actions cron is paused while the MVP catalog is cleaned, benchmarked, and tested locally. The workflow remains manual-dispatch only.
+
+Rationale:
+
+- the Supabase free-plan database size recently exceeded the included quota
+- thousands of no-tool rows inflated storage and weakened search quality
+- ingest/search changes should be tested deliberately before another full scheduled run adds more catalog noise
+- manual runs give clearer control over source order, concurrency, and cleanup verification
+
+Consequences:
+
+- `.github/workflows/cron.yml` has no `schedule` block
+- `vercel.json` still has no scheduled cron jobs
+- cron API routes and CLI scripts remain available behind `CRON_SECRET` or GitHub Actions `workflow_dispatch`
+- primary-source ingest now skips candidates that still have no tool names and no tool schemas after extraction/fallback
+- no production cleanup helper migration is kept; one-off catalog cleanup should be direct SQL

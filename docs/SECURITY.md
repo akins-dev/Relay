@@ -1,11 +1,11 @@
 # Security & Trust Models
 
-Last updated: 2026-05-09 (Prototype scope reset)
+Last updated: 2026-05-09 (MVP scope reset)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Exact rate-limit defaults and keying rules: [`RATE_LIMITS.md`](RATE_LIMITS.md)
 Ingest & trust scoring deep-dive: [`ingest/README.md`](ingest/README.md)
 
-This file now tracks legacy security and trust ideas. The current prototype does not run third-party MCP tools through Relay cloud, so the runtime proxy controls below are deferred rather than active MVP behavior.
+This file now tracks legacy security and trust ideas. The current MVP does not run third-party MCP tools through Relay cloud, so the runtime proxy controls below are deferred rather than active MVP behavior.
 
 Current MVP security boundary:
 
@@ -65,7 +65,7 @@ Every server has a 0–100 trust score returned with every search result.
 | Request failure rate > 0% | Up to −15 pts |
 | DLP trigger rate > 5% | Up to −10 pts |
 
-**Behavioral reliability** was designed for hosted proxy outcomes. For the prototype, it should be treated as legacy ranking support unless Relay Local intentionally reports local outcomes later.
+**Behavioral reliability** was designed for hosted proxy outcomes. For the MVP, it should be treated as ranking support only when Relay Local intentionally reports local outcomes.
 
 **Typical score ranges under the new model:**
 
@@ -101,7 +101,7 @@ Every server has a 0–100 trust score returned with every search result.
 | `suspended` | Schema drift cron | ❌ | ❌ |
 | `pending` | Manual publish | ❌ | ❌ |
 
-Only `active` servers are visible to users and agents. Relay cloud does not provide a prototype proxy invocation path.
+Only `active` servers are visible to users and agents. Relay cloud does not provide a proxy invocation path.
 
 ## CVE Scan Deduplication
 

@@ -5,6 +5,8 @@ import { BRAND } from '@/lib/brand';
 import { resolveApiKey } from '@/lib/auth-server';
 import { ensureSearchContracts } from '@/lib/runtime-contracts';
 import { runSearch } from '@/lib/search';
+import { recordSearchEvent } from '@/lib/search-analytics';
+import { after } from '@/lib/after';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -36,11 +38,30 @@ export async function GET(req: NextRequest) {
 
   try {
     await ensureSearchContracts();
+    const startedAt = Date.now();
     const result = await runSearch({ intent: q, limit, surface: 'rest' });
+    after(() => recordSearchEvent({
+      userId: apiKeyUserId,
+      sessionId: `${ip.slice(0, 8)}:${Date.now().toString(36)}`,
+      interface: 'rest',
+      intentText: q,
+      intentClass: 'action',
+      resultCount: result.results.length,
+      resultServers: result.results.map(s => s.name),
+      topServer: result.results[0]?.name ?? null,
+      topConfidence: result.results[0]?.confidence ?? null,
+      cacheHit: result.cacheHit,
+      noToolNeeded: false,
+      searchLatencyMs: result.searchLatencyMs,
+      totalLatencyMs: Date.now() - startedAt,
+    }));
     return NextResponse.json({
       query: q,
+      intent_hash: result.intentHash,
       count: result.results.length,
       results: result.results,
+      cache_hit: result.cacheHit,
+      search_latency_ms: result.searchLatencyMs,
       message: result.results.length === 0 ? 'No servers found. Try broader terms.' : undefined,
     });
   } catch (err: any) {

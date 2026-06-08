@@ -1,14 +1,15 @@
 # Relay Architecture System Map
 
 Last updated: 2026-05-11 (Agent-centric Relay Local clarification)
-Status: Historical deep architecture overview. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
+Status: Historical deep architecture overview. Current MVP scope lives in `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md`.
 
-Canonical MVP reference: [`PROTOTYPE_IMPLEMENTATION_PLAN.md`](PROTOTYPE_IMPLEMENTATION_PLAN.md)
+Canonical MVP references: [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md), [`RUNTIME_INVOKE_ARCHITECTURE.md`](RUNTIME_INVOKE_ARCHITECTURE.md)
+Canonical search reference: [`SEARCH_PIPELINE.md`](SEARCH_PIPELINE.md)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Presentation-oriented flow view: [`ARCHITECTURE_FLOWS.md`](ARCHITECTURE_FLOWS.md)
 Companion Excalidraw starter scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw) (importable into Excalidraw and usable as the base canvas in Obsidian)
 
-This file preserves the broader hosted-proxy architecture history. It is designed to support review, diagramming, and visual modeling work. When it conflicts with `PROTOTYPE_IMPLEMENTATION_PLAN.md`, the prototype plan wins.
+This file preserves the broader hosted-proxy architecture history. It is designed to support review, diagramming, and visual modeling work. When it conflicts with current MVP docs, `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md` win.
 
 ## 1. Scope
 
@@ -36,7 +37,7 @@ Clients / agents / admins / cron
   -> rate limits + cache
   -> one of:
        A. runtime search
-       B. Relay Local invocation (prototype) or guarded hosted invocation (legacy)
+       B. Relay Local invocation (MVP) or guarded hosted invocation (legacy)
        C. ingest / maintenance job
   -> Supabase-backed state changes
   -> analytics / audit / trust updates
@@ -55,7 +56,7 @@ What it does:
 
 - exposes Relay itself as a standard MCP server
 - supports `initialize`, `tools/list`, `tools/call`, `ping`
-- Cloud MCP exposes only two model-facing tools in the prototype:
+- Cloud MCP exposes only two model-facing tools in the MVP:
   - `search_tools`
   - `get_server_manifest`
 
@@ -102,7 +103,8 @@ What it does:
 
 - triggers ingest and maintenance jobs
 - records operational runs into database tracking tables
-- authenticates cron execution via `Authorization: Bearer <CRON_SECRET>` or Vercel's `x-vercel-cron: 1`
+- authenticates cron execution via `Authorization: Bearer <CRON_SECRET>`
+- automatic Vercel and GitHub Actions schedules are paused for the MVP; manual dispatch remains available
 
 ## 4. Identity, Auth, And Caller Resolution
 
@@ -178,8 +180,7 @@ Flow:
 
 1. cron routes call `isCronAuthorized(req)`
 2. manual or local callers can use `Authorization: Bearer <CRON_SECRET>`
-3. Vercel scheduled invocations can use `x-vercel-cron: 1`
-4. unauthorized job triggers are rejected before ingest or maintenance work starts
+3. unauthorized job triggers are rejected before ingest or maintenance work starts
 
 ## 5. Rate Limiting And Cache Layers
 
@@ -526,7 +527,7 @@ Primary code:
 
 ### 11.1 Trigger flow
 
-1. cron or admin triggers ingest
+1. manual cron, local script, or admin route triggers ingest
 2. `runIngest(source)` creates an `ingest_runs` row
 3. source-specific fetchers collect upstream metadata
 4. `upsertServers(...)` processes each candidate
@@ -577,8 +578,9 @@ Per server:
 9. enrich weak descriptions from README if needed
 10. compute trust score using `computeTrustScore()` with `invokeCount: 0, successCount: 0` at ingest time — Bayesian prior gives a ~8pt floor ("unproven"), not zero ("broken"). Score grows as the uptime cron integrates real invoke data from `intent_server_mappings`
 11. derive server status (`active` or `pending_review` for high-severity CVEs)
-12. insert or update canonical `servers` row
-13. write `scan_results` if needed
+12. skip primary-source candidates that still have no tool names and no tool schemas
+13. insert or update canonical `servers` row
+14. write `scan_results` if needed
 
 ### 11.4 Why ingest matters architecturally
 
@@ -681,7 +683,7 @@ Primary tables / code:
 
 Purpose:
 
-- allow hosted cron and GitHub Actions execution
+- allow manual cron and GitHub Actions workflow-dispatch execution
 - persist operational outcomes for the admin surface
 - keep maintenance jobs observable
 

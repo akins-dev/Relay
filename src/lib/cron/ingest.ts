@@ -45,7 +45,7 @@ interface SourceConfig {
   key:     SourceKey;
   label:   string;
   tier:    'primary' | 'enrichment';
-  fetcher: () => Promise<any[]>;
+  fetcher: (svc?: any) => Promise<any[]>;
 }
 
 const SOURCES: SourceConfig[] = [
@@ -99,7 +99,7 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
       let servers: any[];
 
       try {
-        servers = await src.fetcher();
+        servers = await src.fetcher(svc);
       } catch (err) {
         log.error(`ingest:${src.key}`, 'Fetch failed', err);
         results[src.key] = { added: 0, updated: 0, skipped: 0, rejected: 0, errors: [String(err)] };
@@ -107,7 +107,7 @@ export async function runIngest(source: SourceInput = 'all', options: RunIngestO
       }
 
       const fetchElapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${fetchElapsed}s → upserting...`);
+      log.info(`ingest:${src.key}`, `Fetched ${servers.length} servers in ${fetchElapsed}s -> upserting...`);
 
       try {
         results[src.key] = await upsertServers(servers, svc, { mode });

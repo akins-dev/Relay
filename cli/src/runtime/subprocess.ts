@@ -39,7 +39,8 @@ export interface McpSubprocess {
  * Spawn a child process for a downstream MCP server.
  *
  * The child receives the parent's environment (so downstream credentials
- * like GITHUB_TOKEN are available) plus any overrides.
+ * like GITHUB_TOKEN are available when the manifest declares them. Relay passes
+ * only the environment provided by the caller plus a minimal safe runtime set.
  */
 export function spawnMcpServer(opts: SpawnOptions): McpSubprocess {
   const [cmd, ...args] = opts.command;
@@ -51,7 +52,7 @@ export function spawnMcpServer(opts: SpawnOptions): McpSubprocess {
 
   const child = spawn(cmd, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, ...opts.env },
+    env: opts.env,
     // Don't let the child survive if the parent is killed
     detached: false,
   });

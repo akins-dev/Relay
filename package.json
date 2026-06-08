@@ -10,10 +10,9 @@
     "db:types": "npx supabase gen types typescript --linked > src/types/supabase.ts",
     "test": "jest --testPathPattern=__tests__",
     "test:watch": "jest --watch",
-    "prototype:server": "node prototype/fake-mcp-server.mjs",
-    "prototype:seed": "node prototype/seed-fixtures.mjs",
-    "prototype:smoke": "node prototype/smoke-test.mjs",
-    "check:connections": "npx tsx src/scripts/pre-ingest-check.ts"
+    "test:benchmark": "jest --testPathPattern='benchmark-score|search-quality' --runInBand",
+    "benchmark:eval": "npx tsx src/scripts/run-benchmark-eval.ts",
+    "ingest:local": "npx tsx src/scripts/run-ingest-local.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

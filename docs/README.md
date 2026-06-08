@@ -14,26 +14,32 @@ This directory is the project's technical source of truth.
   A single-canvas Excalidraw scene for the full system workflow, importable into Excalidraw or Obsidian.
 - `DELIVERY_ROADMAP.md`
   The canonical sprint-by-sprint delivery plan. Detailed sprint scope should live here, not in architecture narratives.
-- `PROTOTYPE_IMPLEMENTATION_PLAN.md`
-  The canonical current MVP scope: Relay Cloud control plane, Relay Local runtime, search, manifests, CLI, and local MCP server mode.
+- `SEARCH_PIPELINE.md`
+  Canonical intent search pipeline: indexing, RRF, `runSearch`, metrics, and feedback loop.
+- `SEARCH_IMPLEMENTATION_PLAN.md`
+  Phased search quality tasks, test matrix, and exit criteria.
+- `LAUNCH_AND_PUBLIC_TESTING.md`
+  Checklist to deploy Relay and run public agent/CLI testing.
 - `MIGRATION_LEDGER.md`
   The canonical ledger for numbered Supabase migrations and retired schema objects.
 - `RATE_LIMITS.md`
   The canonical reference for exact enforced rate limits, keying, and configuration behavior.
 - `SECURITY.md`
   Focused security and trust-model reference.
+- `RUNTIME_INVOKE_ARCHITECTURE.md`
+  Local-first invoke flow, protections, MVP gaps, and target runtime architecture.
 - `DEVELOPMENT.md`
   Local setup and contributor workflow.
 - `TESTING_GUIDE.md`
   Practical test paths for the MVP and local verification.
-- `PROTOTYPE_GUIDE.md`
-  Deterministic fixture-based prototype workflow.
 - `DECISION_LOG.md`
   Append-only architecture decision log. New decisions are added; old decisions are never deleted.
 - `CHANGELOG.md`
   Append-only project evolution log. Captures what changed and when.
 - `articles/RELAY_AGENT_CENTRIC_RUNTIME_DISCOVERY.md`
-  Draft publication-ready technical article/essay for external sharing.
+  External positioning: runtime discovery vs registry catalogs.
+- `articles/SEARCH_INTENT_AND_MEASUREMENT.md`
+  How Relay maps intent to tools and how we measure precision.
 
 ## Update Contract
 
@@ -49,11 +55,13 @@ When implementation changes touch any of the areas below, these docs should be u
 
 ## How To Use This Set
 
-1. Start with `PROTOTYPE_IMPLEMENTATION_PLAN.md` to understand the current MVP scope.
-2. Read `DELIVERY_ROADMAP.md` for the active delivery sequence.
-3. Use `MIGRATION_LEDGER.md` before adding or reversing database schema.
-4. Read `TECHNICAL_BACKBONE.md` for the broader technical history.
-5. Read `DECISION_LOG.md` and `CHANGELOG.md` to understand why the system changed.
+1. Start with `DELIVERY_ROADMAP.md` to understand the current MVP scope.
+2. Read `SEARCH_PIPELINE.md` for discovery/search/invoke architecture.
+3. Read `RUNTIME_INVOKE_ARCHITECTURE.md` for local execution behavior.
+4. Use `MIGRATION_LEDGER.md` before adding or reversing database schema.
+5. Read `TECHNICAL_BACKBONE.md` for broader technical history.
+6. Read `DECISION_LOG.md` and `CHANGELOG.md` to understand why the system changed.
+7. Use `LAUNCH_AND_PUBLIC_TESTING.md` when preparing a public test or release.
 
 ## Conflict Resolution
 

@@ -48,7 +48,8 @@ export { fetchGlamaServers }          from './glama';
 export { fetchMcpDirectoryServers }   from './mcp_directory';
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
-export { upsertServers }              from './pipeline';
+export { upsertServers, prefetchExistingServers } from './pipeline';
+export type { ExistingLookup }                     from './pipeline';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export {

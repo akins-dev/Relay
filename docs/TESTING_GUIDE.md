@@ -1,6 +1,6 @@
 # Testing Guide
 
-Last updated: 2026-04-24
+Last updated: 2026-06-08
 
 This guide is the fastest path to testing the MVP without waiting on a huge live ingest before you learn anything.
 
@@ -25,23 +25,26 @@ Run the baseline checks first:
 ```bash
 npx tsc --noEmit
 npm test -- --runInBand
+npm run test:benchmark
 ```
 
 Expected today:
 
-- `4` test suites passed
-- Tests passed (run `npm test` to see current count — increased from Sprint 2 baseline of ~90 with behavioral trust suite added in migration 032)
+- All `__tests__` suites pass (including `search-quality` and `benchmark-score`)
+- `test:benchmark` runs without Supabase (pure scoring, trim, classifier, manifest)
 
-## 2. Know the cron cadence
+## 2. Know the cron state
 
-Current scheduled jobs from `vercel.json`:
+Automatic cron is paused for the MVP.
 
-- ingest all sources: daily at `02:00 UTC`
-- uptime check: every `15 minutes`
-- schema drift: every `6 hours`
-- daily call reset: `00:00 UTC`
+Current state:
 
-If you were thinking of a 5-hour check, that is not the current schedule. The drift check is `6 hours`.
+- `vercel.json` has no `crons` block.
+- `.github/workflows/cron.yml` has no `schedule` block.
+- Cron API routes and CLI scripts still exist for manual testing.
+- Cron route auth requires `Authorization: Bearer <CRON_SECRET>`.
+
+Use GitHub Actions `workflow_dispatch` or the local scripts when you intentionally want ingest, uptime, schema drift, or counter reset work to run.
 
 ## 3. Understand when you need a force reprocess
 
@@ -100,29 +103,36 @@ Why this order:
 
 ## 5. Trigger ingest locally
 
-One source at a time:
+Preferred local/GitHub Actions path:
 
 ```bash
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"official"}'
+LOCAL_INGEST_CONCURRENCY=20 \
+LOCAL_INGEST_PROGRESS_EVERY=25 \
+OFFICIAL_REGISTRY_TIMEOUT_MS=60000 \
+npm run ingest:local -- all --full
 ```
 
-Then repeat with:
-
-- `smithery` (if key configured)
-- `glama`
-- `mcp_directory`
-
-Full ingest:
+For a smaller first run:
 
 ```bash
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"source":"all"}'
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official --full
 ```
+
+This path does not use a Postgres queue. It fetches sources and calls `upsertServers()` directly with local concurrency. Sandbox extraction is separately capped at 3 concurrent requests inside the ingest pipeline.
+
+Use `--full` for primary-source population. Under the no-tool guard, `catalog` mode will skip Official rows unless another source already provided tool names or schemas.
+
+Use source-specific local runs when isolating failures:
+
+```bash
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- official --full
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- smithery --full
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- enrich
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- glama
+LOCAL_INGEST_CONCURRENCY=5 npm run ingest:local -- mcp_directory
+```
+
+The safe default for full local/GitHub Actions runs is `40`. The runner caps `LOCAL_INGEST_CONCURRENCY` at `100`; `1000` concurrent requests is not supported because it can overwhelm Supabase, upstream APIs, and the Node process before it improves throughput. The `enrich` source runs `glama` and `mcp_directory` only.
 
 What to inspect after each source:
 
@@ -130,10 +140,11 @@ What to inspect after each source:
 - `/admin` operations
 - row counts in `servers`
 - whether `transport`, `proxy_available`, `tools`, `tool_schemas`, `description_quality`, `scan_status`, and `trust_score` look sane
+- confirm new primary-source rows have at least one tool name or tool schema
 
 ## 6. Trigger the operational jobs manually
 
-After ingest, run the cron-backed jobs manually once so you are not waiting on the real schedule.
+After ingest, run the cron-backed jobs manually once only when you want to validate them. There is no automatic schedule right now.
 
 ```bash
 curl http://localhost:3000/api/cron/uptime-check \
@@ -159,7 +170,7 @@ This validates:
 
 ## 7. MVP manual product test
 
-After you have ingested at least `official` and `github`, test the MVP in this order.
+After you have ingested at least `official` and `smithery` if your key is configured, test the MVP in this order.
 
 ### A. MCP initialize
 
@@ -212,18 +223,52 @@ Keep:
 - `search_event_id`
 - `intent`
 
+If this returns `SEARCH_RPC_CONTRACT_ERROR` with a statement timeout, apply the latest search migration. The current hot-path migration is:
+
+```text
+supabase/migrations/051_restore_capability_verbs_in_search.sql
+```
+
+This migration keeps the bounded provider-aware search path, guards short generic intents from broad loose-OR timeout paths, and restores registry-relevant capability verbs in trigram matching.
+
 ### D. REST search sanity check
 
 ```bash
 curl -s 'http://localhost:3000/api/servers/search?q=email&limit=5'
 ```
 
+### E. Relay Local MCP lifecycle
+
+Build the CLI, then run a direct stdio JSON-RPC lifecycle check:
+
+```bash
+cd cli && npm run build && cd ..
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n{"jsonrpc":"2.0","id":3,"method":"ping"}\n' \
+  | node cli/bin/relay.mjs serve
+```
+
 Expected:
 
-- no RPC/signature crash
-- usable results
+- `initialize` returns instructions
+- `tools/list` returns `search_tools`, `get_server_manifest`, and `invoke_tool`
+- `ping` returns an empty result
 
-### E. Manifest lookup
+### F. Relay Local against local Cloud
+
+After the Next app is running:
+
+```bash
+RELAY_API_URL=http://localhost:3000 \
+node cli/bin/relay.mjs search "create a GitHub issue from a feature branch" --limit 3
+```
+
+Expected:
+
+- results are returned from local Cloud
+- explicit named-provider intents prefer the named provider when available
+- no `SEARCH_RPC_CONTRACT_ERROR`
+
+### G. Manifest lookup
 
 ```bash
 curl -s http://localhost:3000/api/mcp-server \
@@ -247,9 +292,9 @@ Expected:
 - env requirements if available
 - tool schemas or tool names
 
-### F. Relay Local invocation
+### H. Relay Local invocation
 
-Cloud MCP does not expose `invoke_tool` in the prototype. Local invocation belongs to Relay Local:
+Cloud MCP does not expose `invoke_tool` in the MVP. Local invocation belongs to Relay Local:
 
 ```bash
 relay info sendgrid-mail
@@ -273,21 +318,60 @@ Use `source="all"` only when you want one of these:
 
 For daily development, targeted source ingest is faster and gives clearer failure isolation.
 
-## 9. Recommended MVP testing sequence
+## 9. Search benchmark (precision)
+
+Offline (CI-safe):
+
+```bash
+npm run test:benchmark
+```
+
+Live catalog (requires Supabase env + ingest):
+
+```bash
+npm run benchmark:eval
+# writes benchmark/reports/latest.md
+```
+
+Metrics: Server-P@1, Server-P@3, Tool-P@1, Runnable-P@1, knowledge deflection. See `docs/SEARCH_PIPELINE.md`.
+
+Optional CI gate:
+
+```bash
+BENCHMARK_MIN_SERVER_P1=0.5 npm run benchmark:eval
+```
+
+## 10. Search evaluation reporting
+
+Professional evaluation reports should include more than aggregate accuracy:
+
+- dataset version and catalog snapshot
+- migration/search version
+- action versus knowledge split
+- strata such as lexical easy, lexical hard, conversational, and multi-valid
+- P@1, P@3, tool precision, runnable precision, and knowledge deflection
+- top-result miss lists
+- known limitations and product tradeoffs
+
+Use `benchmark/reports/latest.md` as the local evaluation card and keep per-run JSON files for auditability.
+
+## 11. Recommended MVP testing sequence
 
 Use this exact order:
 
 1. `npx tsc --noEmit`
 2. `npm test -- --runInBand`
-3. start local app
-4. ingest `official`
-5. ingest `smithery` if key configured (exercises sandbox path)
-6. ingest `glama` (enrichment — depends on step 4/5 rows)
-7. run manual uptime check (validates trust recomputation with behavioral ISM data)
-8. run manual schema drift
-9. test `search_tools`
-10. test `get_server_manifest`
-11. test Relay Local `relay info` / `relay invoke` once implemented
-12. only then run `source="all"` if you want scale validation
+3. `npm run test:benchmark`
+4. start local app
+5. ingest `official`
+6. ingest `smithery` if key configured (exercises sandbox path)
+7. ingest `glama` (enrichment — depends on step 5/6 rows)
+8. `npm run benchmark:eval` — record Server-P@1 in report
+9. run manual uptime check only if you want to validate trust recomputation with behavioral ISM data
+10. run manual schema drift only if you want to validate suspension behavior
+11. test `search_tools`
+12. test `get_server_manifest`
+13. test Relay Local `relay info` / `relay invoke`
+14. only then run `source="all"` if you want scale validation
 
 That is the fastest path to confidence without paying the full cost of a live full-registry ingest on every iteration.

@@ -29,6 +29,7 @@ export function registerSearchCommand(program: Command): void {
         // Format for agent consumption: compact, actionable results
         const formatted = {
           intent,
+          intent_hash: response.intent_hash,
           result_count: response.results?.length ?? 0,
           results: (response.results ?? []).map((s) => ({
             name: s.name,

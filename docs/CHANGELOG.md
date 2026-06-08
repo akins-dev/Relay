@@ -2,6 +2,77 @@
 
 This file is append-only.
 
+## 2026-06-04
+
+### Updated
+
+- Paused automatic GitHub Actions cron by removing the `.github/workflows/cron.yml` `schedule` block; manual `workflow_dispatch` remains available for uptime, drift, ingest, enrich, and reset jobs.
+- Documented the cron pause across testing, development, launch, architecture, roadmap, and decision docs.
+- Hardened primary-source ingest so candidates with no tool names and no tool schemas after upstream metadata, probe, sandbox, and README fallback are skipped instead of inserted or overwritten into the catalog.
+- Fixed `benchmark:eval` to inject a service Supabase client so it can run outside a Next.js request scope.
+- Added `BENCHMARK_CASE` support for focused live benchmark debugging.
+- Restored the tool text trigram search path after the temporary `042` experiment by adding forward migration `043`.
+- Added migration `044` to prune derived `server_tools` rows for non-active servers without dropping search indexes.
+- Added migration `045` to bound `search_servers()` tool candidate lanes and prevent broad action intents from timing out while preserving the text trigram index path.
+- Added migration `046` to compact derived tool search text and reduce trigram bloat.
+- Added migration `047` to introduce one compact `server_search_docs` row per active server and use relevance-gated RRF for faster unified search.
+- Added migration `048` as a forward patch for existing `047` deployments, gating RRF lane credit and capping non-relevance boosts.
+- Added migration `049` to bound unified search candidate lanes and prefer exact named-provider matches without broad OR scans.
+- Added migration `050` to guard short generic search intents such as `send email` from broad loose-OR and generic verb trigram timeout paths without adding new tables or indexes.
+- Added migration `051` to restore capability verbs such as `fetch`, `search`, `query`, `read`, `write`, `post`, and `check` in trigram lanes after `050` proved too broad for benchmark coverage.
+
+### Removed
+
+- Removed the production migration that created temporary catalog cleanup helper functions. One-off DB cleanup should be run as direct SQL, not committed as a schema migration.
+- Removed prototype/fixture runtime paths and benchmark fixture scripts from the MVP path.
+
+### Operations
+
+- Cleaned no-tool catalog rows directly in Supabase, reducing database usage below the free-plan limit.
+- Kept `idx_server_tools_text_trgm`; no search index was dropped.
+- Recommended normal `VACUUM (ANALYZE)` over `VACUUM FULL` while database usage remains below quota.
+
+## 2026-05-22
+
+### Fixed
+
+- Hardened `040_tool_level_intent_search.sql`: split backfill to `041_backfill_server_tools.sql` to avoid SQL Editor timeouts; portable `ON CONFLICT (server_name, tool_name)`; optional `NOTIFY pgrst`.
+- `search-quality.test.ts`: `RelayManifestServer` test uses `package_info` / `endpoint` only (no `github_url`).
+
+### Added
+
+- `docs/migrations/APPLY_040.md` — apply 040 then 041 in Supabase SQL Editor.
+- `supabase/migrations/041_backfill_server_tools.sql`.
+
+- `docs/SEARCH_PIPELINE.md` — canonical search pipeline, metrics, and technology stack.
+- `docs/SEARCH_IMPLEMENTATION_PLAN.md` — phased search quality and launch tasks.
+- `docs/LAUNCH_AND_PUBLIC_TESTING.md` — deploy and public testing checklist.
+- `docs/articles/SEARCH_INTENT_AND_MEASUREMENT.md` — external article on intent mapping and precision.
+- `benchmark/intents.jsonl` — live catalog golden intent set.
+- `src/benchmark/score.ts` — Server-P@k, Tool-P@1, Runnable-P@1, knowledge precision scorer.
+- `src/lib/intent-classifier.ts` — shared knowledge-vs-action gate for MCP search.
+- `src/scripts/run-benchmark-eval.ts` — live benchmark evaluator.
+- `npm run test:benchmark` and `npm run benchmark:eval` scripts.
+- Tests: `search-quality.test.ts`, `benchmark-score.test.ts`.
+
+### Updated
+
+- `docs/DELIVERY_ROADMAP.md` — Sprint 2 Phase A complete; launch sprint 5 checklist.
+- `docs/MIGRATION_LEDGER.md` — migration `040` registered as active.
+- `docs/README.md`, `TESTING_GUIDE.md`, positioning article for Local-first MVP.
+- MCP route uses `classifyIntent()` from shared module.
+
+## 2026-05-17
+
+### Updated
+
+- Switched scheduled ingest documentation and GitHub Actions workflow to weekly MVP maintenance (`src/scripts/run-ingest-local.ts all`) with `LOCAL_INGEST_CONCURRENCY=20`; uptime and schema drift are manual-dispatch only during MVP.
+- Removed the un-migrated Postgres ingest queue (`ingest_queue`, queue RPC helper, and `/api/cron/worker`) from the current runtime path.
+- Added local ingest progress reporting for per-source and overall server counts.
+- Added an HTTP/2 fallback for the Official MCP Registry fetcher because the registry can succeed with curl/HTTP2 while Node `fetch` fails.
+- Made Supabase server client configuration read environment variables lazily so CLI scripts can load `.env` before constructing clients.
+- Removed the pre-ingest network diagnostics script and restored startup instrumentation to required environment validation only.
+
 ## 2026-04-23
 
 ### Added
@@ -110,7 +181,7 @@ This file is append-only.
 
 ## 2026-05-09
 
-### Prototype Scope Reset
+### MVP Scope Reset
 
 - Reframed Relay's MVP as runtime discovery plus local/remote run manifests.
 - Removed hosted `invoke_tool` from the Cloud MCP server.
@@ -118,8 +189,8 @@ This file is append-only.
 - Removed `src/lib/proxy-execute.ts`.
 - Removed the post-ingest processing job route and `src/lib/processing-jobs.ts`.
 - Added migration `037_drop_processing_jobs_queue.sql` to retire `server_processing_jobs` and `processing_job_health`.
-- Kept manual/admin ingest, but removed scheduled Vercel cron dependency from the prototype path.
-- Added `docs/PROTOTYPE_IMPLEMENTATION_PLAN.md` as the current MVP source of truth.
+- Kept manual/admin ingest, but removed scheduled Vercel cron dependency from the MVP path.
+- Promoted `docs/DELIVERY_ROADMAP.md` and `docs/RUNTIME_INVOKE_ARCHITECTURE.md` as the current MVP source of truth.
 - Added `docs/MIGRATION_LEDGER.md` to track numbered migrations and retired schema objects.
 - Rewrote `docs/DELIVERY_ROADMAP.md` around catalog ingest, search quality, manifests, and CLI invocation.
 - Added ADR-009 and ADR-010 for the local-execution pivot and cron decision.

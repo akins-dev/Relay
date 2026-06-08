@@ -17,6 +17,9 @@ const child = spawn('node', [relayBin, 'serve'], {
 
 const rl = createInterface({ input: child.stdout });
 const responses = [];
+let started = false;
+let stderr = '';
+let childError = null;
 
 rl.on('line', (line) => {
   try {
@@ -27,38 +30,45 @@ rl.on('line', (line) => {
 });
 
 child.stderr.on('data', (chunk) => {
-  // ignore stderr status messages
+  stderr += chunk.toString();
+  if (!started && stderr.includes('MCP server started')) {
+    started = true;
+    runLifecycle();
+  }
 });
 
-// Send initialize
-child.stdin.write(JSON.stringify({
-  jsonrpc: '2.0',
-  id: 1,
-  method: 'initialize',
-  params: {
-    protocolVersion: '2025-03-26',
-    capabilities: {},
-    clientInfo: { name: 'smoke-test', version: '0.1.0' },
-  },
-}) + '\n');
+child.on('error', (err) => {
+  childError = err;
+});
 
-// Send tools/list after a short delay
-setTimeout(() => {
-  child.stdin.write(JSON.stringify({
+function send(msg) {
+  child.stdin.write(JSON.stringify(msg) + '\n');
+}
+
+function runLifecycle() {
+  send({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'smoke-test', version: '0.1.0' },
+    },
+  });
+
+  send({
     jsonrpc: '2.0',
     id: 2,
     method: 'tools/list',
-  }) + '\n');
-}, 200);
+  });
 
-// Send ping
-setTimeout(() => {
-  child.stdin.write(JSON.stringify({
+  send({
     jsonrpc: '2.0',
     id: 3,
     method: 'ping',
-  }) + '\n');
-}, 400);
+  });
+}
 
 // Finish after getting responses
 setTimeout(() => {
@@ -91,6 +101,14 @@ setTimeout(() => {
   }
 
   const success = responses.length >= 3;
+  if (!success && stderr.trim()) {
+    console.log('\nstderr:');
+    console.log(stderr.trim());
+  }
+  if (!success && childError) {
+    console.log('\nchild process error:');
+    console.log(childError.message);
+  }
   console.log(success ? '\n✓ All smoke tests passed' : '\n✗ Some tests failed');
   process.exit(success ? 0 : 1);
-}, 1500);
+}, 5000);

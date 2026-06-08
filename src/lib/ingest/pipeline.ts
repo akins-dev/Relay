@@ -20,7 +20,11 @@ import {
 } from './helpers';
 import { computeTrustScore } from '@/lib/security';
 import { fetchMCPPrimitives, buildSandboxCommand } from './legacy-bridge';
+import { Semaphore } from './semaphore';
 import { log } from '@/lib/logger';
+
+// Max 3 concurrent sandbox executions to prevent OOM
+const sandboxSemaphore = new Semaphore(3);
 
 const TAG = 'ingest:pipeline';
 
@@ -99,10 +103,84 @@ function deriveAuthType(
   return 'managed';
 }
 
+// ── Shared pre-fetch (call once, share across workers) ────────────────────────
+
+export interface ExistingLookup {
+  byName:     Map<string, any>;
+  bySmithery: Map<string, any>;
+  byOfficial: Map<string, any>;
+  byGlama:    Map<string, any>;
+  byGithub:   Map<string, any>;
+  byEndpoint: Map<string, any>;
+}
+
+/**
+ * Pre-fetch ALL existing servers into memory and build O(1) lookup Maps.
+ * 
+ * Why this is critical:
+ * 1. Eliminates N+1 DB Queries: In concurrent local runs, 50 workers would otherwise
+ *    each do a full-table `SELECT *` to check for existence, crashing the DB.
+ * 2. Powers "Resume" Capability: By having the full existing dataset in memory,
+ *    the pipeline can instantly feed the 3-Tier Skip Algorithm (timestamp/hash).
+ *    This allows a run of 8,000+ servers to skip already-ingested ones in milliseconds.
+ *
+ * IMPORTANT: Supabase silently caps .select() at 1000 rows by default.
+ * We paginate with .range() until an empty page is returned to guarantee
+ * the full table is loaded — without this, resume would fail after 1000 servers!
+ */
+export async function prefetchExistingServers(svc: any): Promise<ExistingLookup> {
+  const PAGE_SIZE = 1000;
+  const SELECT_COLS = 'id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at, status, scan_status, scan_issues, cve_issues, cve_scan_at';
+
+  const lookup: ExistingLookup = {
+    byName:     new Map(),
+    bySmithery: new Map(),
+    byOfficial: new Map(),
+    byGlama:    new Map(),
+    byGithub:   new Map(),
+    byEndpoint: new Map(),
+  };
+
+  let offset = 0;
+  let pageNum = 0;
+
+  while (true) {
+    pageNum++;
+    const { data: page, error } = await svc
+      .from('servers')
+      .select(SELECT_COLS)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) {
+      log.error(TAG, `Pre-fetch page ${pageNum} failed — stopping early`, error);
+      break;
+    }
+
+    if (!page || page.length === 0) break;
+
+    for (const row of page) {
+      if (row.name)        lookup.byName.set(row.name, row);
+      if (row.smithery_id) lookup.bySmithery.set(row.smithery_id, row);
+      if (row.official_id) lookup.byOfficial.set(row.official_id, row);
+      if (row.glama_id)    lookup.byGlama.set(row.glama_id, row);
+      if (row.github_url)  lookup.byGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
+      if (row.endpoint)    lookup.byEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
+    }
+
+    offset += PAGE_SIZE;
+
+    // If the page was smaller than PAGE_SIZE, we've reached the end
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  log.info(TAG, `Pre-fetched ${lookup.byName.size} existing servers into shared lookup (${pageNum} pages)`);
+  return lookup;
+}
+
 export async function upsertServers(
   servers: IngestServer[],
   svc: any,
-  options: { mode?: IngestMode } = {}
+  options: { mode?: IngestMode; existingLookup?: ExistingLookup } = {}
 ): Promise<IngestResult> {
   const mode = options.mode ?? 'full';
   const runHeavyChecks = mode === 'full';
@@ -144,35 +222,32 @@ export async function upsertServers(
   log.info(TAG, `  │  Sandbox:      ${runHeavyChecks && process.env.SANDBOX_URL ? 'ENABLED' : 'DISABLED'}`);
   log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 
-  // Batch pre-fetch existing servers (eliminates N+1 lookups)
-  // NOTE: transport is included so the enrichment-path deriveAuthType call at line ~451
-  // receives the real transport value, not undefined.
-  const { data: allExisting, error: prefetchErr } = await svc
-    .from('servers')
-    .select('id, name, source, endpoint, schema_hash, transport, smithery_id, official_id, glama_id, github_url, last_scanned_at, upstream_updated_at, status, scan_status, scan_issues, cve_issues, cve_scan_at');
+  // Use pre-supplied lookup maps (from concurrent local runner) or fetch inline (cron path).
+  let existingByName:     Map<string, any>;
+  let existingBySmithery: Map<string, any>;
+  let existingByOfficial: Map<string, any>;
+  let existingByGlama:    Map<string, any>;
+  let existingByGithub:   Map<string, any>;
+  let existingByEndpoint: Map<string, any>;
 
-  if (prefetchErr) {
-    log.error(TAG, 'Pre-fetch failed — treating all as new', prefetchErr);
+  if (options.existingLookup) {
+    existingByName     = options.existingLookup.byName;
+    existingBySmithery = options.existingLookup.bySmithery;
+    existingByOfficial = options.existingLookup.byOfficial;
+    existingByGlama    = options.existingLookup.byGlama;
+    existingByGithub   = options.existingLookup.byGithub;
+    existingByEndpoint = options.existingLookup.byEndpoint;
+    log.info(TAG, `Using shared lookup (${existingByName.size} existing). Processing ${servers.length} incoming.`);
+  } else {
+    const lookup = await prefetchExistingServers(svc);
+    existingByName     = lookup.byName;
+    existingBySmithery = lookup.bySmithery;
+    existingByOfficial = lookup.byOfficial;
+    existingByGlama    = lookup.byGlama;
+    existingByGithub   = lookup.byGithub;
+    existingByEndpoint = lookup.byEndpoint;
+    log.info(TAG, `Processing ${servers.length} incoming servers.`);
   }
-
-  // Build lookup indexes
-  const existingByName     = new Map<string, any>();
-  const existingBySmithery = new Map<string, any>();
-  const existingByOfficial = new Map<string, any>();
-  const existingByGlama    = new Map<string, any>();
-  const existingByGithub   = new Map<string, any>();
-  const existingByEndpoint = new Map<string, any>();
-
-  for (const row of allExisting ?? []) {
-    if (row.name)        existingByName.set(row.name, row);
-    if (row.smithery_id) existingBySmithery.set(row.smithery_id, row);
-    if (row.official_id) existingByOfficial.set(row.official_id, row);
-    if (row.glama_id)    existingByGlama.set(row.glama_id, row);
-    if (row.github_url)  existingByGithub.set(row.github_url.replace(/\.git$/, '').toLowerCase(), row);
-    if (row.endpoint)    existingByEndpoint.set(row.endpoint.replace(/\/$/, '').toLowerCase(), row);
-  }
-
-  log.info(TAG, `Pre-fetched ${existingByName.size} existing. Processing ${servers.length} incoming.`);
 
   for (let idx = 0; idx < servers.length; idx++) {
     const s = servers[idx];
@@ -206,6 +281,22 @@ export async function upsertServers(
       if (!isEnrichmentOnly && !s.endpoint && !s.github_url && transport === 'stdio') {
         result.skipped++;
         skipReasons['stdio_no_source'] = (skipReasons['stdio_no_source'] ?? 0) + 1;
+        continue;
+      }
+
+      const hasPackageInfo = Array.isArray(s.package_info) && s.package_info.length > 0;
+      const hasTools = Array.isArray(s.tools) && s.tools.length > 0;
+      if (
+        !isEnrichmentOnly &&
+        !s.endpoint &&
+        !s.github_url &&
+        !s.homepage_url &&
+        !hasPackageInfo &&
+        !hasTools &&
+        transport === 'unknown'
+      ) {
+        result.skipped++;
+        skipReasons['unresolvable_empty_server'] = (skipReasons['unresolvable_empty_server'] ?? 0) + 1;
         continue;
       }
 
@@ -243,7 +334,7 @@ export async function upsertServers(
         ? (Date.now() - new Date(existing.last_scanned_at).getTime()) / 3_600_000
         : Infinity;
 
-      if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 24) {
+      if (existing && existing.schema_hash === upstreamHash && hoursSinceScan < 168) {
         result.skipped++;
         skipReasons['unchanged'] = (skipReasons['unchanged'] ?? 0) + 1;
         continue;
@@ -269,8 +360,22 @@ export async function upsertServers(
       // (the source object is shared; mutation would corrupt subsequent passes).
       let resolvedTools: string[] = [...s.tools];
 
-      // Only probe HTTP servers that are not from enrichment-only sources
-      if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
+      // Skip probe/sandbox when upstream already provided full schemas.
+      // Smithery Phase 2 detail provides tool_schemas, resources, and prompts —
+      // probe/sandbox would only add protocolVersion/mcpCompliant (Grade C/D diagnostics).
+      // Skipping saves ~5-30s per server on a full ingest run.
+      const hasUpstreamSchemas = toolSchemas.length > 0
+        && toolSchemas.some(t => t.inputSchema && Object.keys(t.inputSchema).length > 0)
+        && (toolExtractionSource === 'smithery_detail' || toolExtractionSource === 'upstream_schemas');
+
+      if (hasUpstreamSchemas) {
+        // Carry forward resources/prompts from the upstream source (Smithery provides these)
+        mcpResources = Array.isArray(s.resources) ? s.resources : [];
+        mcpPrompts   = Array.isArray(s.prompts) ? s.prompts : [];
+        log.progress(TAG, idx, servers.length, s.name,
+          `skip probe/sandbox — ${toolExtractionSource} already has ${toolSchemas.length} tools with inputSchema`);
+      } else if (runHeavyChecks && !isEnrichmentOnly && proxyAvailable && s.endpoint) {
+        // Only probe HTTP servers that are not from enrichment-only sources
         log.progress(TAG, idx, servers.length, s.name, `probing ${s.endpoint.slice(0, 60)}...`);
         result.extraction_metrics!.probe_attempts++;
         const probeStart = Date.now();
@@ -300,6 +405,21 @@ export async function upsertServers(
           transport = primitives.transport;
           proxyAvailable = transport !== 'stdio' && Boolean(s.endpoint);
         }
+
+        // README fallback for failed probes — mirrors sandbox behavior.
+        // Many HTTP servers fail to probe (auth-gated, rate-limited, non-standard MCP)
+        // but their GitHub README documents the exact tools available.
+        if (toolSchemas.length === 0 && s.github_url) {
+          log.progress(TAG, idx, servers.length, s.name, 'probe returned 0 tools → README fallback...');
+          result.extraction_metrics!.readme_fallback_attempts = (result.extraction_metrics!.readme_fallback_attempts ?? 0) + 1;
+          toolSchemas = normalizeToolSchemas(await parseReadmeSchemas(s.github_url));
+          if (toolSchemas.length > 0) {
+            toolExtractionSource = 'readme_parsed';
+            result.extraction_metrics!.readme_fallback_success = (result.extraction_metrics!.readme_fallback_success ?? 0) + 1;
+            log.progress(TAG, idx, servers.length, s.name,
+              `README fallback ✓ ${toolSchemas.length} tools extracted`);
+          }
+        }
       } else if (runHeavyChecks && !isEnrichmentOnly && transport === 'stdio') {
         // Sandbox extraction attempt
         if (process.env.SANDBOX_URL && process.env.SANDBOX_AUTH_TOKEN && (s.github_url || s.smithery_id || s.package_info)) {
@@ -310,19 +430,15 @@ export async function upsertServers(
             let sandboxSucceeded = false;
             try {
               const sandboxStart = Date.now();
-              const req = await fetch(`${process.env.SANDBOX_URL}/extract`, {
+              const req = await sandboxSemaphore.run(() => fetch(`${process.env.SANDBOX_URL}/extract`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${process.env.SANDBOX_AUTH_TOKEN}`,
                 },
                 body: JSON.stringify(sandboxCommand),
-                // Hard cap: sandbox may cold-start on Render plus spend up to 180s
-                // connecting while npx/uvx downloads the package on a cold container.
-                // Without this, a hung sandbox blocks the entire ingest run indefinitely.
-                // Keep-alives now prevent Render from dropping this connection early!
                 signal: AbortSignal.timeout(Number(process.env.SANDBOX_EXTRACT_TIMEOUT_MS || 240_000)),
-              });
+              }));
               const sandboxMs = Date.now() - sandboxStart;
 
               if (req.ok) {
@@ -385,6 +501,15 @@ export async function upsertServers(
       // C3 fix: write to resolvedTools (local copy), never mutate the original s.tools.
       if (toolSchemas.length > 0) {
         resolvedTools = toolSchemas.map(t => t.name);
+      }
+
+      const hasResolvedTools = toolSchemas.some(t => t.name.trim().length > 0)
+        || resolvedTools.some(name => typeof name === 'string' && name.trim().length > 0);
+
+      if (!isEnrichmentOnly && !hasResolvedTools) {
+        result.skipped++;
+        skipReasons['no_tools_after_extraction'] = (skipReasons['no_tools_after_extraction'] ?? 0) + 1;
+        continue;
       }
 
       // FAULT-05 fix: recompute hash AFTER tools are synced from probe/sandbox.
@@ -605,6 +730,14 @@ export async function upsertServers(
         }
         result.updated++;
       } else {
+        // Enrichment-only sources (glama, mcp_directory) must only enrich existing primary records.
+        // They should NEVER create new standalone server records.
+        if (isEnrichmentOnly) {
+          result.skipped++;
+          skipReasons['enrichment_only_new_record'] = (skipReasons['enrichment_only_new_record'] ?? 0) + 1;
+          continue;
+        }
+
         const insertData: Record<string, any> = { ...serverData };
         if (systemAuthorId) insertData.author_id = systemAuthorId;
 
@@ -712,6 +845,7 @@ export async function upsertServers(
     log.info(TAG, `  ├─────────────────────────────────────────────┤`);
     log.info(TAG, `  │  Probe:    ${result.extraction_metrics.probe_attempts} attempted → ${result.extraction_metrics.probe_success} success`);
     log.info(TAG, `  │  Sandbox:  ${result.extraction_metrics.sandbox_attempts} attempted → ${result.extraction_metrics.sandbox_success} success`);
+    log.info(TAG, `  │  README:   ${result.extraction_metrics.readme_fallback_attempts ?? 0} attempted → ${result.extraction_metrics.readme_fallback_success ?? 0} success`);
   }
   log.info(TAG, `  └─────────────────────────────────────────────┘\n`);
 

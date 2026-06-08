@@ -142,7 +142,7 @@ export default function SecretsPage() {
           <div>
             <h1 className="mb-1 text-2xl font-bold tracking-tight">Stored Credentials</h1>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              Store API keys for future Relay Local secret resolution. The prototype still prefers local environment variables.
+              Store API keys for future Relay Local secret resolution. The MVP still prefers local environment variables.
             </p>
           </div>
           <Button size="sm" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }} className="shrink-0 gap-1.5">

@@ -57,6 +57,7 @@ export interface RunSearchOptions {
   limit:      number;
   surface:    'mcp' | 'rest';
   intentHash?: string; // pre-computed if available
+  supabaseClient?: any; // Non-request scripts can inject a service client.
 }
 
 export interface RunSearchResult {
@@ -80,7 +81,7 @@ export interface RunSearchResult {
 export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult> {
   const { intent, limit, surface } = opts;
   const intentHash = opts.intentHash ?? hashIntent(intent);
-  const supabase   = createClient();
+  const supabase   = opts.supabaseClient ?? createClient();
 
   // ── Stage 1: Intent cache ─────────────────────────────────────────────────────
   const cached = getIntentCache(intentHash);
@@ -121,6 +122,7 @@ export async function runSearch(opts: RunSearchOptions): Promise<RunSearchResult
     .rpc('search_servers', {
       query_text:    intent,
       result_limit:  limit,
+      include_stdio: true,
       p_intent_hash: intentHash,   // S12: intent-boost LATERAL inside the function
     });
   const searchLatencyMs = Date.now() - searchStart;

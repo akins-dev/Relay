@@ -203,42 +203,6 @@ export function HomeClient({ stats, featured }: { stats: GlobalStats; featured: 
         </div>
       </AnimatedSection>
 
-      {/* ── Industry Firsts Section (The 10000x Brag) ── */}
-      <section className="page py-16 flex justify-center">
-        <AnimatedSection className="w-full max-w-5xl rounded-[32px] border border-brand-DEFAULT/30 bg-brand-DEFAULT/5 backdrop-blur-xl p-8 sm:p-12 text-center shadow-[0_0_50px_rgba(79,70,229,0.15)] relative overflow-hidden">
-           <div className="absolute top-0 right-0 w-96 h-96 bg-brand-DEFAULT opacity-20 blur-[120px] pointer-events-none rounded-full" />
-           <AnimatedLabel className="inline-flex items-center gap-2 mb-6 border-brand-DEFAULT/40 bg-brand-DEFAULT/10 px-4 py-1.5 rounded-full text-brand-signal font-mono text-sm uppercase tracking-widest">
-             Industry Firsts
-           </AnimatedLabel>
-           <h2 className="heading-display text-3xl sm:text-5xl font-medium text-white leading-tight mb-12">
-             The only registry built for <span className="pr-1 text-transparent bg-clip-text bg-gradient-to-r from-brand-signal to-brand-DEFAULT drop-shadow-md">runtime.</span>
-           </h2>
-           <div className="grid md:grid-cols-3 gap-8 text-left relative z-10">
-             <AnimatedSection delay={0.1} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-signal/30 transition-colors">
-                <div className="text-brand-signal font-mono text-xs font-bold uppercase tracking-wider">01. Discovery</div>
-                <h3 className="text-white text-xl font-medium tracking-tight">Search by intent</h3>
-                <p className="text-brand-steel text-[15px] leading-relaxed">
-                  We are the industry&apos;s first runtime MCP discovery tool. Agents describe the capability they need, and we instantly return mathematically matching tools.
-                </p>
-             </AnimatedSection>
-             <AnimatedSection delay={0.2} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-brand-trust/30 transition-colors">
-                <div className="text-brand-trust font-mono text-xs font-bold uppercase tracking-wider">02. Security</div>
-                <h3 className="text-white text-xl font-medium tracking-tight">Robust trust layer</h3>
-                <p className="text-brand-steel text-[15px] leading-relaxed">
-                  A highly robust security layer governs every tool invocation, handling custom policy validation, zero-knowledge credential injection, and strict rate limits.
-                </p>
-             </AnimatedSection>
-             <AnimatedSection delay={0.3} className="space-y-3 p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#38bdf8]/30 transition-colors">
-                <div className="text-[#38bdf8] font-mono text-xs font-bold uppercase tracking-wider">03. Precision</div>
-                <h3 className="text-white text-xl font-medium tracking-tight">Absolute accuracy</h3>
-                <p className="text-brand-steel text-[15px] leading-relaxed">
-                  The first registry to dynamically sandbox and extract mathematically perfect primitive data for <code className="text-[12px] bg-white/10 px-1 rounded">stdio</code> servers, regardless of whether the developer wrote a good Readme.
-                </p>
-             </AnimatedSection>
-           </div>
-        </AnimatedSection>
-      </section>
-
       {/* ── {BRAND.name} Flow Section ── */}
       <section className="page py-14 sm:py-24 border-b border-[rgba(255,255,255,0.05)] flex flex-col items-center">
 

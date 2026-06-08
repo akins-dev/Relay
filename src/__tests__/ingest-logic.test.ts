@@ -3,7 +3,13 @@ jest.mock('dns/promises', () => ({
 }));
 
 import { parseGitHubUrl, resolveSafeRedirectUrl } from '../lib/utils';
-import { buildSandboxCommand, detectTransport, parseReadmeDescription, resolveSmitheryTransport } from '../lib/ingest';
+import {
+  buildSandboxCommand,
+  detectTransport,
+  parseReadmeDescription,
+  resolveSmitheryTransport,
+  upsertServers,
+} from '../lib/ingest';
 
 describe('ingest hardening logic', () => {
   const originalFetch = global.fetch;
@@ -87,6 +93,56 @@ describe('ingest hardening logic', () => {
     await expect(
       resolveSafeRedirectUrl('/messages?session=abc', 'https://example.com/sse')
     ).resolves.toBe('https://example.com/messages?session=abc');
+  });
+
+  test('upsertServers skips primary-source rows that still have no tools after extraction', async () => {
+    const writes: string[] = [];
+    const svc = {
+      from(table: string) {
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              limit: () => ({
+                maybeSingle: async () => ({ data: { id: '00000000-0000-0000-0000-000000000001' }, error: null }),
+              }),
+            }),
+          };
+        }
+
+        writes.push(table);
+        throw new Error(`unexpected write/read on ${table}`);
+      },
+    };
+
+    const result = await upsertServers([{
+      name: 'empty-primary-server',
+      display_name: 'Empty Primary Server',
+      description: 'A listing with no tool metadata.',
+      transport: 'streamable_http',
+      endpoint: 'https://example.com/mcp',
+      version: null,
+      tools: [],
+      tool_schemas: [],
+      license: null,
+      tags: ['test'],
+      source: 'official',
+      tool_extraction_source: 'none',
+    }], svc, {
+      mode: 'catalog',
+      existingLookup: {
+        byName: new Map(),
+        bySmithery: new Map(),
+        byOfficial: new Map(),
+        byGlama: new Map(),
+        byGithub: new Map(),
+        byEndpoint: new Map(),
+      },
+    });
+
+    expect(result.added).toBe(0);
+    expect(result.updated).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(writes).toEqual([]);
   });
 
   // fetchVendorServers / partner source removed — github.com/mcp org does not expose

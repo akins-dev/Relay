@@ -135,22 +135,10 @@ function dnsLruSet(host: string, value: { ok: boolean; checkedAt: number }): voi
   dnsSafetyCache.set(host, value);
 }
 
-function isAllowedLocalPrototypeUrl(parsed: URL): boolean {
-  if (process.env.ALLOW_LOCAL_PROTOTYPE_ENDPOINTS !== '1') return false;
-  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-  if (!['localhost', '127.0.0.1'].includes(parsed.hostname)) return false;
-
-  const expectedPort = process.env.PROTOTYPE_MCP_PORT ?? '4010';
-  const actualPort = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
-
-  return actualPort === expectedPort;
-}
-
 export function isSafeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
-    if (isAllowedLocalPrototypeUrl(parsed)) return true;
     for (const pattern of BLOCKED_PATTERNS) {
       if (pattern.test(url)) return false;
     }
@@ -164,7 +152,6 @@ export async function isSafeUrlForServerFetch(url: string): Promise<boolean> {
   try {
     const parsed = new URL(url);
     if (!isSafeUrl(url)) return false;
-    if (isAllowedLocalPrototypeUrl(parsed)) return true;
     if (isPrivateIpLiteral(parsed.hostname)) return false;
 
     const host = parsed.hostname.toLowerCase();

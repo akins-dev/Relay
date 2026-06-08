@@ -4,6 +4,8 @@ import { BRAND } from '@/lib/brand';
 import { SITE_URL } from '@/lib/site';
 import {
   SCHEMA_GUIDANCE,
+  INTENT_CONSTRUCTION_RULES,
+  INTENT_EXAMPLES,
   SEARCH_ACTIVATION_CASES,
   SEARCH_DECISION_RULE,
   SEARCH_DEFLECTION_CASES,
@@ -34,6 +36,13 @@ Do not search when:
 ${SEARCH_DEFLECTION_CASES.map(item => `- ${item}`).join('\n')}
 
 Decision rule: ${SEARCH_DECISION_RULE}
+
+## How To Write Search Intent
+
+${INTENT_CONSTRUCTION_RULES.map(item => `- ${item}`).join('\n')}
+
+Examples:
+${INTENT_EXAMPLES.map(item => `- \`${item}\``).join('\n')}
 
 ## Native MCP
 

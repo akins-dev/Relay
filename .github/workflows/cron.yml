@@ -1,13 +1,8 @@
 name: "Cron Jobs"
 
 on:
-  schedule:
-    # ── Uptime Check (every 15 minutes) ──
-    - cron: "*/15 * * * *"
-    # ── Schema Drift (every 6 hours) ──
-    - cron: "0 */6 * * *"
-    # ── Reset Calls & Ingest (every day at midnight) ──
-    - cron: "0 0 * * *"
+  # Automatic cron is paused for the MVP while Supabase storage and search
+  # quality are being validated. Keep manual dispatch for targeted operations.
   workflow_dispatch:
     inputs:
       job:
@@ -19,6 +14,7 @@ on:
           - uptime
           - drift
           - ingest
+          - enrich
           - reset
 
 jobs:
@@ -39,10 +35,14 @@ jobs:
       - name: Execute Script
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
           SANDBOX_URL: ${{ secrets.SANDBOX_URL }}
           SANDBOX_AUTH_TOKEN: ${{ secrets.SANDBOX_AUTH_TOKEN }}
+          LOCAL_INGEST_CONCURRENCY: "20"
+          LOCAL_INGEST_PROGRESS_EVERY: "25"
+          OFFICIAL_REGISTRY_TIMEOUT_MS: "60000"
         run: |
           set -euo pipefail
 
@@ -52,20 +52,12 @@ jobs:
             elif [ "${{ github.event.inputs.job }}" == "drift" ]; then
               bun run src/scripts/cron-schema-drift.ts
             elif [ "${{ github.event.inputs.job }}" == "ingest" ]; then
-              bun run src/scripts/cron-ingest.ts
+              bun run src/scripts/run-ingest-local.ts all
+            elif [ "${{ github.event.inputs.job }}" == "enrich" ]; then
+              bun run src/scripts/run-ingest-local.ts enrich
             elif [ "${{ github.event.inputs.job }}" == "reset" ]; then
               bun run src/scripts/cron-reset-calls.ts
             fi
           fi
 
-          # Scheduled executions
-          if [ "${{ github.event.schedule }}" == "*/15 * * * *" ]; then
-             echo "Running Uptime Check..."
-             bun run src/scripts/cron-uptime.ts
-          elif [ "${{ github.event.schedule }}" == "0 */6 * * *" ]; then
-             echo "Running Schema Drift..."
-             bun run src/scripts/cron-schema-drift.ts
-          elif [ "${{ github.event.schedule }}" == "0 0 * * *" ]; then
-             echo "Running Reset Calls & Ingest..."
-             bun run src/scripts/cron-reset-calls.ts && bun run src/scripts/cron-ingest.ts
-          fi
+          echo "Manual cron workflow complete."

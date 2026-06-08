@@ -19,6 +19,9 @@ const child = spawn('node', [relayBin, 'serve'], {
 const rl = createInterface({ input: child.stdout });
 const responses = [];
 let nextId = 1;
+let started = false;
+let stderr = '';
+let childError = null;
 
 rl.on('line', (line) => {
   try {
@@ -37,23 +40,32 @@ function sendRequest(method, params) {
   return id;
 }
 
-// Step 1: Initialize
-sendRequest('initialize', {
-  protocolVersion: '2025-03-26',
-  capabilities: {},
-  clientInfo: { name: 'e2e-test', version: '0.1.0' },
+child.stderr.on('data', (chunk) => {
+  stderr += chunk.toString();
+  if (!started && stderr.includes('MCP server started')) {
+    started = true;
+    runLifecycle();
+  }
 });
 
-// Step 2: tools/list
-setTimeout(() => sendRequest('tools/list'), 300);
+child.on('error', (err) => {
+  childError = err;
+});
 
-// Step 3: search_tools
-setTimeout(() => {
+function runLifecycle() {
+  sendRequest('initialize', {
+    protocolVersion: '2025-03-26',
+    capabilities: {},
+    clientInfo: { name: 'e2e-test', version: '0.1.0' },
+  });
+
+  sendRequest('tools/list');
+
   sendRequest('tools/call', {
     name: 'search_tools',
     arguments: { intent: 'send email', limit: 2 },
   });
-}, 600);
+}
 
 // Collect and report
 setTimeout(() => {
@@ -95,6 +107,14 @@ setTimeout(() => {
   }
 
   const allPassed = initResp?.result?.serverInfo && toolsResp?.result?.tools?.length === 3 && searchResp?.result;
+  if (!allPassed && stderr.trim()) {
+    console.log('\nstderr:');
+    console.log(stderr.trim());
+  }
+  if (!allPassed && childError) {
+    console.log('\nchild process error:');
+    console.log(childError.message);
+  }
   console.log(allPassed ? '\n✓ All E2E tests passed' : '\n✗ Some tests failed');
   process.exit(allPassed ? 0 : 1);
 }, 8000);

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { SITE_URL } from '@/lib/site';
 import { BRAND } from '@/lib/brand';
+import {
+  getAgentDocsUrl,
+  getMcpServerUrl,
+  getNativeMcpConfigSnippet,
+  getSearchUrlExample,
+} from '@/lib/agent-guidance';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 300;
@@ -20,16 +26,25 @@ export async function GET() {
     mcpSpecVersion: '2025-03-26',
     supportedProtocolVersions: ['2025-03-26', '2024-11-05'],
     nativeMcpServer: {
-      url: `${SITE_URL}/api/mcp-server`,
+      url: getMcpServerUrl(),
       transports: ['streamable_http', 'sse'],
       tools: ['search_tools', 'get_server_manifest'],
       description: `Connect once to let agents discover MCP capabilities and local run manifests through ${BRAND.name}.`,
     },
+    serverCard: {
+      url: `${SITE_URL}/.well-known/mcp/server.json`,
+      llmsTxt: `${SITE_URL}/llms.txt`,
+      agentInstructions: getAgentDocsUrl(),
+      configuration: JSON.parse(getNativeMcpConfigSnippet()),
+    },
     endpoints: {
-      agentSkillFile: `${SITE_URL}${BRAND.agentMdRoute}`,
+      agentSkillFile: getAgentDocsUrl(),
+      llmsTxt: `${SITE_URL}/llms.txt`,
       servers: `${SITE_URL}/api/servers`,
       search: `${SITE_URL}/api/servers/search`,
+      searchExample: `${getSearchUrlExample()}&limit=5`,
       registryInfo: `${SITE_URL}/api/mcp`,
+      mcpServer: getMcpServerUrl(),
     },
     features: {
       runtimeDiscovery: true,
@@ -42,6 +57,13 @@ export async function GET() {
     discoveryTransports: ['streamable_http', 'sse', 'stdio'],
     cli: {
       name: BRAND.cli,
+      package: '@relay/cli',
+      commands: [
+        'npx -y @relay/cli serve',
+        'npx -y @relay/cli search "send transactional email"',
+        'npx -y @relay/cli info {serverName}',
+        'npx -y @relay/cli invoke {serverName} {toolName} --json {jsonArgs}',
+      ],
       invocation: `${BRAND.slug} invoke {serverName} {toolName}`,
       description: 'Local invocation is handled by the user agent or CLI from the returned manifest.',
     },

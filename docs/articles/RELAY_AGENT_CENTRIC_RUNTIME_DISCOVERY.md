@@ -2,8 +2,8 @@
 
 Subtitle: solving the practical MCP configuration ceiling
 
-Last updated: 2026-05-11
-Status: external positioning draft; update against `PROTOTYPE_IMPLEMENTATION_PLAN.md` before publishing
+Last updated: 2026-05-22
+Status: external positioning draft — **MVP model is Relay Cloud discovery + Relay Local invoke** (no hosted cloud `invoke_tool`). See `SEARCH_PIPELINE.md` and `LAUNCH_AND_PUBLIC_TESTING.md` for current architecture.
 
 ## Abstract
 
@@ -52,22 +52,15 @@ Relay is a runtime layer above the registry, not a registry replacement.
 
 Relay follows one pattern:
 
-**thin meta-layer + thick guarded proxy + empirical feedback loop**
+**thin meta-layer + local guarded runtime + empirical feedback loop**
 
 ### Thin meta-layer
 
 The agent does not need a thousand preloaded tools. It needs a small interface that lets it ask for capability when it needs it.
 
-### Thick guarded proxy
+### Local guarded runtime (MVP)
 
-Every real action passes through one path for:
-
-* auth
-* rate limits
-* policy
-* vault injection
-* DLP
-* audit
+Invocation runs on the agent host via Relay Local (`relay invoke`, `relay serve`). Cloud provides search, manifests, and optional outcome telemetry—not third-party tool execution. Future enterprise paths may add vault, DLP, and audit at the same boundary.
 
 ### Empirical feedback loop
 
@@ -89,11 +82,11 @@ This environment demands a runtime governance layer.
 
 Relay already has the right product skeleton:
 
-* a native MCP server surface
+* a native MCP server surface (`search_tools`, `get_server_manifest`)
 * a canonical registry built from multiple upstream sources
-* a guarded HTTP proxy
-* vault-backed static secret injection
-* analytics tables that support future routing improvements
+* tool-level search (FTS + RRF on `server_tools`)
+* Relay Local CLI and `relay serve` for invocation
+* analytics tables (`search_events`, `invoke_outcomes`, `intent_server_mappings`) for measured routing improvements
 
 
 ## Where Relay fits today

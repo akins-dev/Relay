@@ -1,84 +1,6 @@
 # Ingest Pipeline — Architecture Diagram
 
-> Last updated: May 2026 — partner/vendor removed; is_canonical + use_count added; trust score redesigned.
-
-## Full Flow (Mermaid)
-
-```mermaid
-flowchart TD
-    subgraph TRIGGER["Trigger Layer"]
-        CRON["Vercel Cron\n(scheduled)"]
-        API["POST /api/ingest\n?source=all|official|smithery|\nglama|mcp_directory"]
-        CRON --> ORCH
-        API --> ORCH
-    end
-
-    subgraph ORCH["Orchestrator — cron/ingest.ts"]
-        ORCH["runIngest(source)\n• resolves source list\n• sequential per-source\n• writes ingest_runs row"]
-    end
-
-    subgraph SOURCES["Source Fetchers"]
-        direction TB
-        O["official.ts  [PRIMARY]\nregistry.modelcontextprotocol.io\n→ endpoint, env_var_schema\n→ package_info, icon_url, title\nFilter isLatest: true client-side"]
-        S["smithery.ts  [PRIMARY]\napi.smithery.ai\nPhase 1: listing sweep isDeployed:true\n  → verified (top-level boolean)\n  → bySmithery → is_canonical\n  → useCount → use_count\nPhase 2: detail fetch concurrency=5\n→ endpoint, tool_schemas (inputSchema)\n→ resources, prompts, configSchema"]
-        G["glama.ts  [ENRICHMENT]\nglama.ai/api/mcp/v1\n→ env_var_schema (JSON Schema)\n→ SPDX license, attributes[] tags\n→ repository.url (dedup key)\n⚠ Never provides endpoint or tools"]
-        D["mcp_directory.ts  [ENRICHMENT]\nmcp.directory/api/v1\n→ verified, icon_url\n→ heuristic github_url\n  (publisher.name/slug)\n→ classification tags\n⚠ Never provides endpoint or tools"]
-    end
-
-    ORCH --> O & S & G & D
-
-    subgraph PIPELINE["upsertServers() — pipeline.ts"]
-        direction TB
-        PRE["1. Batch pre-fetch all existing rows\n   Build 6 lookup Maps:\n   smithery_id / official_id / glama_id\n   github_url / endpoint / name"]
-        LOOP["2. Per-server loop"]
-        GUARD["3. Guards\n   • name regex [a-z0-9-]+\n   • isSafeUrl (SSRF)\n   • SSRF on endpoint"]
-        LOOKUP["4. Dedup lookup (priority)\n   smithery_id → official_id\n   → glama_id → github_url\n   → endpoint → name"]
-        SKIP1["5a. Timestamp skip\n   upstream_updated_at ≤ last_scanned_at"]
-        SKIP2["5b. Hash skip\n   sha256(tools+version+endpoint+github_url)\n   unchanged + scanned within 24h"]
-        ENRICH["6. Enrichment-only path\n   (glama / mcp_directory)\n   Selective patch:\n   • glama → license, env_var_schema,\n     tags, glama_id\n     + auth_type: api_key if env added\n   • mcp_directory → verified,\n     icon_url, tags, mcp_directory_id"]
-
-        PROBE["7a. HTTP Probe (proxy-available servers)\n    mcp-probe.ts\n    initialize → initialized\n    tools/list (paginated, cursor)\n    resources/list (paginated)\n    prompts/list (paginated)\n    → toolSchemas, resources, prompts\n    → real transport, protocol_version"]
-        SANDBOX["7b. Sandbox (stdio servers)\n    POST SANDBOX_URL/extract\n    timeout: 60s (cold-start safe)\n    buildSandboxCommand():\n      npm pkg: npx -y {identifier}\n      github: git clone → npx\n    → toolSchemas, resources, prompts"]
-        README["7c. README fallback\n    parseReadmeSchemas(github_url)\n    tool_extraction_source: readme_parsed"]
-
-        SYNC["8. Sync tools[] from toolSchemas\n   Always (not just when empty)\n   Recompute schema_hash after sync\n   → matches drift cron inputs exactly"]
-
-        CVE["9. CVE scan\n    scanNpmDependencies(github_url)\n    deduplicated by repo\n    critical → reject\n    high → pending_review"]
-
-        AUTH["10. deriveAuthType()\n    env_var_schema present → api_key\n    official + public → none\n    smithery default → managed"]
-
-        TRUST["11. Trust score (redesigned)\n    computeTrustScore(\n      verified, uptimePct,\n      usageCount, daysSinceChange,\n      scanScore, deploymentQuality)\n    — No source-type bias\n    — daysSinceChange from schema_changed_at\n    — usageCount from Smithery useCount\n    — deploymentQuality: endpoint+inputSchema"]
-
-        DB["12. DB write\n    INSERT or UPDATE servers\n    • is_canonical = by_smithery (Smithery only)\n    • use_count from Smithery listing\n    • verified from upstream, not overridden"]
-
-        SIDE["13. Side-table writes\n    server_connection_profiles\n      (raw_upstream_json, remotes,\n       packages, icons, official_meta)\n    scan_results (CVE audit trail)"]
-
-        HASHFINAL["14. Final schema_hash stored\n    Used by schema-drift cron\n    as rug-pull detection baseline"]
-    end
-
-    O & S & G & D --> PRE
-    PRE --> LOOP --> GUARD --> LOOKUP
-    LOOKUP --> SKIP1 & SKIP2 & ENRICH
-    LOOKUP --> PROBE & SANDBOX & README
-    PROBE & SANDBOX & README --> SYNC
-    SYNC --> CVE --> AUTH --> TRUST --> DB --> SIDE --> HASHFINAL
-
-    subgraph CRONS["Maintenance Crons"]
-        UPTIME["uptime.ts (every 15min)\n• skip auth_type=api_key/oauth\n• probeUptime(endpoint)\n• EWMA uptime_pct α=0.01\n• EWMA latency α=0.1\n• recompute trust_score\n• write scan_results"]
-        DRIFT["schema-drift.ts (daily)\n• probeMCPServer(endpoint)\n• hash(tools+version+endpoint+github_url)\n• match == stored → last_scanned_at\n• mismatch → run injection scan\n  → suspend + scan_results"]
-    end
-
-    DB --> UPTIME & DRIFT
-
-    subgraph CONSUMERS["Downstream Consumers"]
-        SEARCH["GET /api/servers/search\nsearch_servers() RPC\nORDER BY: is_canonical DESC,\n  text_rank DESC, trust_score DESC,\n  use_count DESC\n→ canonical servers always rank first"]
-        INVOKE["Relay Local runtime\nReads: manifest, tools,\n  env requirements,\n  transport, trust signals\n→ env/secret resolution\n→ MCP handshake\n→ upstream call + security scans"]
-    end
-
-    DB --> SEARCH & INVOKE
-```
-
----
+> Last updated: June 2026 — automatic cron paused; local/manual concurrent runner with shared pre-fetch (N+1 eliminated); 7-day hash skip window; CLI flags --reverse/--offset/--limit restored; primary-source rows without tools are skipped.
 
 ## Data Structures
 
@@ -172,6 +94,8 @@ interface IngestResult {
     probe_success:            number;  // Probes that returned ≥1 tool schema
     sandbox_attempts:         number;  // Sandbox extraction attempts
     sandbox_success:          number;  // Sandbox calls that returned ≥1 tool
+    readme_fallback_attempts?: number; // README fallback after probe/sandbox returned 0 tools
+    readme_fallback_success?:  number; // README fallback that extracted ≥1 tool
     grade_a_complete:         number;  // Servers with all Grade-A fields populated
     grade_b_complete:         number;  // Servers with all Grade-A + Grade-B populated
   };
@@ -284,6 +208,92 @@ Enrichment patch (Glama adds env_var_schema):
 
 ---
 
+## Semaphore — Concurrency Control
+
+Two `Semaphore` instances (from `src/lib/ingest/semaphore.ts`) gate concurrent async work:
+
+| Instance | Limit | Where | Purpose |
+|---|---|---|---|
+| `workerSemaphore` | Default 40 (max 100) | `run-ingest-local.ts` | Controls how many servers are processed simultaneously by the local runner. Set via `LOCAL_INGEST_CONCURRENCY`. |
+| `sandboxSemaphore` | Hard cap 3 | `pipeline.ts` | Prevents more than 3 concurrent stdio sandbox extractions. Protects the Render container from OOM crashes regardless of `workerSemaphore` size. |
+
+The Semaphore works as a **queue gate**: tasks that exceed the cap wait in-memory until a running task releases. It uses a Promise resolve callback queue — no polling.
+
+---
+
+## `prefetchExistingServers()` — Shared Lookup
+
+**File:** `src/lib/ingest/pipeline.ts`  
+**Exported via:** `src/lib/ingest/index.ts`
+
+Queries the entire `servers` table **once** and builds 6 in-memory Maps for O(1) dedup lookups:
+
+```
+byName / bySmithery / byOfficial / byGlama / byGithub / byEndpoint
+```
+
+### When it's called
+
+| Path | Who calls it | When |
+|---|---|---|
+| **Local runner** | `run-ingest-local.ts` | Once at startup, before any workers start. Passed to every `upsertServers([server])` call via `options.existingLookup`. Workers do **zero DB queries** to check existence. |
+| **Cron / batch** | `pipeline.ts` internally | When `options.existingLookup` is not supplied, `upsertServers()` fetches inline once for the whole batch. |
+
+### Why this matters
+
+The old architecture called `upsertServers([singleServer])` per worker, which triggered a full `SELECT *` of all existing servers **inside each worker call**. With 50 concurrent workers, that was 50 simultaneous full-table scans, causing DB saturation and cascading slowdown over time.
+
+Now: **1 query total** for the entire run, regardless of concurrency level.
+
+Primary-source candidates are not inserted or updated unless they resolve to at least one tool name or tool schema after upstream metadata, probe/sandbox extraction, and README fallback. Enrichment-only sources can update existing rows, but they cannot create standalone no-tool servers.
+
+Use `--full` for primary-source population. `catalog` mode is intentionally conservative under this rule and can skip sources whose listing APIs do not expose tools directly.
+
+---
+
+## CLI Flags — `run-ingest-local.ts`
+
+```bash
+npm run ingest:local -- [source] [flags]
+
+# Sources
+all               # official + smithery + glama + mcp_directory
+official          # Official MCP Registry only
+smithery          # Smithery only
+enrich            # glama + mcp_directory only
+glama             # Glama only
+mcp_directory     # mcp.directory only
+
+# Flags
+--mode catalog    # fast path: no probe/sandbox
+--mode full       # full extraction (default)
+--reverse         # process servers back-to-front (resume from tail)
+--offset=N        # skip first N servers
+--limit=N         # only process N servers
+
+# Environment
+LOCAL_INGEST_CONCURRENCY=N   # worker concurrency (default 40, max 100)
+LOCAL_INGEST_PROGRESS_EVERY=N # log every N completions (default 25)
+OFFICIAL_REGISTRY_TIMEOUT_MS=N # official API timeout (default 30000)
+```
+
+### Resume patterns
+
+```bash
+# Normal resume — already-ingested servers skip in milliseconds (7-day hash window)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full
+
+# Process unvisited tail first (servers at end of list that were never reached)
+LOCAL_INGEST_CONCURRENCY=50 npm run ingest:local -- official --full --reverse
+
+# Split across 3 terminals for parallel coverage
+npm run ingest:local -- official --full --limit=3000               # terminal 1: servers 0-2999
+npm run ingest:local -- official --full --offset=3000 --limit=3000 # terminal 2: servers 3000-5999
+npm run ingest:local -- official --full --offset=6000              # terminal 3: servers 6000+
+```
+
+---
+
 ## "Safe to go" Checklist
 
 - [x] All 10 integration faults fixed
@@ -301,12 +311,17 @@ Enrichment patch (Glama adds env_var_schema):
 - [x] mcp/route.ts corrected (no Anthropic attribution, no hallucinated sources)
 - [x] schema_hash computed post-probe (matches drift cron)
 - [x] tools[] always synced from probe/sandbox result
+- [x] primary-source candidates with no tools after extraction are skipped
 - [x] auth_type updated in enrichment patch path
 - [x] env_var_schema + package_info in search response
 - [x] api_key servers exempt from uptime probe
 - [x] mcp_directory heuristic github_url for dedup
 - [x] extraction_metrics aligned pipeline ↔ response builder
 - [x] ToolExtractionSource type has 'readme_parsed'
-- [x] Sandbox fetch has 60s AbortSignal timeout
+- [x] Sandbox fetch has 240s AbortSignal timeout (SANDBOX_EXTRACT_TIMEOUT_MS)
 - [x] Subprocess SIGTERM + SIGKILL cleanup in sandbox
 - [x] resources/prompts paginated in mcp-probe.ts
+- [x] Hash skip window extended from 24h → 168h (7 days)
+- [x] prefetchExistingServers() shared lookup — eliminates N+1 full-table scans per concurrent worker
+- [x] CLI flags restored: --reverse, --offset, --limit
+- [x] Semaphore documented: workerSemaphore (default 40) + sandboxSemaphore (hard cap 3)

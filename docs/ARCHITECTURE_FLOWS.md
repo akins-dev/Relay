@@ -1,9 +1,9 @@
 # Relay Architecture Flows
 
 Last updated: 2026-05-11 (Agent-centric Relay Local clarification)
-Status: Historical high-level architecture. Current MVP scope lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
+Status: Historical high-level architecture. Current MVP scope lives in `DELIVERY_ROADMAP.md` and `RUNTIME_INVOKE_ARCHITECTURE.md`.
 
-Canonical MVP reference: [`PROTOTYPE_IMPLEMENTATION_PLAN.md`](PROTOTYPE_IMPLEMENTATION_PLAN.md)
+Canonical MVP references: [`DELIVERY_ROADMAP.md`](DELIVERY_ROADMAP.md), [`RUNTIME_INVOKE_ARCHITECTURE.md`](RUNTIME_INVOKE_ARCHITECTURE.md)
 Canonical technical reference: [`TECHNICAL_BACKBONE.md`](TECHNICAL_BACKBONE.md)
 Deep code-grounded system map: [`ARCHITECTURE_SYSTEM_MAP.md`](ARCHITECTURE_SYSTEM_MAP.md)
 Companion scene: [`diagrams/relay-system-overview.excalidraw`](diagrams/relay-system-overview.excalidraw)
