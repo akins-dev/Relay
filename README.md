@@ -16,9 +16,9 @@ Architecture flows: [`docs/ARCHITECTURE_FLOWS.md`](docs/ARCHITECTURE_FLOWS.md)
 ## The Problem: The Practical MCP Cap
 
 Every AI agent framework today requires **explicit pre-configuration** of MCP servers.
-Before an agent can use a tool, a developer has to find it, evaluate it, integrate it, 
-and wire it into the agent's configuration. This 1:1 integration model doesn't scale. 
-As the MCP ecosystem grows to thousands of servers, the configuration problem 
+Before an agent can use a tool, a developer has to find it, evaluate it, integrate it,
+and wire it into the agent's configuration. This 1:1 integration model doesn't scale.
+As the MCP ecosystem grows to thousands of servers, the configuration problem
 becomes the bottleneck — not the capabilities themselves.
 
 The core scaling problem in MCP is not raw server count. It is the amount of capability a team can use sanely under **explicit configuration**:
@@ -42,8 +42,7 @@ Relay is a secure capability access layer that lets agents:
 - avoid context bloat from preloading every possible MCP server
 - run tools locally through your agent host or Relay CLI instead of routing execution through Relay
 
-Instead of forcing humans to preload and maintain dozens of servers, Relay opens the tool landscape at runtime and lets the local agent do the work.
----
+## Instead of forcing humans to preload and maintain dozens of servers, Relay opens the tool landscape at runtime and lets the local agent do the work.
 
 ## Connect your agent
 
@@ -53,7 +52,7 @@ Instead of forcing humans to preload and maintain dozens of servers, Relay opens
 {
   "mcpServers": {
     "relay": {
-      "url": "https://relay.vercel.app/api/mcp-server"
+      "url": "https://mcp-relay.vercel.app/api/mcp-server"
     }
   }
 }
@@ -81,14 +80,14 @@ The MCP `initialize` response includes usage instructions so MCP-native agents k
 
 ```
 You have access to Relay.
-If your framework supports MCP, connect to https://relay.vercel.app/api/mcp-server and use search_tools plus get_server_manifest.
-Otherwise read https://relay.vercel.app/agents.md once before your first tool call and use the REST fallback below.
+If your framework supports MCP, connect to https://mcp-relay.vercel.app/api/mcp-server and use search_tools plus get_server_manifest.
+Otherwise read https://mcp-relay.vercel.app/agents.md once before your first tool call and use the REST fallback below.
 Before taking any action that affects an external system, search first.
 For knowledge-only questions, answer directly without searching.
 When searching, include the named provider/product, operation verb, and resource/object from the user request.
 Use provider/product names only when the user or task context named them. Do not invent provider names.
 Never put credentials, API keys, or tokens in tool arguments.
-Search:  GET https://relay.vercel.app/api/servers/search?q={intent}
+Search:  GET https://mcp-relay.vercel.app/api/servers/search?q={intent}
 Run:     npx -y @relay/cli invoke {serverName} {toolName}
 Use the returned inputSchema exactly. Do not guess arguments.
 ```
@@ -97,7 +96,7 @@ Use the returned inputSchema exactly. Do not guess arguments.
 
 ```bash
 # Discover by intent — returns full inputSchema per tool
-curl "https://relay.vercel.app/api/servers/search?q=send+transactional+email"
+curl "https://mcp-relay.vercel.app/api/servers/search?q=send+transactional+email"
 
 # Run locally with the returned manifest
 relay invoke sendgrid-mail send_email
