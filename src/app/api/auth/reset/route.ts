@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveUser } from "@/lib/auth-server";
 import { rateLimit, getLimitConfig } from "@/lib/ratelimit";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const Schema = z.object({
   password: z.string().min(8),
