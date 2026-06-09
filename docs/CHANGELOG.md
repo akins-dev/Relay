@@ -108,7 +108,7 @@ This file is append-only.
 
 - Reframed the main narrative docs around a more explicit `Problem` and `Vision` structure.
 - Clarified that Relay complements RAG, LangChain, and LangGraph rather than competing with them.
-- Normalized the likely MVP public URL in Markdown examples to `https://relay.vercel.app`.
+- Normalized the likely MVP public URL in Markdown examples to `https://mcp-relay.vercel.app`.
 - Removed stale naming drift such as `Agentrail` and `openMCP` from the Markdown docs that were updated.
 
 ### Normalized
@@ -130,28 +130,34 @@ This file is append-only.
 ### Architecture: Migration 032 — Behavioral Trust & Dynamic Diversity
 
 **Trust score formula replaced (security.ts + compute_trust_score_v2 SQL):**
+
 - Removed Smithery `use_count` from trust score computation. It was source-biased: servers from any other source (Glama, official, direct) automatically scored 15 pts lower with no quality basis.
 - New behavioral reliability slot (15 pts): Bayesian-smoothed success rate from `intent_server_mappings`. Formula: `(success_count + 3) / (invoke_count + 4) × log10(invoke_count + 5) × 15`, capped at 15. Beta(3,1) prior gives cold-start servers ~8 pts ("unproven") instead of 0 ("broken").
 - `use_count` (Smithery) retained as a search ranking tiebreaker only — not removed from schema.
 - `usageCount` and `stars` params kept in TypeScript as `@deprecated` fallback for backward compatibility.
 
 **Ingest pipeline hardened (pipeline.ts + api/servers/route.ts):**
+
 - All code paths (automated ingest, manual POST submission) now pass `invokeCount: 0, successCount: 0` at ingest time. Bayesian prior handles cold-start consistently.
 - No synthetic `stars` or `daysSinceChange` overrides remain. Scores are fully data-driven from day one.
 
 **Uptime cron hardened (cron/uptime.ts):**
+
 - Cron now performs a two-step batch fetch: first gets ISM data for all active server names, then recomputes trust scores using real `invokeCount`/`successCount`. No redundant DB writes.
 
 **search_servers() SQL rewritten (032 migration):**
+
 - Old `category_counts` CTE scanned the entire `servers` table for `trust_score >= 85`. When scores clustered below 85 (inevitable with the new formula), the diversity logic silently died.
 - New: `category_counts` and `result_median` scan only the current query’s result set. Diversity penalty (8% soft reduction) applies to over-represented tags that score below the result-set median. Always fires. Never uses a hardcoded absolute threshold.
 - Added `idx_ism_server_reliability` covering index and `get_server_behavioral_reliability()` helper function.
 - Added `invoke_count` to the search result set so consumers can distinguish "new & clean" from "aged & proven."
 
 **UI thresholds aligned across all components:**
+
 - SearchSpotlight.tsx, admin/page.tsx, dashboard/page.tsx, registry/[name]/page.tsx: amber badge now at `>= 65` (was `>= 70`) to reflect realistic score distribution under the new model.
 
 **Documentation updated:**
+
 - SECURITY.md: trust score table corrected (was showing completely wrong weights).
 - ARCHITECTURE_SYSTEM_MAP.md: Section 14 (uptime cron), Section 11 (ingest), Section 6 (search) updated.
 - TECHNICAL_BACKBONE.md: Section 9.11 (trust init), Section 7.1 (inbound sources), Section 13 (obstacles) updated.
@@ -161,6 +167,7 @@ This file is append-only.
 ### Architecture: Search Pipeline & CS Algorithm Upgrades
 
 **Infrastructure Hardening (Phase 1):**
+
 - **Single-Flight Cache:** Added promise coalescing layer to L1 caches to eliminate cache stampedes on key expiry.
 - **Circuit Breaker:** Upgraded proxy failure mitigation to a 3-state (Closed/Open/Half-Open) circuit breaker to prevent thundering herd requests on upstream recovery.
 - **Full-Jitter Backoff:** Replaced fixed 300ms proxy retries with uniform randomized exponential backoff (max 1500ms) to spread retry pressure.
@@ -168,6 +175,7 @@ This file is append-only.
 - **Combined Regex Fast-Reject:** Replaced N×K individual regex tests in the proxy security layer with a single `COMBINED_X` alternation regex per family. Clean payloads now bypass detailed inspection in O(1) time.
 
 **Search Quality & Ranking (Phase 2):**
+
 - **Wilson Score Confidence:** Replaced linear ranking history weights with a 95% Confidence Interval (Wilson Score lower bound), correctly ranking servers with high variance (e.g., 10/10 vs 2/2).
 - **TF-IDF Schema Trimming:** Replaced raw word-overlap with a smoothed TF-IDF scoring algorithm. Rare, highly specific tool schema terms now rank higher than common action words.
 - **Porter Stemmer:** Integrated a 5-step Porter Stemmer into intent hashing. Morphological variants (e.g., "sending email" vs "send email") now yield identical cache keys, massively boosting hit rates.
@@ -175,6 +183,7 @@ This file is append-only.
 - **Ranking Decay:** Replaced linear new-server ranking boost with an exponential 14-day half-life curve.
 
 **SQL & Route Parity (Phase 3 & 4):**
+
 - **Single Roundtrip RPC:** Collapsed three sequential database lookups into a single `search_servers` execution by pushing `tool_extraction_source` into the returns table and adding an `intent_hash` LATERAL join.
 - **GROUP BY Aggregation:** Replaced application-layer intent aggregation in the uptime cron with an O(servers) SQL `get_all_behavioral_reliability` RPC.
 - **Shared `runSearch` Module:** Extracted the 6-stage search pipeline into `src/lib/search.ts`. The REST (`/api/servers?q=`) and MCP (`/api/mcp-server`) surfaces now share identical cache semantics, schema trimming, and confidence scoring capabilities.

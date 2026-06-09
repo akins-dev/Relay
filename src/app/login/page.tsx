@@ -8,6 +8,7 @@ import { createClient }                 from "@/lib/supabase/client";
 import { useAuth }                      from "@/components/AuthProvider";
 import { cn }                           from "@/lib/cn";
 import { BRAND }                        from "@/lib/brand";
+import { executeCaptcha }               from "@/lib/captchaClient";
 
 function LoginForm() {
   const router       = useRouter();
@@ -46,20 +47,20 @@ function LoginForm() {
 
     try {
       if (mode === "register") {
-        const { data, error: err } = await supabase.auth.signUp({
-          email:    form.email,
-          password: form.password,
-          options:  { data: { username: form.username } },
+        // Execute client-side captcha (if configured) and route registration
+        // through our server endpoint so rate-limiting and protections are centralized.
+        const captchaToken = await executeCaptcha('register');
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: form.email, password: form.password, username: form.username, captchaToken }),
         });
-        if (err) throw new Error(err.message);
-        if (data.session) {
-          // Full navigation so the new session cookie is sent with the request
-          router.refresh();
-        router.push(redirectTo);
-        } else {
-          setEmailSent(true);
-          setLoading(false);
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j?.error || 'Registration failed');
         }
+        setEmailSent(true);
+        setLoading(false);
       } else {
         const { error: err } = await supabase.auth.signInWithPassword({
           email:    form.email,
@@ -196,6 +197,13 @@ function LoginForm() {
                   required minLength={8}
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
                 />
+                {mode === "login" && (
+                  <div className="mt-2 text-right">
+                    <Link href="/auth/forgot" className="text-sm text-white/60 hover:text-white underline underline-offset-2">
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
               </div>
             </fieldset>
 
