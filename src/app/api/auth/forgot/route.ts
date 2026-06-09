@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = Schema.parse(await req.json());
     const supabase = createClient();
-    const origin = new URL(req.url).origin;
-
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
+      
     // Normalize and hash the email so we never log raw addresses
     const emailNorm = body.email.trim().toLowerCase();
     const emailHash = createHash("sha256").update(emailNorm).digest("hex");
