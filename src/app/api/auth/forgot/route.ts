@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { SITE_URL } from '@/lib/site';
+import { SITE_URL } from "@/lib/site";
 import { rateLimit, getLimitConfig } from "@/lib/ratelimit";
 import { verifyCaptcha } from "@/lib/captcha";
 import { createHash } from "crypto";
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const supabase = createClient();
     // Use the project's canonical SITE_URL (driven by BRAND or env overrides).
     const origin = SITE_URL;
-      
+
     // Normalize and hash the email so we never log raw addresses
     const emailNorm = body.email.trim().toLowerCase();
     const emailHash = createHash("sha256").update(emailNorm).digest("hex");
