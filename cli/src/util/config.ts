@@ -2,7 +2,7 @@
  * config.ts — Environment-driven configuration for Relay Local.
  *
  * Only two env vars matter for the CLI itself:
- *   RELAY_API_URL  — base URL for Relay Cloud (default: https://relay.dev)
+ *   RELAY_API_URL  — base URL for Relay Cloud (default: https://mcp-relay.vercel.app)
  *   RELAY_API_KEY  — optional API key for higher rate limits
  *
  * Downstream MCP server credentials (GITHUB_TOKEN, SENDGRID_API_KEY, etc.)

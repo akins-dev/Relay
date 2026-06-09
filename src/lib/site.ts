@@ -14,11 +14,11 @@ import { BRAND } from '@/lib/brand';
 
 const getBaseUrl = () => {
   let url =
+    BRAND.domain ??
     process.env.NEXT_PUBLIC_SITE_URL ??
     process.env.SITE_URL ??
     process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL ??
-    process.env.NEXT_PUBLIC_VERCEL_URL ??
-    BRAND.domain;
+    process.env.NEXT_PUBLIC_VERCEL_URL;
 
   // Include protocol if missing
   if (!url.startsWith('http')) {

@@ -43,11 +43,11 @@ Add to your agent host config:
 
 The agent automatically receives three tools:
 
-| Tool | What it does |
-|---|---|
-| `search_tools` | Find MCP servers matching an intent |
-| `get_server_manifest` | Get the full manifest for a server |
-| `invoke_tool` | Execute a tool — Relay handles subprocess lifecycle |
+| Tool                  | What it does                                        |
+| --------------------- | --------------------------------------------------- |
+| `search_tools`        | Find MCP servers matching an intent                 |
+| `get_server_manifest` | Get the full manifest for a server                  |
+| `invoke_tool`         | Execute a tool — Relay handles subprocess lifecycle |
 
 The agent learns when to search via the `instructions` field in the MCP handshake. MCP clients may add those instructions to the model context, so no extra system prompt should be required for compliant hosts.
 
@@ -71,16 +71,16 @@ Relay works out of the box with zero configuration. The defaults point to the pr
 
 ### Environment Variables
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `RELAY_API_URL` | No | `https://relay.dev` | Relay Cloud base URL. Only change if self-hosting. |
-| `RELAY_API_KEY` | No | *(none)* | Optional API key for higher rate limits. |
+| Variable        | Required | Default                        | Purpose                                            |
+| --------------- | -------- | ------------------------------ | -------------------------------------------------- |
+| `RELAY_API_URL` | No       | `https://mcp-relay.vercel.app` | Relay Cloud base URL. Only change if self-hosting. |
+| `RELAY_API_KEY` | No       | _(none)_                       | Optional API key for higher rate limits.           |
 
 ### API Key
 
 **The API key is optional.** Anonymous access works.
 
-A key gives you higher rate limits when the service is under heavy traffic. Get one free at [relay.dev](https://relay.dev).
+A key gives you higher rate limits when the service is under heavy traffic. Get one free at [mcp-relay.vercel.app](https://mcp-relay.vercel.app).
 
 **The AI agent never sees or handles the key.** It's infrastructure config between Relay Local and Relay Cloud, set by the human operator.
 
@@ -125,6 +125,7 @@ relay search "create a GitHub pull request" --limit 3
 ```
 
 **Flags:**
+
 - `--limit N` — Max results (default 5, max 20)
 - `--raw` — Output raw API response
 
@@ -145,6 +146,7 @@ relay invoke github create_pull_request --json '{"owner":"org","repo":"app","tit
 ```
 
 **Flags:**
+
 - `--json '{}'` — Tool arguments as JSON
 - `--timeout N` — Timeout in milliseconds (default 30000)
 

@@ -10,8 +10,8 @@
  *   relay bootstrap --env    # Show env var documentation
  */
 
-import type { Command } from 'commander';
-import { getConfig, RELAY_VERSION } from '../util/config.js';
+import type { Command } from "commander";
+import { getConfig, RELAY_VERSION } from "../util/config.js";
 
 const CLI_BOOTSTRAP = `You have access to the \`relay\` command for discovering and using MCP tools at runtime.
 
@@ -28,50 +28,54 @@ Rules:
   5. If invoke fails with missing env vars, tell the user which variables to set.`;
 
 function getMcpConfig(): string {
-  return JSON.stringify({
-    mcpServers: {
-      relay: {
-        command: 'relay',
-        args: ['serve'],
+  return JSON.stringify(
+    {
+      mcpServers: {
+        relay: {
+          command: "relay",
+          args: ["serve"],
+        },
       },
     },
-  }, null, 2);
+    null,
+    2,
+  );
 }
 
 function getEnvDocs(): string {
   const config = getConfig();
   return [
-    'Relay CLI Environment Variables',
-    '',
-    'RELAY_API_URL',
+    "Relay CLI Environment Variables",
+    "",
+    "RELAY_API_URL",
     `  Current: ${config.apiBase}`,
-    '  Purpose: Relay Cloud base URL',
-    '  Default: https://relay.dev',
-    '',
-    'RELAY_API_KEY',
-    `  Current: ${config.apiKey ? '(set)' : '(not set)'}`,
-    '  Purpose: API key for higher rate limits',
-    '  Default: none (anonymous access with lower limits)',
-    '',
-    'All other environment variables (GITHUB_TOKEN, SENDGRID_API_KEY, etc.)',
-    'are resolved from your environment by the downstream MCP server subprocess.',
-    'Relay does not manage or store these — it passes your environment through.',
-  ].join('\n');
+    "  Purpose: Relay Cloud base URL",
+    "  Default: https://mcp-relay.vercel.app",
+    "",
+    "RELAY_API_KEY",
+    `  Current: ${config.apiKey ? "(set)" : "(not set)"}`,
+    "  Purpose: API key for higher rate limits",
+    "  Default: none (anonymous access with lower limits)",
+    "",
+    "All other environment variables (GITHUB_TOKEN, SENDGRID_API_KEY, etc.)",
+    "are resolved from your environment by the downstream MCP server subprocess.",
+    "Relay does not manage or store these — it passes your environment through.",
+  ].join("\n");
 }
 
 export function registerBootstrapCommand(program: Command): void {
   program
-    .command('bootstrap')
-    .description('Output agent configuration instructions')
-    .option('--mcp', 'Output MCP server config JSON for agent hosts')
-    .option('--env', 'Show environment variable documentation')
+    .command("bootstrap")
+    .description("Output agent configuration instructions")
+    .option("--mcp", "Output MCP server config JSON for agent hosts")
+    .option("--env", "Show environment variable documentation")
     .action((opts: { mcp?: boolean; env?: boolean }) => {
       if (opts.mcp) {
-        process.stdout.write(getMcpConfig() + '\n');
+        process.stdout.write(getMcpConfig() + "\n");
       } else if (opts.env) {
-        process.stdout.write(getEnvDocs() + '\n');
+        process.stdout.write(getEnvDocs() + "\n");
       } else {
-        process.stdout.write(CLI_BOOTSTRAP + '\n');
+        process.stdout.write(CLI_BOOTSTRAP + "\n");
       }
     });
 }
