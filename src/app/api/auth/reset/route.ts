@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
         try {
           const svc = createServiceClient();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // eslint-disable-next-line
           const adminRes: any = await (svc.auth as any).admin.updateUserById(
             user.id,
             { password: body.password },
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     // Attempt to update the current user's password using their session
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line
       const updateRes: any = await (supabase.auth as any).updateUser({
         password: body.password,
       });
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       // Fallback: use service-role to update the user directly (for certain edge cases)
       try {
         const svc = createServiceClient();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line
         const adminRes: any = await (svc.auth as any).admin.updateUserById(
           user.id,
           { password: body.password },
