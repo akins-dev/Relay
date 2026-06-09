@@ -14,7 +14,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.anthropic.com https://o*.ingest.sentry.io",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.anthropic.com https://o*.ingest.sentry.io https://www.google.com https://www.gstatic.com https://www.recaptcha.net",
   "object-src 'none'",
   "frame-src https://www.google.com https://www.recaptcha.net",
   "frame-ancestors 'none'",
